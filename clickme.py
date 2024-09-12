@@ -96,10 +96,16 @@ def process_clickmaps(clickmap_csv):
 if __name__ == "__main__":
     image_path = "CO3D_ClickMe2/"
     output_dir = "assets"
+    image_output_dir = "clickme_test_images"
     img_heatmaps = {}
     co3d_clickme = pd.read_csv("clickme_vCO3D.csv")
     image_shape = [224, 224]
     thresh = 50
+    plot_images = False
+
+    # Start processing
+    os.makedirs(image_output_dir, exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)
     processed_maps, num_maps = process_clickmaps(co3d_clickme)
     gaussian_kernel = gaussian_kernel(size=BRUSH_SIZE, sigma=BRUSH_SIZE)
     for idx, (image, maps) in enumerate(processed_maps.items()):
@@ -122,12 +128,16 @@ if __name__ == "__main__":
     for k in keys:
         f = plt.figure()
         plt.subplot(1, 2, 1)
-        plt.imshow(img_heatmaps[k]["image"])
+        plt.imshow(np.asarray(img_heatmaps[k]["image"])[:image_shape[0], :image_shape[1]])
+        plt.axis("off")
         plt.subplot(1, 2, 2)
         plt.imshow(img_heatmaps[k]["heatmap"])
-        plt.show()
+        plt.axis("off")
+        plt.savefig(os.path.join(image_output_dir, k))
+        if plot_images:
+            plt.show()
+        plt.close()
 
-    os.makedirs(output_dir)
     np.save(os.path.join(output_dir, "co3d_clickmaps_normalized.npy"), img_heatmaps)
     medians = get_medians(processed_maps, 'image', thresh=thresh)
     medians.update(get_medians(processed_maps, 'category', thresh=thresh))
