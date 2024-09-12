@@ -5,15 +5,8 @@ import random
 from scipy.stats import spearmanr
 from PIL import Image
 import re
-import numpy as np
 import pandas as pd
-from PIL import Image
-from scipy.stats import spearmanr
-import torch
-import torch.nn.functional as F
-import random
 from utils import gaussian_kernel, gaussian_blur, create_clickmap
-
 
 def gaussian_kernel(size, sigma):
     """
@@ -33,10 +26,9 @@ def gaussian_kernel(size, sigma):
     kernel = torch.exp(-(xs**2 + ys**2) / (2 * sigma**2)) / (2 * np.pi * sigma**2)
     
     kernel = kernel / kernel.sum()
-    kernel = kernel.unsqueeze(0).unsqueeze(0)  # Add batch and channel dimensions
+    kernel = kernel.unsqueeze(0).unsqueeze(0)
     
     return kernel
-
 
 def gaussian_blur(heatmap, kernel):
     """
@@ -54,7 +46,6 @@ def gaussian_blur(heatmap, kernel):
 
     return blurred_heatmap[0]
 
-
 def compute_average_map(trial_indices, clickmaps, resample=False):
     """
     Compute the average map from selected trials.
@@ -70,7 +61,6 @@ def compute_average_map(trial_indices, clickmaps, resample=False):
     if resample:
         trial_indices = np.random.choice(trial_indices, size=len(trial_indices), replace=True)
     return clickmaps[trial_indices].mean(0)
-
 
 def compute_spearman_correlation(map1, map2):
     """
@@ -92,7 +82,6 @@ def compute_spearman_correlation(map1, map2):
     else:
         return float('nan')
 
-
 def split_half_correlation(image_trials, image_shape, resample_means=False, blur_kernel=None, n_splits=1000, bootstrap=False):
     """
     Compute the split-half correlation for a set of image trials.
@@ -103,6 +92,7 @@ def split_half_correlation(image_trials, image_shape, resample_means=False, blur
         resample_means (bool): If True, resample trials when computing means. Default is False.
         blur_kernel (torch.Tensor, optional): Gaussian kernel for blurring. Default is None.
         n_splits (int): Number of splits to perform. Default is 1000.
+        bootstrap (bool): If True, use bootstrap resampling. Default is False.
 
     Returns:
         float: The average split-half correlation across all splits.
@@ -111,34 +101,25 @@ def split_half_correlation(image_trials, image_shape, resample_means=False, blur
     num_trials = len(image_trials)
     half = num_trials // 2
 
-    # First compute clickmaps
-    clickmaps = np.asarray(
-        [create_clickmap(
-            trials,
-            image_shape) for trials in image_trials])
+    clickmaps = np.asarray([create_clickmap(trials, image_shape) for trials in image_trials])
 
-    # Blur the mask to create a smooth heatmap
-    clickmaps = torch.from_numpy(clickmaps).float().unsqueeze(0)  # Convert to PyTorch tensor
+    clickmaps = torch.from_numpy(clickmaps).float().unsqueeze(0)
     clickmaps = gaussian_blur(clickmaps, blur_kernel)
     clickmaps = clickmaps.squeeze()
-    clickmaps = clickmaps.numpy()  # Convert back to NumPy array         
+    clickmaps = clickmaps.numpy()
 
-    # Compute split-half correlations
     for _ in range(n_splits):
         indices = np.arange(num_trials)
         indices = np.random.choice(indices, size=num_trials, replace=bootstrap)
         first_half_indices = indices[:half]
         second_half_indices = indices[half:]
 
-        # Split halves
         avg_map1 = clickmaps[first_half_indices].mean(0)
         avg_map2 = clickmaps[second_half_indices].mean(0)
 
-        # Compute the correlation
         correlation = compute_spearman_correlation(avg_map1, avg_map2)
         correlations.append(correlation)
     return np.nanmean(correlations)
-
 
 def main(
     final_clickmaps,
@@ -160,6 +141,7 @@ def main(
         debug (bool): If True, print debug information.
         blur_size (int): Size of the Gaussian blur kernel.
         blur_sigma (float): Sigma value for the Gaussian blur kernel.
+        image_shape (list): Shape of the image [height, width].
 
     Returns:
         tuple: A tuple containing two elements:
@@ -176,10 +158,8 @@ def main(
             category_correlations[category] = []
         image_path = co3d_clickme_folder + image_key
         image_data = Image.open(image_path)
-        # image_shape = (image_data.height, image_data.width)
         image_trials = final_clickmaps[image_key]
         
-        # Calculate split-half correlation
         mean_correlation = split_half_correlation(
             image_trials,
             image_shape,
@@ -201,9 +181,7 @@ def main(
     return category_correlations, all_correlations
 
 if __name__ == "__main__":
-
     co3d_clickme = pd.read_csv("/media/data_cifs/projects/prj_video_imagenet/Evaluation/clickme_vCO3D_1_dump_Jul_12_2024.csv")
-
 
     clickmaps = {}
 
@@ -214,33 +192,22 @@ if __name__ == "__main__":
         else:
             clickmaps[image_file_name].append(row["clicks"])
 
-
     number_of_maps = []
-
     final_clickmaps = {}
-
     counters = 0
     n_empty_clickmap = 0
 
-    # Processing the data format
     for image in clickmaps:
         n_clickmaps = 0
         for clickmap in clickmaps[image]:
-            
-            # Empty Clickmaps
             if len(clickmap) == 2:
                 n_empty_clickmap += 1
                 continue
 
-            # Increment the number of clickmaps only if the clickmaps aren't empty
             n_clickmaps += 1
 
             clean_string = re.sub(r'[{}"]', '', clickmap)
-
-            # Split the string by commas to separate the tuple strings
             tuple_strings = clean_string.split(', ')
-
-            # Zero indexing here because tuple_strings is a list with a single string
             data_list = tuple_strings[0].strip("()").split("),(")
             tuples_list = [tuple(map(int, pair.split(','))) for pair in data_list]
 
@@ -248,10 +215,6 @@ if __name__ == "__main__":
                 final_clickmaps[image] = []
             
             final_clickmaps[image].append(tuples_list)
-            # Convert each string to a tuple of integers
-            # tuples = [tuple(map(int, s.replace('(', '').replace(')', '').split(','))) for s in tuple_strings]
-            # print("Tuples:", tuples)
-            # final_clickmaps.append(tuples)
 
         number_of_maps.append(n_clickmaps)
 
