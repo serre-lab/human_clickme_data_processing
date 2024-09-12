@@ -7,6 +7,8 @@ from PIL import Image
 import re
 import pandas as pd
 from utils import gaussian_kernel, gaussian_blur, create_clickmap
+from torchvision.transforms import functional as tvF
+
 
 def gaussian_kernel(size, sigma):
     """
@@ -82,7 +84,15 @@ def compute_spearman_correlation(map1, map2):
     else:
         return float('nan')
 
-def split_half_correlation(image_trials, image_shape, resample_means=False, blur_kernel=None, n_splits=1000, bootstrap=False):
+def split_half_correlation(
+        image_trials,
+        image_shape,
+        resample_means=False,
+        blur_kernel=None,
+        n_splits=1000,
+        bootstrap=False,
+        center_crop=None
+):
     """
     Compute the split-half correlation for a set of image trials.
 
@@ -105,6 +115,8 @@ def split_half_correlation(image_trials, image_shape, resample_means=False, blur
 
     clickmaps = torch.from_numpy(clickmaps).float().unsqueeze(0)
     clickmaps = gaussian_blur(clickmaps, blur_kernel)
+    if center_crop is not None:
+        clickmaps = tvF.center_crop(clickmaps, center_crop)
     clickmaps = clickmaps.squeeze()
     clickmaps = clickmaps.numpy()
 
@@ -128,7 +140,8 @@ def main(
     debug=True,
     blur_size=10,
     blur_sigma=10,
-    image_shape=[224, 224],
+    image_shape=[256, 256],
+    center_crop=[224, 224]
 ):
     """
     Calculate split-half correlations for clickmaps across different image categories.
@@ -165,6 +178,7 @@ def main(
             image_shape,
             resample_means=True,
             blur_kernel=blur_kernel,
+            center_crop=center_crop,
             n_splits=n_splits)
         if debug:
             print(f"Mean split-half correlation for {image_key} : {mean_correlation}")

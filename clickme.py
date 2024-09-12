@@ -99,9 +99,9 @@ if __name__ == "__main__":
     image_output_dir = "clickme_test_images"
     img_heatmaps = {}
     co3d_clickme = pd.read_csv("clickme_vCO3D.csv")
-    image_shape = [224, 224]
+    image_shape = [256, 256]
     thresh = 50
-    plot_images = False
+    plot_images = True
 
     # Start processing
     os.makedirs(image_output_dir, exist_ok=True)
