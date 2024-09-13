@@ -10,7 +10,8 @@ from utils import gaussian_kernel, gaussian_blur, create_clickmap
 from matplotlib import pyplot as plt
 
 
-BRUSH_SIZE = 11
+BRUSH_SIZE = 11 * 3
+BRUSH_SIZE_SIGMA = 11
 
 
 def get_medians(point_lists, mode='image', thresh=50):
@@ -108,7 +109,7 @@ if __name__ == "__main__":
     os.makedirs(image_output_dir, exist_ok=True)
     os.makedirs(output_dir, exist_ok=True)
     processed_maps, num_maps = process_clickmaps(co3d_clickme)
-    gaussian_kernel = gaussian_kernel(size=BRUSH_SIZE, sigma=BRUSH_SIZE)
+    gaussian_kernel = gaussian_kernel(size=BRUSH_SIZE, sigma=BRUSH_SIZE_SIGMA)
     for idx, (image, maps) in enumerate(processed_maps.items()):
         image_name, image, heatmap = make_heatmap(os.path.join(image_path, image), maps, gaussian_kernel, image_shape=image_shape, exponential_decay=exponential_decay)
         if image_name is None:
