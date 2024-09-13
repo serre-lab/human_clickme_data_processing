@@ -2,7 +2,7 @@ import torch
 import numpy as np
 
 
-def create_clickmap(point_lists, image_shape):
+def create_clickmap(point_lists, image_shape, exponential_decay=False, tau=0.5):
     """
     Create a clickmap from click points.
 
@@ -10,15 +10,21 @@ def create_clickmap(point_lists, image_shape):
         click_points (list of tuples): List of (x, y) coordinates where clicks occurred.
         image_shape (tuple): Shape of the image (height, width).
         blur_kernel (torch.Tensor, optional): Gaussian kernel for blurring. Default is None.
+        tau (float, optional): Decay rate for exponential decay. Default is 0.5 but this needs to be tuned.
 
     Returns:
         np.ndarray: A 2D array representing the clickmap, blurred if kernel provided.
     """
     heatmap = np.zeros(image_shape, dtype=np.uint8)
     for click_points in point_lists:
-        for point in click_points:
-            if 0 <= point[1] < image_shape[0] and 0 <= point[0] < image_shape[1]:
-                heatmap[point[1], point[0]] += 1
+        if exponential_decay:
+            for idx, point in enumerate(click_points):
+                if 0 <= point[1] < image_shape[0] and 0 <= point[0] < image_shape[1]:
+                    heatmap[point[1], point[0]] += np.exp(-idx / tau)
+        else:
+            for point in click_points:
+                if 0 <= point[1] < image_shape[0] and 0 <= point[0] < image_shape[1]:
+                    heatmap[point[1], point[0]] += 1
     return heatmap
 
 

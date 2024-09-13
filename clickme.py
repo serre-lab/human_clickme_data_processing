@@ -42,9 +42,9 @@ def get_medians(point_lists, mode='image', thresh=50):
         medians['all'] = np.percentile(num_clicks, thresh)
     return medians
 
-def make_heatmap(image_path, point_lists, gaussian_kernel, image_shape):
+def make_heatmap(image_path, point_lists, gaussian_kernel, image_shape, exponential_decay=exponential_decay):
     image = Image.open(image_path)
-    heatmap = create_clickmap(point_lists, image_shape)
+    heatmap = create_clickmap(point_lists, image_shape, exponential_decay=exponential_decay)
     
     # Blur the mask to create a smooth heatmap
     heatmap = torch.from_numpy(heatmap).float().unsqueeze(0)  # Convert to PyTorch tensor
@@ -101,6 +101,7 @@ if __name__ == "__main__":
     co3d_clickme = pd.read_csv("clickme_vCO3D.csv")
     image_shape = [256, 256]
     thresh = 50
+    exponential_decay = False
     plot_images = True
 
     # Start processing
@@ -109,7 +110,7 @@ if __name__ == "__main__":
     processed_maps, num_maps = process_clickmaps(co3d_clickme)
     gaussian_kernel = gaussian_kernel(size=BRUSH_SIZE, sigma=BRUSH_SIZE)
     for idx, (image, maps) in enumerate(processed_maps.items()):
-        image_name, image, heatmap = make_heatmap(os.path.join(image_path, image), maps, gaussian_kernel, image_shape=image_shape)
+        image_name, image, heatmap = make_heatmap(os.path.join(image_path, image), maps, gaussian_kernel, image_shape=image_shape, exponential_decay=exponential_decay)
         if image_name is None:
             continue
         img_heatmaps[image_name] = {"image":image, "heatmap":heatmap}
