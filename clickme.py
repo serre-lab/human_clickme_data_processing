@@ -43,7 +43,7 @@ def get_medians(point_lists, mode='image', thresh=50):
         medians['all'] = np.percentile(num_clicks, thresh)
     return medians
 
-def make_heatmap(image_path, point_lists, gaussian_kernel, image_shape, exponential_decay=exponential_decay):
+def make_heatmap(image_path, point_lists, gaussian_kernel, image_shape, exponential_decay):
     image = Image.open(image_path)
     heatmap = create_clickmap(point_lists, image_shape, exponential_decay=exponential_decay)
     
