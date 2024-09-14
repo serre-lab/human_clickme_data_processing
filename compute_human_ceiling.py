@@ -232,9 +232,9 @@ def main(
         category_correlations[category].append(mean_correlation)
         all_correlations.append(mean_correlation)
         all_clickmaps.append(clickmap)
+    import pdb; pdb.set_trace()
     print(f"Mean Human Correlation: {np.nanmean(all_correlations)}")
 
-    all_clickmaps = torch.from_numpy(np.stack(all_clickmaps))
     null_correlations = []
     for i in range(null_iterations):
         fhs = []
