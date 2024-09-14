@@ -52,10 +52,10 @@ def make_heatmap(image_path, point_lists, gaussian_kernel, image_shape, exponent
     heatmap = gaussian_blur(heatmap, gaussian_kernel)
 
     # Check if any maps are all zeros and remove them
-    import pdb; pdb.set_trace()
+    #import pdb; pdb.set_trace()
     zero_maps = heatmap.sum((1, 2)) == 0
-    heatmap = heatmap[~zero_maps]
-    heatmap = heatmap.mean()
+    heatmap = heatmap[~zero_maps].squeeze()
+    # heatmap = heatmap.mean()
 
     # Convert to numpy
     heatmap = heatmap.numpy()  # Convert back to NumPy array         
@@ -110,7 +110,7 @@ if __name__ == "__main__":
     image_shape = [256, 256]
     thresh = 50
     exponential_decay = False
-    plot_images = True
+    plot_images = False
 
     # Start processing
     os.makedirs(image_output_dir, exist_ok=True)
