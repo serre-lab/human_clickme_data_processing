@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -8,6 +9,8 @@ import re
 import pandas as pd
 from utils import gaussian_kernel, gaussian_blur, create_clickmap
 from torchvision.transforms import functional as tvF
+from matplotlib import pyplot as plt
+from tqdm import tqdm
 
 
 def gaussian_kernel(size, sigma):
@@ -43,10 +46,10 @@ def gaussian_blur(heatmap, kernel):
     Returns:
         torch.Tensor: The blurred heatmap (3D tensor).
     """
-    heatmap = heatmap.unsqueeze(0) if heatmap.dim() == 3 else heatmap
+    # heatmap = heatmap.unsqueeze(0) if heatmap.dim() == 3 else heatmap
     blurred_heatmap = F.conv2d(heatmap, kernel, padding='same')
 
-    return blurred_heatmap[0]
+    return blurred_heatmap  # [0]
 
 def compute_average_map(trial_indices, clickmaps, resample=False):
     """
@@ -83,6 +86,21 @@ def compute_spearman_correlation(map1, map2):
         return correlation
     else:
         return float('nan')
+    
+def compute_crossentropy(map1, map2):
+    """
+    Compute the cross-entropy between two maps.
+
+    Args:
+        map1 (np.ndarray): The first map.
+        map2 (np.ndarray): The second map.  
+
+    Returns:
+        float: The cross-entropy between the two maps.
+    """
+    map1 = torch.from_numpy(map1).float().ravel()
+    map2 = torch.from_numpy(map2).float().ravel()
+    return F.cross_entropy(map1, map2).numpy()
 
 def split_half_correlation(
         image_trials,
@@ -91,7 +109,9 @@ def split_half_correlation(
         blur_kernel=None,
         n_splits=1000,
         bootstrap=False,
-        center_crop=None
+        center_crop=None,
+        version="single_subject",
+        metric="crossentropy"
 ):
     """
     Compute the split-half correlation for a set of image trials.
@@ -108,40 +128,64 @@ def split_half_correlation(
         float: The average split-half correlation across all splits.
     """
     correlations = []
-    num_trials = len(image_trials)
-    half = num_trials // 2
 
-    clickmaps = np.asarray([create_clickmap(trials, image_shape) for trials in image_trials])
-
-    clickmaps = torch.from_numpy(clickmaps).float().unsqueeze(0)
+    # clickmaps = create_clickmap(image_trials, image_shape)
+    clickmaps = np.asarray([create_clickmap([trials], image_shape) for trials in image_trials])
+    clickmaps = torch.from_numpy(clickmaps).float().unsqueeze(1)
     clickmaps = gaussian_blur(clickmaps, blur_kernel)
     if center_crop is not None:
         clickmaps = tvF.center_crop(clickmaps, center_crop)
     clickmaps = clickmaps.squeeze()
     clickmaps = clickmaps.numpy()
 
-    for _ in range(n_splits):
-        indices = np.arange(num_trials)
-        indices = np.random.choice(indices, size=num_trials, replace=bootstrap)
-        first_half_indices = indices[:half]
-        second_half_indices = indices[half:]
+    # Check if any maps are all zeros and remove them
+    zero_maps = clickmaps.sum((1, 2)) == 0
+    clickmaps = clickmaps[~zero_maps]
+    num_trials = len(clickmaps)
+    half = num_trials // 2
 
-        avg_map1 = clickmaps[first_half_indices].mean(0)
-        avg_map2 = clickmaps[second_half_indices].mean(0)
+    if version == "single_subject":
+        for i in range(len(clickmaps)):
+            test_map = clickmaps[i]
+            test_map = (test_map - test_map.min()) / (test_map.max() - test_map.min())
+            remaining_maps = clickmaps[~np.in1d(np.arange(len(clickmaps)), i)].mean(0)
+            remaining_maps = (remaining_maps - remaining_maps.min()) / (remaining_maps.max() - remaining_maps.min())
+            if metric == "crossentropy":
+                correlation = compute_crossentropy(test_map, remaining_maps)
+            else:
+                correlation = compute_spearman_correlation(test_map, remaining_maps)
+            correlations.append(correlation)
+    elif version == "multiple_subjects":
+        for _ in range(n_splits):
+            indices = np.arange(num_trials)
+            indices = np.random.choice(indices, size=num_trials, replace=bootstrap)
+            first_half_indices = indices[:half]
+            second_half_indices = indices[half:]
 
-        correlation = compute_spearman_correlation(avg_map1, avg_map2)
-        correlations.append(correlation)
-    return np.nanmean(correlations)
+            avg_map1 = clickmaps[first_half_indices].mean(0)
+            avg_map2 = clickmaps[second_half_indices].mean(0)
+            avg_map1 = (avg_map1 - avg_map1.min()) / (avg_map1.max() - avg_map1.min())
+            avg_map2 = (avg_map2 - avg_map2.min()) / (avg_map2.max() - avg_map2.min())
+            if metric == "crossentropy":
+                correlation = compute_crossentropy(avg_map1, avg_map2)
+            else:
+                correlation = compute_spearman_correlation(avg_map1, avg_map2)
+            correlations.append(correlation)
+    else:
+        raise ValueError(f"Invalid version: {version}")
+    return np.nanmean(correlations), clickmaps
 
 def main(
     final_clickmaps,
-    co3d_clickme_folder="/media/data_cifs/projects/prj_video_imagenet/CO3D_ClickMe2/",
+    co3d_clickme_folder,
     n_splits=1000,
-    debug=True,
-    blur_size=10,
-    blur_sigma=10,
+    debug=False,
+    blur_size=33,
+    blur_sigma=11,
+    null_iterations=1000,
     image_shape=[256, 256],
-    center_crop=[224, 224]
+    center_crop=[224, 224],
+    metric="spearman"
 ):
     """
     Calculate split-half correlations for clickmaps across different image categories.
@@ -163,39 +207,62 @@ def main(
     """
     category_correlations = {}
     all_correlations = []
+    all_clickmaps = []
     blur_kernel = gaussian_kernel(blur_size, blur_sigma)
 
-    for image_key in final_clickmaps:
+    for image_key in tqdm(final_clickmaps, desc="Processing ceiling score"):
         category = image_key.split("/")[0]
         if category not in category_correlations.keys():
             category_correlations[category] = []
-        image_path = co3d_clickme_folder + image_key
+        image_path = os.path.join(co3d_clickme_folder, image_key)
         image_data = Image.open(image_path)
         image_trials = final_clickmaps[image_key]
         
-        mean_correlation = split_half_correlation(
+        mean_correlation, clickmap = split_half_correlation(
             image_trials,
             image_shape,
             resample_means=True,
             blur_kernel=blur_kernel,
             center_crop=center_crop,
-            n_splits=n_splits)
+            n_splits=n_splits,
+            metric=metric)
+        
         if debug:
             print(f"Mean split-half correlation for {image_key} : {mean_correlation}")
         category_correlations[category].append(mean_correlation)
         all_correlations.append(mean_correlation)
-
+        all_clickmaps.append(clickmap)
     print(f"Mean Human Correlation: {np.nanmean(all_correlations)}")
+
+    all_clickmaps = torch.from_numpy(np.stack(all_clickmaps))
+    null_correlations = []
+    for i in range(null_iterations):
+        fhs = []
+        shs = []
+        for cm in all_clickmaps:
+            num_subs = len(cm)
+            rand_subs = np.random.choice(num_subs, size=num_subs, replace=False)
+            fh_subs = rand_subs[:num_subs//2]
+            sh_subs = rand_subs[num_subs//2:]
+            fhs.append(cm[fh_subs].mean(0))
+            shs.append(cm[sh_subs].mean(0))
+        if metric == "crossentropy":
+            null_correlations.append(compute_crossentropy(fhs, shs))
+        else:
+            null_correlations.append(compute_spearman_correlation(fhs, shs))
+    null_correlations = np.array(null_correlations)
+    print(f"Null Correlations: {np.nanmean(null_correlations)}")
 
     for cat in category_correlations:
         category_correlations[cat] = np.nanmean(np.array(category_correlations[cat]))
 
     print(f"Category-wise Correlations: {category_correlations}")
 
-    return category_correlations, all_correlations
+    return category_correlations, all_correlations, null_correlations
 
 if __name__ == "__main__":
-    co3d_clickme = pd.read_csv("/media/data_cifs/projects/prj_video_imagenet/Evaluation/clickme_vCO3D_1_dump_Jul_12_2024.csv")
+    co3d_clickme = pd.read_csv("clickme_vCO3D.csv")
+    co3d_clickme_folder = "CO3D_ClickMe2"
 
     clickmaps = {}
 
@@ -227,9 +294,15 @@ if __name__ == "__main__":
 
             if image not in final_clickmaps.keys():
                 final_clickmaps[image] = []
-            
             final_clickmaps[image].append(tuples_list)
 
         number_of_maps.append(n_clickmaps)
 
-    category_correlations, all_correlations = main(final_clickmaps=final_clickmaps)
+    category_correlations, all_correlations, null_correlations = main(final_clickmaps=final_clickmaps, co3d_clickme_folder=co3d_clickme_folder)
+    import pdb; pdb.set_trace()
+    np.savez(
+        "human_ceiling_results.npz",
+        category_correlations=category_correlations,
+        ceiling_correlations=all_correlations,
+        null_correlations=null_correlations
+    )

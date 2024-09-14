@@ -50,7 +50,14 @@ def make_heatmap(image_path, point_lists, gaussian_kernel, image_shape, exponent
     # Blur the mask to create a smooth heatmap
     heatmap = torch.from_numpy(heatmap).float().unsqueeze(0)  # Convert to PyTorch tensor
     heatmap = gaussian_blur(heatmap, gaussian_kernel)
-    heatmap = heatmap.squeeze()
+
+    # Check if any maps are all zeros and remove them
+    import pdb; pdb.set_trace()
+    zero_maps = heatmap.sum((1, 2)) == 0
+    heatmap = heatmap[~zero_maps]
+    heatmap = heatmap.mean()
+
+    # Convert to numpy
     heatmap = heatmap.numpy()  # Convert back to NumPy array         
   
     # Normalize the heatmap
