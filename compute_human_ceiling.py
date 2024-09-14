@@ -85,7 +85,6 @@ def compute_spearman_correlation(map1, map2):
         correlation, _ = spearmanr(filtered_map1, filtered_map2)
         return correlation
     else:
-        print('nan')
         return float('nan')
     
 def compute_crossentropy(map1, map2):

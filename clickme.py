@@ -55,7 +55,6 @@ def make_heatmap(image_path, point_lists, gaussian_kernel, image_shape, exponent
     #import pdb; pdb.set_trace()
     zero_maps = heatmap.sum((1, 2)) == 0
     heatmap = heatmap[~zero_maps].squeeze()
-    # heatmap = heatmap.mean()
 
     # Convert to numpy
     heatmap = heatmap.numpy()  # Convert back to NumPy array         
