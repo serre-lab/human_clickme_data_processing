@@ -7,7 +7,7 @@ from scipy.stats import spearmanr
 from PIL import Image
 import re
 import pandas as pd
-from utils import gaussian_kernel, gaussian_blur, create_clickmap
+from utils import create_clickmap
 from torchvision.transforms import functional as tvF
 from matplotlib import pyplot as plt
 from tqdm import tqdm
@@ -232,7 +232,7 @@ def main(
         category_correlations[category].append(mean_correlation)
         all_correlations.append(mean_correlation)
         all_clickmaps.append(clickmap)
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     print(f"Mean Human Correlation: {np.nanmean(all_correlations)}")
 
     null_correlations = []
@@ -299,7 +299,7 @@ if __name__ == "__main__":
         number_of_maps.append(n_clickmaps)
 
     category_correlations, all_correlations, null_correlations = main(final_clickmaps=final_clickmaps, co3d_clickme_folder=co3d_clickme_folder)
-    import pdb; pdb.set_trace()
+    #import pdb; pdb.set_trace()
     np.savez(
         "human_ceiling_results.npz",
         category_correlations=category_correlations,

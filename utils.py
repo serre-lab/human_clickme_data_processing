@@ -19,6 +19,7 @@ def create_clickmap(point_lists, image_shape, exponential_decay=False, tau=0.5):
     for click_points in point_lists:
         if exponential_decay:
             for idx, point in enumerate(click_points):
+
                 if 0 <= point[1] < image_shape[0] and 0 <= point[0] < image_shape[1]:
                     heatmap[point[1], point[0]] += np.exp(-idx / tau)
         else:
