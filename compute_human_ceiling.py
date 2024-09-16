@@ -182,7 +182,7 @@ def main(
     debug=False,
     blur_size=33,
     blur_sigma=11,
-    null_iterations=1000,
+    null_iterations=10,
     image_shape=[256, 256],
     center_crop=[224, 224],
     metric="spearman"
@@ -236,8 +236,7 @@ def main(
     print(f"Mean Human Correlation: {np.nanmean(all_correlations)}")
 
     null_correlations = []
-    import pdb; pdb.set_trace()
-    for _ in range(null_iterations):
+    for _ in tqdm(range(null_iterations), total=null_iterations):
 
         # Do leave subject out. 
         inner_correlations = []
@@ -252,7 +251,7 @@ def main(
             rand_map = np.random.choice(sub_vec)
             test_map = all_clickmaps[rand_map]
             num_subs = len(test_map)
-            rand_sub = np.random.choice(num_subs, size=num_subs, replace=False)
+            rand_sub = np.random.choice(num_subs)
             test_map = test_map[rand_sub]
 
             if metric == "crossentropy":
