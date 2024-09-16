@@ -147,9 +147,11 @@ def split_half_correlation(
     if version == "single_subject":
         for i in range(len(clickmaps)):
             test_map = clickmaps[i]
-            test_map = (test_map - test_map.min()) / (test_map.max() - test_map.min())
+            # test_map = (test_map - test_map.min()) / (test_map.max() - test_map.min())
+            test_map = test_map / test_map.sum()
             remaining_maps = clickmaps[~np.in1d(np.arange(len(clickmaps)), i)].mean(0)
-            remaining_maps = (remaining_maps - remaining_maps.min()) / (remaining_maps.max() - remaining_maps.min())
+            # remaining_maps = (remaining_maps - remaining_maps.min()) / (remaining_maps.max() - remaining_maps.min())
+            remaining_maps = remaining_maps / remaining_maps.sum()
             if metric == "crossentropy":
                 correlation = compute_crossentropy(test_map, remaining_maps)
             else:
@@ -180,8 +182,8 @@ def main(
     co3d_clickme_folder,
     n_splits=1000,
     debug=False,
-    blur_size=33,
-    blur_sigma=11,
+    blur_size=11,
+    blur_sigma=np.sqrt(11),
     null_iterations=10,
     image_shape=[256, 256],
     center_crop=[224, 224],
@@ -244,6 +246,7 @@ def main(
 
             # Reference map is the ith map
             reference_map = all_clickmaps[i].mean(0)
+            reference_map = reference_map / reference_map.sum()
 
             # Test map is a random subject from a different image
             sub_vec = np.arange(len(all_clickmaps))
@@ -253,7 +256,7 @@ def main(
             num_subs = len(test_map)
             rand_sub = np.random.choice(num_subs)
             test_map = test_map[rand_sub]
-
+            test_map = test_map / test_map.sum()
             if metric == "crossentropy":
                 correlation = compute_crossentropy(test_map, reference_map)
             else:

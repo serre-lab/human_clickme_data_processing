@@ -8,10 +8,11 @@ import torch
 import json
 from utils import gaussian_kernel, gaussian_blur, create_clickmap
 from matplotlib import pyplot as plt
+import torch.nn.functional as F
 
 
-BRUSH_SIZE = 11 * 3
-BRUSH_SIZE_SIGMA = 11
+BRUSH_SIZE = 11
+BRUSH_SIZE_SIGMA = np.sqrt(BRUSH_SIZE)
 
 
 def get_medians(point_lists, mode='image', thresh=50):
@@ -55,12 +56,14 @@ def make_heatmap(image_path, point_lists, gaussian_kernel, image_shape, exponent
     #import pdb; pdb.set_trace()
     zero_maps = heatmap.sum((1, 2)) == 0
     heatmap = heatmap[~zero_maps].squeeze()
+  
+    # Normalize the heatmap
+    # heatmap_normalized = (heatmap - heatmap.min()) / (heatmap.max() - heatmap.min())
+    heatmap_normalized = heatmap / heatmap.sum()
 
     # Convert to numpy
     heatmap = heatmap.numpy()  # Convert back to NumPy array         
-  
-    # Normalize the heatmap
-    heatmap_normalized = (heatmap - heatmap.min()) / (heatmap.max() - heatmap.min())
+
     # heatmap_normalized = cv2.normalize(heatmap, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
     image_name = "_".join(image_path.split('/')[-2:])
     return image_name, image, heatmap_normalized
@@ -109,7 +112,7 @@ if __name__ == "__main__":
     image_shape = [256, 256]
     thresh = 50
     exponential_decay = False
-    plot_images = False
+    plot_images = True
 
     # Start processing
     os.makedirs(image_output_dir, exist_ok=True)
