@@ -344,6 +344,7 @@ if __name__ == "__main__":
         null_instance_correlations=null_instance_correlations,
         median_cutoff=median_cutoff,
         final_clickmaps=final_clickmaps,
+        final_clickmaps_thresholded=final_clickmaps_thresholded,
         ceiling_correlations=all_correlations,
         null_correlations=null_correlations,
         thresholded_all_correlations=all_correlations_thresholded,
