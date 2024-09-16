@@ -211,7 +211,7 @@ def main(
     all_correlations = []
     all_clickmaps = []
     blur_kernel = gaussian_kernel(blur_size, blur_sigma)
-
+    categories = []
     for image_key in tqdm(final_clickmaps, desc="Processing ceiling score"):
         category = image_key.split("/")[0]
         if category not in category_correlations.keys():
@@ -234,23 +234,32 @@ def main(
         category_correlations[category].append(mean_correlation)
         all_correlations.append(mean_correlation)
         all_clickmaps.append(clickmap)
-    # import pdb; pdb.set_trace()
-    print(f"Mean Human Correlation: {np.nanmean(all_correlations)}")
+        categories.append(category)
+    _, category_indices = np.unique(categories, return_inverse=True)
 
     null_correlations = []
+    category_correlations = {}
+    instance_correlations = {}
     for _ in tqdm(range(null_iterations), total=null_iterations):
 
         # Do leave subject out. 
         inner_correlations = []
         for i in range(len(all_clickmaps)):
+            category = categories[i]
+            category_index = category_indices[i]
+            if category not in category_correlations.keys():
+                category_correlations[category] = []
+            if i not in instance_correlations.keys():
+                instance_correlations[i] = []
 
             # Reference map is the ith map
             reference_map = all_clickmaps[i].mean(0)
             reference_map = reference_map / reference_map.sum()
 
             # Test map is a random subject from a different image
-            sub_vec = np.arange(len(all_clickmaps))
-            sub_vec = np.delete(sub_vec, i)
+            # sub_vec = np.arange(len(all_clickmaps))
+            # sub_vec = np.delete(sub_vec, i)
+            sub_vec = np.where(category_indices != category_index)[0]
             rand_map = np.random.choice(sub_vec)
             test_map = all_clickmaps[rand_map]
             num_subs = len(test_map)
@@ -262,10 +271,11 @@ def main(
             else:
                 correlation = compute_spearman_correlation(test_map, reference_map)
             inner_correlations.append(correlation)
+            category_correlations[category].append(correlation)
+            instance_correlations[i].append(correlation)
         null_correlations.append(np.nanmean(inner_correlations))
     null_correlations = np.asarray(null_correlations)
-    print(f"Null Correlations: {np.nanmean(null_correlations)}")
-    return all_correlations, null_correlations
+    return category_correlations, instance_correlations, all_correlations, null_correlations, all_clickmaps
 
     # for cat in category_correlations:
     #     category_correlations[cat] = np.nanmean(np.array(category_correlations[cat]))
@@ -312,11 +322,30 @@ if __name__ == "__main__":
 
         number_of_maps.append(n_clickmaps)
 
-    all_correlations, null_correlations = main(final_clickmaps=final_clickmaps, co3d_clickme_folder=co3d_clickme_folder)
+    null_category_correlations, null_instance_correlations, all_correlations, null_correlations, all_clickmaps = main(final_clickmaps=final_clickmaps, co3d_clickme_folder=co3d_clickme_folder)
     #import pdb; pdb.set_trace()
+    mean_null_instance_correlations = np.asarray([np.mean(v) for v in null_instance_correlations.values()])
+    median_cutoff = np.median(mean_null_instance_correlations)
+    final_clickmaps_thresholded = {}
+    all_correlations_thresholded = []
+    null_instance_correlations_thresholded = []
+    for (k, v), inst, cor, null_cor in zip(final_clickmaps.items(), mean_null_instance_correlations, all_correlations, null_instance_correlations.values()):
+        if inst < median_cutoff:
+            final_clickmaps_thresholded[k] = v
+            all_correlations_thresholded.append(cor)
+            null_instance_correlations_thresholded.append(null_cor)
+    print(f"Mean human correlation full set: {np.nanmean(all_correlations)}")
+    print(f"Null correlations full set: {np.nanmean(null_correlations)}")
+    print(f"Mean human correlation thresholded: {np.nanmean(all_correlations_thresholded)}")
+    print(f"Null correlations thresholded: {np.nanmean(null_instance_correlations_thresholded)}")
     np.savez(
         "human_ceiling_results.npz",
-        # category_correlations=category_correlations,
+        null_category_correlations=null_category_correlations,
+        null_instance_correlations=null_instance_correlations,
+        median_cutoff=median_cutoff,
+        final_clickmaps=final_clickmaps,
         ceiling_correlations=all_correlations,
-        null_correlations=null_correlations
+        null_correlations=null_correlations,
+        thresholded_all_correlations=all_correlations_thresholded,
+        thresholded_null_correlations=null_instance_correlations_thresholded,
     )
