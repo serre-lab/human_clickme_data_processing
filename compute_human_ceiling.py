@@ -236,29 +236,41 @@ def main(
     print(f"Mean Human Correlation: {np.nanmean(all_correlations)}")
 
     null_correlations = []
-    for i in range(null_iterations):
-        fhs = []
-        shs = []
-        for cm in all_clickmaps:
-            num_subs = len(cm)
-            rand_subs = np.random.choice(num_subs, size=num_subs, replace=False)
-            fh_subs = rand_subs[:num_subs//2]
-            sh_subs = rand_subs[num_subs//2:]
-            fhs.append(cm[fh_subs].mean(0))
-            shs.append(cm[sh_subs].mean(0))
-        if metric == "crossentropy":
-            null_correlations.append(compute_crossentropy(fhs, shs))
-        else:
-            null_correlations.append(compute_spearman_correlation(fhs, shs))
-    null_correlations = np.array(null_correlations)
+    import pdb; pdb.set_trace()
+    for _ in range(null_iterations):
+
+        # Do leave subject out. 
+        inner_correlations = []
+        for i in range(len(all_clickmaps)):
+
+            # Reference map is the ith map
+            reference_map = all_clickmaps[i].mean(0)
+
+            # Test map is a random subject from a different image
+            sub_vec = np.arange(len(all_clickmaps))
+            sub_vec = np.delete(sub_vec, i)
+            rand_map = np.random.choice(sub_vec)
+            test_map = all_clickmaps[rand_map]
+            num_subs = len(test_map)
+            rand_sub = np.random.choice(num_subs, size=num_subs, replace=False)
+            test_map = test_map[rand_sub]
+
+            if metric == "crossentropy":
+                correlation = compute_crossentropy(test_map, reference_map)
+            else:
+                correlation = compute_spearman_correlation(test_map, reference_map)
+            inner_correlations.append(correlation)
+        null_correlations.append(np.nanmean(inner_correlations))
+    null_correlations = np.asarray(null_correlations)
     print(f"Null Correlations: {np.nanmean(null_correlations)}")
+    return all_correlations, null_correlations
 
-    for cat in category_correlations:
-        category_correlations[cat] = np.nanmean(np.array(category_correlations[cat]))
+    # for cat in category_correlations:
+    #     category_correlations[cat] = np.nanmean(np.array(category_correlations[cat]))
 
-    print(f"Category-wise Correlations: {category_correlations}")
+    # print(f"Category-wise Correlations: {category_correlations}")
 
-    return category_correlations, all_correlations, null_correlations
+    # return category_correlations, all_correlations, null_correlations
 
 if __name__ == "__main__":
     co3d_clickme = pd.read_csv("clickme_vCO3D.csv")
@@ -298,11 +310,11 @@ if __name__ == "__main__":
 
         number_of_maps.append(n_clickmaps)
 
-    category_correlations, all_correlations, null_correlations = main(final_clickmaps=final_clickmaps, co3d_clickme_folder=co3d_clickme_folder)
+    all_correlations, null_correlations = main(final_clickmaps=final_clickmaps, co3d_clickme_folder=co3d_clickme_folder)
     #import pdb; pdb.set_trace()
     np.savez(
         "human_ceiling_results.npz",
-        category_correlations=category_correlations,
+        # category_correlations=category_correlations,
         ceiling_correlations=all_correlations,
         null_correlations=null_correlations
     )
