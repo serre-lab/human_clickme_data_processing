@@ -9,6 +9,7 @@ import json
 from utils import gaussian_kernel, gaussian_blur, create_clickmap
 from matplotlib import pyplot as plt
 import torch.nn.functional as F
+from torchvision.transforms import functional as tvF
 
 
 BRUSH_SIZE = 11

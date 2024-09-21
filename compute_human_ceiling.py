@@ -11,7 +11,60 @@ from utils import create_clickmap
 from torchvision.transforms import functional as tvF
 from matplotlib import pyplot as plt
 from tqdm import tqdm
+from sklearn.metrics import confusion_matrix, precision_score, recall_score
 
+
+def compute_AUC(map1, map2, nthresh=100, normalize=False, labels=[0, 1]):
+    """
+    Compute the AUC between two maps.
+
+    Args:
+        map1 (np.ndarray): The first map.
+        map2 (np.ndarray): The second map.  
+
+    Returns:
+        float: The AUC between the two maps.
+    """
+    # Make sure both maps are probability distributions
+    # if normalize:
+    #     map1 = map1 / map1.sum()
+    #     map2 = map2 / map2.sum()
+    thresholds = np.linspace(1e-5, 1, nthresh)
+    # thresholds = [0.25, 0.5, 0.75, 1]
+    tps = []
+    fps = []
+    for t in thresholds:
+        thresh_map1 = (map1 >= t)
+        thresh_map2 = (map2 >= t)
+        # tpr = (thresh_map1 & thresh_map2).sum() / thresh_map1.sum()
+        # fpr = (thresh_map1 | thresh_map2).sum() / thresh_map1.sum()
+        # plt.subplot(121);plt.imshow(thresh_map1)
+        # plt.subplot(122);plt.imshow(thresh_map2)
+        # plt.title(f"Threshold: {t}")
+        # plt.show()
+        tn, fp, fn, tp = confusion_matrix(thresh_map1.ravel(), thresh_map2.ravel(), normalize="pred", labels=labels).ravel()
+        # precision = precision_score(thresh_map1, thresh_map2)
+        # recall = recall_score(thresh_map1, thresh_map2)
+        # # tpr = (thresh_map1 == thresh_map2).mean()
+        # # fpr = ((thresh_map1 == 1) == (thresh_map2 == 0)).mean()
+        precision = tp / (tp + fp)
+        recall = tn / (tn + fp)
+        tps.append(precision)
+        fps.append(recall)
+    # import pdb;pdb.set_trace()
+    # plt.plot(tps, fps)
+    return np.trapz(tps, fps)
+
+
+def compute_RSA(map1, map2):
+    """
+    Compute the RSA between two maps.
+
+    Returns:    
+        float: The RSA between the two maps.
+    """
+    import pdb; pdb.set_trace()
+    return np.corrcoef(map1, map2)[0, 1]
 
 def gaussian_kernel(size, sigma):
     """
@@ -105,13 +158,12 @@ def compute_crossentropy(map1, map2):
 def split_half_correlation(
         image_trials,
         image_shape,
-        resample_means=False,
         blur_kernel=None,
         n_splits=1000,
         bootstrap=False,
         center_crop=None,
         version="single_subject",
-        metric="crossentropy"
+        metric="AUC"
 ):
     """
     Compute the split-half correlation for a set of image trials.
@@ -147,13 +199,17 @@ def split_half_correlation(
     if version == "single_subject":
         for i in range(len(clickmaps)):
             test_map = clickmaps[i]
-            # test_map = (test_map - test_map.min()) / (test_map.max() - test_map.min())
-            test_map = test_map / test_map.sum()
+            test_map = (test_map - test_map.min()) / (test_map.max() - test_map.min())
+            # test_map = test_map / test_map.sum()
             remaining_maps = clickmaps[~np.in1d(np.arange(len(clickmaps)), i)].mean(0)
-            # remaining_maps = (remaining_maps - remaining_maps.min()) / (remaining_maps.max() - remaining_maps.min())
-            remaining_maps = remaining_maps / remaining_maps.sum()
+            remaining_maps = (remaining_maps - remaining_maps.min()) / (remaining_maps.max() - remaining_maps.min())
+            # remaining_maps = remaining_maps / remaining_maps.sum()
             if metric == "crossentropy":
                 correlation = compute_crossentropy(test_map, remaining_maps)
+            elif metric == "AUC":
+                correlation = compute_AUC(test_map, remaining_maps)
+            elif metric == "RSA":
+                correlation = compute_RSA(test_map, remaining_maps)
             else:
                 correlation = compute_spearman_correlation(test_map, remaining_maps)
             correlations.append(correlation)
@@ -170,6 +226,10 @@ def split_half_correlation(
             avg_map2 = (avg_map2 - avg_map2.min()) / (avg_map2.max() - avg_map2.min())
             if metric == "crossentropy":
                 correlation = compute_crossentropy(avg_map1, avg_map2)
+            elif metric == "AUC":
+                correlation = compute_AUC(avg_map1, avg_map2)
+            elif metric == "RSA":
+                correlation = compute_RSA(avg_map1, avg_map2)
             else:
                 correlation = compute_spearman_correlation(avg_map1, avg_map2)
             correlations.append(correlation)
@@ -187,7 +247,7 @@ def main(
     null_iterations=10,
     image_shape=[256, 256],
     center_crop=[224, 224],
-    metric="spearman"
+    metric="AUC"  # AUC, crossentropy, spearman, RSA
 ):
     """
     Calculate split-half correlations for clickmaps across different image categories.
@@ -223,7 +283,6 @@ def main(
         mean_correlation, clickmap = split_half_correlation(
             image_trials,
             image_shape,
-            resample_means=True,
             blur_kernel=blur_kernel,
             center_crop=center_crop,
             n_splits=n_splits,
@@ -254,7 +313,8 @@ def main(
 
             # Reference map is the ith map
             reference_map = all_clickmaps[i].mean(0)
-            reference_map = reference_map / reference_map.sum()
+            # reference_map = reference_map / reference_map.sum()
+            reference_map = (reference_map - reference_map.min()) / (reference_map.max() - reference_map.min())
 
             # Test map is a random subject from a different image
             # sub_vec = np.arange(len(all_clickmaps))
@@ -265,9 +325,14 @@ def main(
             num_subs = len(test_map)
             rand_sub = np.random.choice(num_subs)
             test_map = test_map[rand_sub]
-            test_map = test_map / test_map.sum()
+            test_map = (test_map - test_map.min()) / (test_map.max() - test_map.min())
+            # test_map = test_map / test_map.sum()
             if metric == "crossentropy":
                 correlation = compute_crossentropy(test_map, reference_map)
+            elif metric == "AUC":
+                correlation = compute_AUC(test_map, reference_map)
+            elif metric == "RSA":
+                correlation = compute_RSA(test_map, reference_map)
             else:
                 correlation = compute_spearman_correlation(test_map, reference_map)
             inner_correlations.append(correlation)
