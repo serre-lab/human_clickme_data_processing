@@ -1,44 +1,49 @@
 # ClickMe Heatmap Generator
 
-This project processes ClickMe data for CO3D images, generating heatmaps and analyzing click statistics.
+This project processes ClickMe data for CO3D images, generating heatmaps and analyzing click statistics. It provides tools to compute various correlation metrics, including AUC, cross-entropy, Spearman, and RSA, to evaluate the quality of generated heatmaps.
+
+## Table of Contents
+
+- [Features](#features)
+- [Installation](#installation)
+- [Usage](#usage)
+  - [Configuration](#configuration)
+  - [Running the Script](#running-the-script)
+- [Metrics](#metrics)
+- [Project Structure](#project-structure)
+- [Dependencies](#dependencies)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Features
 
-- Processes ClickMe CSV data
-- Generates heatmaps from click data
-- Calculates median clicks per image, category, and overall
-- Visualizes heatmaps for selected images
-- Saves normalized heatmaps and click statistics
+- **Data Processing:** Processes ClickMe CSV data to generate clickmaps.
+- **Heatmap Generation:** Creates heatmaps from click data with optional Gaussian blurring.
+- **Correlation Analysis:** Calculates split-half correlations and null correlations using various metrics.
+- **Visualization:** Provides visualization tools for debugging and analysis.
+- **Configuration Driven:** Easily configurable through YAML configuration files.
 
-## Dependencies
+## Installation
 
-- numpy
-- pandas
-- Pillow
-- scipy
-- torch
-- matplotlib
+1. **Clone the Repository**
+   ```bash
+   git clone https://github.com/yourusername/clickme-heatmap-generator.git
+   cd clickme-heatmap-generator
+   ```
+
+2. **Create a Virtual Environment**
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate
+   ```
+
+3. **Install Dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
 ## Usage
 
-1. Ensure the `clickme_vCO3D.csv` file and `CO3D_ClickMe2` image directory are in the project root.
-2. Run the script:
+### Configuration
 
-   ```
-   python clickme.py
-   ```
-
-3. Output will be saved in the `assets` directory:
-   - `co3d_clickmaps_normalized.npy`: Normalized heatmaps
-   - `click_medians.json`: Median click statistics
-
-## Main Functions
-
-- `process_clickmaps()`: Processes the CSV data
-- `make_heatmap()`: Generates heatmaps from click data
-- `get_medians()`: Calculates median clicks for different groupings
-
-## Notes
-
-- The script uses a Gaussian blur for smoothing heatmaps
-- Visualization is provided for a predefined set of example images
+Before running the scripts, ensure that the `configs/co3d_config.yaml` file is properly configured. Below is an example configuration:
