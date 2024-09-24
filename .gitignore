@@ -4,4 +4,5 @@ CO3D_ClickMe2
 assets/
 clickme_test_images/
 human_ceiling_results.npz
+__pycache__
 
