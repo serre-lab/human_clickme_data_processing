@@ -1,5 +1,6 @@
 import re
 import torch
+import yaml
 import numpy as np
 from torch.nn import functional as F
 from scipy.stats import spearmanr
@@ -7,6 +8,12 @@ from tqdm import tqdm
 from torchvision.transforms import functional as tvF
 from scipy.spatial.distance import cdist
 from matplotlib import pyplot as plt
+
+
+def process_config(config_file):
+    with open(config_file, 'r') as file:
+        config = yaml.safe_load(file)
+    return config
 
 
 def process_clickmap_files(co3d_clickme_data, min_clicks, max_clicks, process_max="trim"):
@@ -203,13 +210,16 @@ def gaussian_blur(heatmap, kernel):
     return blurred_heatmap  # [0]
 
 
-def integrate_surface(iou_scores, x, z, normalize=False):
+def integrate_surface(iou_scores, x, z, average_areas=True, normalize=False):
     # Integrate along x axis (classifier thresholds)
     if len(z) == 1:
         return iou_scores.mean()
 
     int_x = np.trapz(iou_scores, x, axis=1)
     
+    if average_areas:
+        return int_x.mean()
+
     # Integrate along z axis (label thresholds)
     int_xz = np.trapz(int_x, z)
 
@@ -236,10 +246,10 @@ def compute_RSA(map1, map2):
 def compute_AUC(
         pred_map,
         target_map,
-        prediction_thresholds=10,
-        target_threshold_min=0.1,
-        target_threshold_max=0.9,
-        target_thresholds=9):
+        prediction_threshs=21,
+        target_threshold_min=0.25,
+        target_threshold_max=0.75,
+        target_threshs=9):
     """
     We will compute IOU between pred and target over multiple threshodls of the target map.
 
@@ -254,8 +264,8 @@ def compute_AUC(
     # if normalize:
     #     map1 = map1 / map1.sum()
     #     map2 = map2 / map2.sum()
-    inner_thresholds = np.linspace(1e-5, 1, prediction_thresholds)
-    target_thresholds = np.linspace(target_threshold_min, target_threshold_max, target_thresholds)
+    inner_thresholds = np.linspace(0, 1, prediction_threshs)
+    target_thresholds = np.linspace(target_threshold_min, target_threshold_max, target_threshs)
     # thresholds = [0.25, 0.5, 0.75, 1]
     thresh_ious = []
     for outer_t in target_thresholds:

@@ -1,0 +1,11 @@
+experiment_name: co3d
+co3d_clickme_data: clickme_vCO3D.csv
+co3d_clickme_folder: CO3D_ClickMe2
+blur_size: 21
+min_clicks: 10  # Minimum number of clicks for a map to be included
+max_clicks: 75 # Maximum number of clicks for a map to be included
+min_subjects: 10  # Minimum number of subjects for an image to be included
+null_iterations: 10
+metric: auc  # AUC, crossentropy, spearman, RSA
+image_shape: [256, 256]
+center_crop: [224, 224]

@@ -1,19 +1,10 @@
-import re
 import os
 import numpy as np
 import pandas as pd
 from PIL import Image
-from scipy.stats import spearmanr
-import torch
 import json
-from utils import gaussian_kernel, gaussian_blur, create_clickmap
 from matplotlib import pyplot as plt
-import torch.nn.functional as F
-from torchvision.transforms import functional as tvF
-
-
-BRUSH_SIZE = 11
-BRUSH_SIZE_SIGMA = np.sqrt(BRUSH_SIZE)
+import utils
 
 
 def get_medians(point_lists, mode='image', thresh=50):
@@ -45,87 +36,18 @@ def get_medians(point_lists, mode='image', thresh=50):
         medians['all'] = np.percentile(num_clicks, thresh)
     return medians
 
-def make_heatmap(image_path, point_lists, gaussian_kernel, image_shape, exponential_decay):
-    image = Image.open(image_path)
-    heatmap = create_clickmap(point_lists, image_shape, exponential_decay=exponential_decay)
-    
-    # Blur the mask to create a smooth heatmap
-    heatmap = torch.from_numpy(heatmap).float().unsqueeze(0)  # Convert to PyTorch tensor
-    heatmap = gaussian_blur(heatmap, gaussian_kernel)
-
-    # Check if any maps are all zeros and remove them
-    #import pdb; pdb.set_trace()
-    zero_maps = heatmap.sum((1, 2)) == 0
-    heatmap = heatmap[~zero_maps].squeeze()
-  
-    # Normalize the heatmap
-    # heatmap_normalized = (heatmap - heatmap.min()) / (heatmap.max() - heatmap.min())
-    heatmap_normalized = heatmap / heatmap.sum()
-
-    # Convert to numpy
-    heatmap = heatmap.numpy()  # Convert back to NumPy array         
-
-    # heatmap_normalized = cv2.normalize(heatmap, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
-    image_name = "_".join(image_path.split('/')[-2:])
-    return image_name, image, heatmap_normalized
-
-
-def process_clickmaps(clickmap_csv):
-    clickmaps = {}
-    num_maps = []
-    processed_maps = {}
-    n_empty = 0
-    for index, row in clickmap_csv.iterrows():
-        image_file_name = row['image_path'].replace("CO3D_ClickMe2/", "")
-        if image_file_name not in clickmaps.keys():
-            clickmaps[image_file_name] = [row["clicks"]]
-        else:
-            clickmaps[image_file_name].append(row["clicks"])
-    
-    for image, maps in clickmaps.items():
-        n_maps = 0
-        for clickmap in maps:
-            if len(clickmap) == 2:
-                n_empty += 1
-                continue
-            n_maps += 1
-            clean_string = re.sub(r'[{}"]', '', clickmap)
-            # Split the string by commas to separate the tuple strings
-            tuple_strings = clean_string.split(', ')
-            # Zero indexing here because tuple_strings is a list with a single string
-            data_list = tuple_strings[0].strip("()").split("),(")
-            tuples_list = [tuple(map(int, pair.split(','))) for pair in data_list]
-
-            if image not in processed_maps.keys():
-                processed_maps[image] = []
-            
-            processed_maps[image].append(tuples_list)
-        num_maps.append(n_maps)
-    return processed_maps, num_maps
-
 
 if __name__ == "__main__":
-    image_path = "CO3D_ClickMe2/"
+
+    # Args
+    debug = False
+    config_file = os.path.join("configs", "co3d_config.yaml")
+    image_dir = "CO3D_ClickMe2/"
     output_dir = "assets"
     image_output_dir = "clickme_test_images"
-    img_heatmaps = {}
-    co3d_clickme = pd.read_csv("clickme_vCO3D.csv")
-    image_shape = [256, 256]
-    thresh = 50
-    exponential_decay = False
-    plot_images = True
-
-    # Start processing
-    os.makedirs(image_output_dir, exist_ok=True)
-    os.makedirs(output_dir, exist_ok=True)
-    processed_maps, num_maps = process_clickmaps(co3d_clickme)
-    gaussian_kernel = gaussian_kernel(size=BRUSH_SIZE, sigma=BRUSH_SIZE_SIGMA)
-    for idx, (image, maps) in enumerate(processed_maps.items()):
-        image_name, image, heatmap = make_heatmap(os.path.join(image_path, image), maps, gaussian_kernel, image_shape=image_shape, exponential_decay=exponential_decay)
-        if image_name is None:
-            continue
-        img_heatmaps[image_name] = {"image":image, "heatmap":heatmap}
-    keys = [
+    percentile_thresh = 50
+    center_crop = False
+    display_image_keys = [
         "chair_378_44060_87918_renders_00018.png",
         "hairdryer_506_72958_141814_renders_00044.png",
         "parkingmeter_429_60366_116962_renders_00032.png",
@@ -137,23 +59,66 @@ if __name__ == "__main__":
         "laptop_606_95066_191413_renders_00006.png",
         "skateboard_579_85705_169395_renders_00039.png",
     ]
-    for k in keys:
+
+    # Load config
+    config = utils.process_config(config_file)
+    co3d_clickme_data = pd.read_csv(config["co3d_clickme_data"])
+    blur_size = config["blur_size"]
+    blur_sigma = np.sqrt(blur_size)
+    min_pixels = (2 * blur_size) ** 2  # Minimum number of pixels for a map to be included following filtering
+    del config["experiment_name"], config["co3d_clickme_data"]
+
+    # Start processing
+    os.makedirs(image_output_dir, exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Process files in serial
+    clickmaps, _ = utils.process_clickmap_files(
+        co3d_clickme_data=co3d_clickme_data,
+        min_clicks=config["min_clicks"],
+        max_clicks=config["max_clicks"])
+
+    # Prepare maps
+    final_clickmaps, all_clickmaps, categories, _ = utils.prepare_maps(
+        final_clickmaps=clickmaps,
+        blur_size=blur_size,
+        blur_sigma=blur_sigma,
+        image_shape=config["image_shape"],
+        min_pixels=min_pixels,
+        min_subjects=config["min_subjects"],
+        center_crop=center_crop)
+    
+    # Load images
+    images, image_names = [], []
+    for image_file in final_clickmaps.keys():
+        image_path = os.path.join(image_dir, image_file)
+        image = Image.open(image_path)
+        image_name = "_".join(image_path.split('/')[-2:])
+        images.append(image)
+        image_names.append(image_name)
+    
+    import pdb;pdb.set_trace()
+
+    # Package into legacy format
+    img_heatmaps = {k: {"image": image, "heatmap": heatmap} for (k, image, heatmap) in zip(final_clickmaps.keys(), images, all_clickmaps)}
+
+    for k in display_image_keys:
         f = plt.figure()
         plt.subplot(1, 2, 1)
-        plt.imshow(np.asarray(img_heatmaps[k]["image"])[:image_shape[0], :image_shape[1]])
+        plt.imshow(np.asarray(img_heatmaps[k]["image"])[:config["image_shape"][0], :config["image_shape"][1]])
         plt.axis("off")
         plt.subplot(1, 2, 2)
         plt.imshow(img_heatmaps[k]["heatmap"])
         plt.axis("off")
         plt.savefig(os.path.join(image_output_dir, k))
-        if plot_images:
+        if debug:
             plt.show()
         plt.close()
 
     np.save(os.path.join(output_dir, "co3d_clickmaps_normalized.npy"), img_heatmaps)
-    medians = get_medians(processed_maps, 'image', thresh=thresh)
-    medians.update(get_medians(processed_maps, 'category', thresh=thresh))
-    medians.update(get_medians(processed_maps, 'all', thresh=thresh))
+    medians = get_medians(all_clickmaps, 'image', thresh=percentile_thresh)
+    medians.update(get_medians(all_clickmaps, 'category', thresh=percentile_thresh))
+    medians.update(get_medians(all_clickmaps, 'all', thresh=percentile_thresh))
     medians_json = json.dumps(medians, indent=4)
     with open("./assets/click_medians.json", 'w') as f:
         f.write(medians_json)
