@@ -105,7 +105,7 @@ if __name__ == "__main__":
         plt.imshow(np.asarray(img_heatmaps[k]["image"])[:config["image_shape"][0], :config["image_shape"][1]])
         plt.axis("off")
         plt.subplot(1, 2, 2)
-        plt.imshow(img_heatmaps[k]["heatmap"])
+        plt.imshow(img_heatmaps[k]["heatmap"].mean(0))
         plt.axis("off")
         plt.savefig(os.path.join(image_output_dir, k))
         if debug:
