@@ -8,7 +8,6 @@ import utils
 
 
 def get_medians(point_lists, mode='image', thresh=50):
-    assert mode in ['image', 'category', 'all']
     medians = {}
     if mode == 'image':
         for image in point_lists:
@@ -17,7 +16,7 @@ def get_medians(point_lists, mode='image', thresh=50):
             for clickmap in clickmaps:
                 num_clicks.append(len(clickmap))
             medians[image] = np.percentile(num_clicks, thresh)
-    if mode == 'category':
+    elif mode == 'category':
         for image in point_lists:
             category = image.split('/')[0]
             if category not in medians.keys():
@@ -27,13 +26,15 @@ def get_medians(point_lists, mode='image', thresh=50):
                 medians[category].append(len(clickmap))
         for category in medians:
             medians[category] = np.percentile(medians[category], thresh)
-    if mode == 'all':
+    elif mode == 'all':
         num_clicks = []
         for image in point_lists:
             clickmaps = point_lists[image]
             for clickmap in clickmaps:
                 num_clicks.append(len(clickmap))
         medians['all'] = np.percentile(num_clicks, thresh)
+    else:
+        raise NotImplementedError(mode)
     return medians
 
 
@@ -107,15 +108,18 @@ if __name__ == "__main__":
         plt.subplot(1, 2, 2)
         plt.imshow(img_heatmaps[k]["heatmap"].mean(0))
         plt.axis("off")
-        plt.savefig(os.path.join(image_output_dir, k))
+        plt.savefig(os.path.join(image_output_dir, k.split(os.path.sep)[-1]))
         if debug:
             plt.show()
         plt.close()
 
-    np.save(os.path.join(output_dir, "co3d_clickmaps_normalized.npy"), img_heatmaps)
-    medians = get_medians(all_clickmaps, 'image', thresh=percentile_thresh)
-    medians.update(get_medians(all_clickmaps, 'category', thresh=percentile_thresh))
-    medians.update(get_medians(all_clickmaps, 'all', thresh=percentile_thresh))
+    # Get median number of clicks
+    medians = get_medians(final_clickmaps, 'image', thresh=percentile_thresh)
+    medians.update(get_medians(final_clickmaps, 'category', thresh=percentile_thresh))
+    medians.update(get_medians(final_clickmaps, 'all', thresh=percentile_thresh))
     medians_json = json.dumps(medians, indent=4)
+
+    # Save data
+    np.save(os.path.join(output_dir, "co3d_clickmaps_normalized.npy"), img_heatmaps)
     with open("./assets/click_medians.json", 'w') as f:
         f.write(medians_json)
