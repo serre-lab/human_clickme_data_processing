@@ -48,16 +48,15 @@ if __name__ == "__main__":
     percentile_thresh = 50
     center_crop = False
     display_image_keys = [
-        "chair_378_44060_87918_renders_00018.png",
-        "hairdryer_506_72958_141814_renders_00044.png",
-        "parkingmeter_429_60366_116962_renders_00032.png",
-        "cellphone_444_63640_125603_renders_00006.png",
-        "backpack_374_42277_84521_renders_00046.png",
-        "remote_350_36752_68568_renders_00005.png",
-        "toybus_523_75464_147305_renders_00033.png",
-        "bicycle_270_28792_57242_renders_00045.png",
-        "laptop_606_95066_191413_renders_00006.png",
-        "skateboard_579_85705_169395_renders_00039.png",
+        'mouse/372_41138_81919_renders_00017.png',
+        'skateboard/55_3249_9602_renders_00041.png',
+        'couch/617_99940_198836_renders_00040.png',
+        'microwave/482_69090_134714_renders_00033.png',
+        'bottle/601_92782_185443_renders_00030.png',
+        'kite/399_51022_100078_renders_00049.png',
+        'carrot/405_54110_105495_renders_00039.png',
+        'banana/49_2817_7682_renders_00025.png',
+        'parkingmeter/429_60366_116962_renders_00032.png'
     ]
 
     # Load config
@@ -95,13 +94,11 @@ if __name__ == "__main__":
         image = Image.open(image_path)
         image_name = "_".join(image_path.split('/')[-2:])
         images.append(image)
-        image_names.append(image_name)
-    
-    import pdb;pdb.set_trace()
+        image_names.append(image_file)
+        # image_names.append(image_name)
 
     # Package into legacy format
     img_heatmaps = {k: {"image": image, "heatmap": heatmap} for (k, image, heatmap) in zip(final_clickmaps.keys(), images, all_clickmaps)}
-
     for k in display_image_keys:
         f = plt.figure()
         plt.subplot(1, 2, 1)

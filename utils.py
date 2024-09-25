@@ -63,7 +63,7 @@ def process_clickmap_files(co3d_clickme_data, min_clicks, max_clicks, process_ma
     return proc_clickmaps, number_of_maps
 
 
-def prepare_maps(final_clickmaps, blur_size, blur_sigma, image_shape, min_pixels, min_subjects, center_crop):
+def prepare_maps(final_clickmaps, blur_size, blur_sigma, image_shape, min_pixels, min_subjects, center_crop, duplicate_thresh=0.01):
     category_correlations = {}
     all_clickmaps = []
     keep_index = []
@@ -77,7 +77,7 @@ def prepare_maps(final_clickmaps, blur_size, blur_sigma, image_shape, min_pixels
         clickmaps = np.asarray([create_clickmap([trials], image_shape) for trials in image_trials])
         clickmaps = torch.from_numpy(clickmaps).float().unsqueeze(1)        
         clickmaps = gaussian_blur(clickmaps, blur_kernel)
-        if center_crop is not None:
+        if center_crop:
             clickmaps = tvF.center_crop(clickmaps, center_crop)
         clickmaps = clickmaps.squeeze()
         clickmaps = clickmaps.numpy()
@@ -97,7 +97,7 @@ def prepare_maps(final_clickmaps, blur_size, blur_sigma, image_shape, min_pixels
         dm = cdist(clickmaps_vec, clickmaps_vec)
         idx = np.tril_indices(len(dm), k=-1)
         lt_dm = dm[idx]
-        if np.any(lt_dm < 0.01):
+        if np.any(lt_dm < duplicate_thresh):
             remove = np.unique(np.where((dm + np.eye(len(dm)) == 0)))
             rng = np.arange(len(dm))
             dup_idx = rng[~np.in1d(rng, remove)]
