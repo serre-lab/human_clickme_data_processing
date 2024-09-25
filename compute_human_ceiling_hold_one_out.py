@@ -146,37 +146,29 @@ def main(
 
 
 if __name__ == "__main__":
-    co3d_clickme_data = pd.read_csv("clickme_vCO3D.csv")
-    co3d_clickme_folder = "CO3D_ClickMe2"
-    blur_size = 21  # 11
-    blur_sigma = np.sqrt(blur_size)
-    min_clicks = 10  # Minimum number of clicks for a map to be included
-    max_clicks = 75 # Maximum number of clicks for a map to be included
-    min_pixels = (2 * blur_size) ** 2  # Minimum number of pixels for a map to be included following filtering
-    min_subjects = 10  # Minimum number of subjects for an image to be included
-    null_iterations = 2
-    metric = "auc"  # AUC, crossentropy, spearman, RSA
+
+    # Args
     debug = False
+    config_file = os.path.join("configs", "co3d_config.yaml")
+
+    # Load config
+    config = utils.process_config(config_file)
+    co3d_clickme_data = pd.read_csv(config["co3d_clickme_data"])
+    blur_size = config["blur_size"]
+    blur_sigma = np.sqrt(blur_size)
+    min_pixels = (2 * blur_size) ** 2  # Minimum number of pixels for a map to be included following filtering
+    del config["experiment_name"], config["co3d_clickme_data"]
 
     # Process data
-    final_clickmaps, null_instance_correlations, all_correlations, null_correlations, all_clickmaps = main(
+    final_clickmaps, all_correlations, null_correlations, all_clickmaps = main(
         co3d_clickme_data=co3d_clickme_data,
-        co3d_clickme_folder=co3d_clickme_folder,
-        debug=debug,
-        blur_size=blur_size,
         blur_sigma=blur_sigma,
-        null_iterations=null_iterations,
         min_pixels=min_pixels,
-        min_subjects=min_subjects,
-        max_clicks=max_clicks,
-        metric=metric
-    )
-    mean_null_instance_correlations = np.asarray([np.mean(v) for v in null_instance_correlations.values()])
+        **config)
     print(f"Mean human correlation full set: {np.nanmean(all_correlations)}")
     print(f"Null correlations full set: {np.nanmean(null_correlations)}")
     np.savez(
         "human_ceiling_results.npz",
-        null_instance_correlations=null_instance_correlations,
         final_clickmaps=final_clickmaps,
         ceiling_correlations=all_correlations,
         null_correlations=null_correlations,
