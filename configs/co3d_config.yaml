@@ -1,6 +1,6 @@
 experiment_name: co3d
-co3d_clickme_data: clickme_vCO3D.csv
-co3d_clickme_folder: CO3D_ClickMe2
+clickme_data: clickme_vCO3D.csv
+clickme_folder: CO3D_ClickMe2
 blur_size: 21
 min_clicks: 10  # Minimum number of clicks for a map to be included
 max_clicks: 75 # Maximum number of clicks for a map to be included

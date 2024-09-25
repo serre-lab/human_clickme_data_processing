@@ -49,8 +49,8 @@ def compute_inner_correlations(i, all_clickmaps, category_indices, metric):
 
 
 def main(
-        co3d_clickme_data,
-        co3d_clickme_folder,
+        clickme_data,
+        clickme_folder,
         debug=False,
         blur_size=11 * 2,
         blur_sigma=np.sqrt(11 * 2),
@@ -69,7 +69,7 @@ def main(
     Args:
         final_clickmaps (dict): A dictionary where keys are image identifiers and values
                                 are lists of click trials for each image.
-        co3d_clickme_folder (str): Path to the folder containing the images.
+        clickme_folder (str): Path to the folder containing the images.
         n_splits (int): Number of splits to use in split-half correlation calculation.
         debug (bool): If True, print debug information.
         blur_size (int): Size of the Gaussian blur kernel.
@@ -84,7 +84,7 @@ def main(
 
     # Process files in serial
     clickmaps, _ = utils.process_clickmap_files(
-        co3d_clickme_data=co3d_clickme_data,
+        clickme_data=clickme_data,
         min_clicks=min_clicks,
         max_clicks=max_clicks)
 
@@ -101,7 +101,7 @@ def main(
     if debug:
         for imn in range(len(final_clickmaps)):
             f = [x for x in final_clickmaps.keys()][imn]
-            image_path = os.path.join(co3d_clickme_folder, f)
+            image_path = os.path.join(clickme_folder, f)
             image_data = Image.open(image_path)
             for idx in range(min(len(all_clickmaps[imn]), 18)):
                 plt.subplot(4, 5, idx + 1)
@@ -153,15 +153,15 @@ if __name__ == "__main__":
 
     # Load config
     config = utils.process_config(config_file)
-    co3d_clickme_data = pd.read_csv(config["co3d_clickme_data"])
+    clickme_data = pd.read_csv(config["clickme_data"])
     blur_size = config["blur_size"]
     blur_sigma = np.sqrt(blur_size)
     min_pixels = (2 * blur_size) ** 2  # Minimum number of pixels for a map to be included following filtering
-    del config["experiment_name"], config["co3d_clickme_data"]
+    del config["experiment_name"], config["clickme_data"]
 
     # Process data
     final_clickmaps, all_correlations, null_correlations, all_clickmaps = main(
-        co3d_clickme_data=co3d_clickme_data,
+        clickme_data=clickme_data,
         blur_sigma=blur_sigma,
         min_pixels=min_pixels,
         **config)

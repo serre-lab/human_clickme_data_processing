@@ -16,9 +16,9 @@ def process_config(config_file):
     return config
 
 
-def process_clickmap_files(co3d_clickme_data, min_clicks, max_clicks, process_max="trim"):
+def process_clickmap_files(clickme_data, min_clicks, max_clicks, process_max="trim"):
     clickmaps = {}
-    for _, row in co3d_clickme_data.iterrows():
+    for _, row in clickme_data.iterrows():
         image_file_name = row['image_path'].replace("CO3D_ClickMe2/", "")
         if image_file_name not in clickmaps.keys():
             clickmaps[image_file_name] = [row["clicks"]]
