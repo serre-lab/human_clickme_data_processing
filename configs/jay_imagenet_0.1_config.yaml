@@ -1,7 +1,8 @@
-experiment_name: co3d
+experiment_name: jay_imagenet_0.1
 clickme_data: clickme_vCO3D.csv
-clickme_folder: CO3D_ClickMe2
-preprocess_db_data: False
+imagenet_train_folder: /media/data_cifs/projects/prj_video_imagenet/imagenet/ILSVRC/Data/CLS-LOC/train
+imagenet_val_folder: /media/data_cifs/projects/prj_video_imagenet/imagenet/ILSVRC/Data/CLS-LOC/val2
+preprocess_db_data: True
 blur_size: 21
 min_clicks: 10  # Minimum number of clicks for a map to be included
 max_clicks: 75 # Maximum number of clicks for a map to be included

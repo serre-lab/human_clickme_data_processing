@@ -1,10 +1,9 @@
 import os
 import numpy as np
 import pandas as pd
-from PIL import Image
-import json
-from matplotlib import pyplot as plt
 import utils
+from skimage import io
+from tqdm import tqdm
 
 
 def get_medians(point_lists, mode='image', thresh=50):
@@ -44,8 +43,9 @@ if __name__ == "__main__":
     debug = False
     config_file = os.path.join("configs", "co3d_config.yaml")
     image_dir = "CO3D_ClickMe2/"
-    output_dir = "assets"
-    image_output_dir = "clickme_test_images"
+    output_dir = "individual_clickme_maps"
+    clickmap_saves  = "clickmap_data"
+    image_saves = "clickmap_images"
     percentile_thresh = 50
     center_crop = False
     display_image_keys = [
@@ -69,8 +69,11 @@ if __name__ == "__main__":
     del config["experiment_name"], config["clickme_data"]
 
     # Start processing
-    os.makedirs(image_output_dir, exist_ok=True)
+    clickmap_saves = os.path.join(output_dir, clickmap_saves)
+    image_saves = os.path.join(output_dir, image_saves)
     os.makedirs(output_dir, exist_ok=True)
+    os.makedirs(clickmap_saves, exist_ok=True)
+    os.makedirs(image_saves, exist_ok=True)
 
     # Process files in serial
     clickmaps, _ = utils.process_clickmap_files(
@@ -88,38 +91,13 @@ if __name__ == "__main__":
         min_subjects=config["min_subjects"],
         center_crop=center_crop)
     
-    # Load images
-    images, image_names = [], []
-    for image_file in final_clickmaps.keys():
-        image_path = os.path.join(image_dir, image_file)
-        image = Image.open(image_path)
-        image_name = "_".join(image_path.split('/')[-2:])
-        images.append(image)
-        image_names.append(image_file)
-        # image_names.append(image_name)
-
-    # Package into legacy format
-    img_heatmaps = {k: {"image": image, "heatmap": heatmap} for (k, image, heatmap) in zip(final_clickmaps.keys(), images, all_clickmaps)}
-    for k in display_image_keys:
-        f = plt.figure()
-        plt.subplot(1, 2, 1)
-        plt.imshow(np.asarray(img_heatmaps[k]["image"])[:config["image_shape"][0], :config["image_shape"][1]])
-        plt.axis("off")
-        plt.subplot(1, 2, 2)
-        plt.imshow(img_heatmaps[k]["heatmap"].mean(0))
-        plt.axis("off")
-        plt.savefig(os.path.join(image_output_dir, k.split(os.path.sep)[-1]))
-        if debug:
-            plt.show()
-        plt.close()
-
-    # Get median number of clicks
-    medians = get_medians(final_clickmaps, 'image', thresh=percentile_thresh)
-    medians.update(get_medians(final_clickmaps, 'category', thresh=percentile_thresh))
-    medians.update(get_medians(final_clickmaps, 'all', thresh=percentile_thresh))
-    medians_json = json.dumps(medians, indent=4)
-
-    # Save data
-    np.save(os.path.join(output_dir, "co3d_clickmaps_normalized.npy"), img_heatmaps)
-    with open("./assets/click_medians.json", 'w') as f:
-        f.write(medians_json)
+    # Plot and save all images
+    for (f, ms), cs in tqdm(zip(final_clickmaps.items(), all_clickmaps), total=len(all_clickmaps), desc="Writing data"):
+        import pdb;pdb.set_trace()
+        a = 2
+        f = "{}_{}".format(.split(os.path.sep)[-2], f.split(os.path.sep)[-1])
+        for idx, (m, c) in enumerate(zip(ms, cs)):
+            click_fn = os.path.join(clickmap_saves, "{}_idx".format(f))
+            im_fn = os.path.join(image_saves, "{}_idx".format(f))
+            np.save(click_fn, m)
+            io.imsave(im_fn, c)

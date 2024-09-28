@@ -1,13 +1,11 @@
 import os
 import numpy as np
-import torch
 from PIL import Image
-import re
 import pandas as pd
 import utils
 from matplotlib import pyplot as plt
 from tqdm import tqdm
-from joblib import Parallel, delayed
+import yaml
 
 
 def compute_inner_correlations(i, all_clickmaps, category_indices, metric):
@@ -49,8 +47,8 @@ def compute_inner_correlations(i, all_clickmaps, category_indices, metric):
 
 
 def main(
-        clickme_data,
-        clickme_folder,
+        co3d_clickme_data,
+        co3d_clickme_folder,
         debug=False,
         blur_size=11 * 2,
         blur_sigma=np.sqrt(11 * 2),
@@ -61,6 +59,7 @@ def main(
         min_subjects=10,
         min_clicks=10,
         max_clicks=50,
+        randomization_iters=10,
         metric="auc"  # AUC, crossentropy, spearman, RSA
     ):
     """
@@ -69,7 +68,7 @@ def main(
     Args:
         final_clickmaps (dict): A dictionary where keys are image identifiers and values
                                 are lists of click trials for each image.
-        clickme_folder (str): Path to the folder containing the images.
+        co3d_clickme_folder (str): Path to the folder containing the images.
         n_splits (int): Number of splits to use in split-half correlation calculation.
         debug (bool): If True, print debug information.
         blur_size (int): Size of the Gaussian blur kernel.
@@ -84,7 +83,7 @@ def main(
 
     # Process files in serial
     clickmaps, _ = utils.process_clickmap_files(
-        clickme_data=clickme_data,
+        co3d_clickme_data=co3d_clickme_data,
         min_clicks=min_clicks,
         max_clicks=max_clicks)
 
@@ -101,7 +100,7 @@ def main(
     if debug:
         for imn in range(len(final_clickmaps)):
             f = [x for x in final_clickmaps.keys()][imn]
-            image_path = os.path.join(clickme_folder, f)
+            image_path = os.path.join(co3d_clickme_folder, f)
             image_data = Image.open(image_path)
             for idx in range(min(len(all_clickmaps[imn]), 18)):
                 plt.subplot(4, 5, idx + 1)
@@ -113,36 +112,62 @@ def main(
             plt.subplot(4,5,20);plt.imshow(np.asarray(image_data)[16:-16, 16:-16]);plt.axis('off')
             plt.show()
 
-    # Compute scores
+    # Compute scores through split-halfs
     all_correlations = []
     for clickmaps in tqdm(all_clickmaps, desc="Processing ceiling", total=len(all_clickmaps)):
-        for i in range(len(clickmaps)):
-            test_map = clickmaps[i]
-            test_map = (test_map - test_map.min()) / (test_map.max() - test_map.min())
-            remaining_maps = clickmaps[~np.in1d(np.arange(len(clickmaps)), i)].mean(0)
+        n = len(clickmaps)
+        rand_corrs = []
+        for _ in range(randomization_iters):
+            rand_perm = np.random.permutation(n)
+            fh = rand_perm[:(n // 2)]
+            sh = rand_perm[(n // 2):]
+            test_maps = clickmaps[fh].mean(0)
+            remaining_maps = clickmaps[sh].mean(0)
+            test_maps = (test_maps - test_maps.min()) / (test_maps.max() - test_maps.min())
             remaining_maps = (remaining_maps - remaining_maps.min()) / (remaining_maps.max() - remaining_maps.min())
             if metric.lower() == "crossentropy":
-                correlation = utils.compute_crossentropy(test_map, remaining_maps)
+                correlation = utils.compute_crossentropy(test_maps, remaining_maps)
             elif metric.lower() == "auc":
-                correlation = utils.compute_AUC(test_map, remaining_maps)
+                correlation = utils.compute_AUC(test_maps, remaining_maps)
             elif metric.lower() == "spearman":
-                correlation = utils.compute_spearman_correlation(test_map, remaining_maps)
+                correlation = utils.compute_spearman_correlation(test_maps, remaining_maps)
             else:
                 raise ValueError(f"Invalid metric: {metric}")
-            all_correlations.append(correlation)
+            rand_corrs.append(correlation)
+        all_correlations.append(np.mean(rand_corrs))
     all_correlations = np.asarray(all_correlations)
 
     # Compute null scores
-    _, category_indices = np.unique(categories, return_inverse=True)
     null_correlations = []
-    instance_correlations = {}
+    click_len = len(all_clickmaps)
     for _ in tqdm(range(null_iterations), total=null_iterations, desc="Computing null scores"):
-        results = Parallel(n_jobs=-1)(delayed(compute_inner_correlations)(i, all_clickmaps, category_indices, metric) for i in range(len(all_clickmaps)))
-        inner_correlations = [result[0] for result in results]
-        instance_correlations = {k: v for result in results for k, v in result[1].items()}
+        inner_correlations = []
+        for i in range(click_len):
+            selected_clickmaps = all_clickmaps[i]
+            tmp_rng = np.arange(click_len)
+            j = tmp_rng[~np.in1d(tmp_rng, i)]
+            j = j[np.random.permutation(len(j))][0]  # Select a random other image
+            other_clickmaps = all_clickmaps[j]
+            rand_perm_sel = np.random.permutation(len(selected_clickmaps))
+            rand_perm_other = np.random.permutation(len(other_clickmaps))
+            fh = rand_perm_sel[:(n // 2)]
+            sh = rand_perm_other[(n // 2):]
+            test_maps = selected_clickmaps[fh].mean(0)
+            remaining_maps = other_clickmaps[sh].mean(0)
+            test_maps = (test_maps - test_maps.min()) / (test_maps.max() - test_maps.min())
+            remaining_maps = (remaining_maps - remaining_maps.min()) / (remaining_maps.max() - remaining_maps.min())
+            if metric.lower() == "crossentropy":
+                correlation = utils.compute_crossentropy(test_maps, remaining_maps)
+            elif metric.lower() == "auc":
+                correlation = utils.compute_AUC(test_maps, remaining_maps)
+            elif metric.lower() == "spearman":
+                correlation = utils.compute_spearman_correlation(test_maps, remaining_maps)
+            else:
+                raise ValueError(f"Invalid metric: {metric}")
+            inner_correlations.append(correlation)
         null_correlations.append(np.nanmean(inner_correlations))
     null_correlations = np.asarray(null_correlations)
-    return final_clickmaps, instance_correlations, all_correlations, null_correlations, all_clickmaps
+    return final_clickmaps, all_correlations, null_correlations, all_clickmaps
 
 
 if __name__ == "__main__":
@@ -153,19 +178,15 @@ if __name__ == "__main__":
 
     # Load config
     config = utils.process_config(config_file)
+    co3d_clickme_data = pd.read_csv(config["co3d_clickme_data"])
     blur_size = config["blur_size"]
     blur_sigma = np.sqrt(blur_size)
     min_pixels = (2 * blur_size) ** 2  # Minimum number of pixels for a map to be included following filtering
-
-    if config["preprocess_db_data"]:
-        clickme_data = utils.preprocess(config["clickme_data"])
-    else:
-        clickme_data = pd.read_csv(config["clickme_data"])
-    del config["experiment_name"], config["clickme_data"], config["preprocess_db_data"]
+    del config["experiment_name"], config["co3d_clickme_data"]
 
     # Process data
     final_clickmaps, all_correlations, null_correlations, all_clickmaps = main(
-        clickme_data=clickme_data,
+        co3d_clickme_data=co3d_clickme_data,
         blur_sigma=blur_sigma,
         min_pixels=min_pixels,
         **config)
