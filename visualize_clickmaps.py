@@ -95,7 +95,7 @@ if __name__ == "__main__":
     for (f, ms), cs in tqdm(zip(final_clickmaps.items(), all_clickmaps), total=len(all_clickmaps), desc="Writing data"):
         import pdb;pdb.set_trace()
         a = 2
-        f = "{}_{}".format(.split(os.path.sep)[-2], f.split(os.path.sep)[-1])
+        f = "{}_{}".format(f.split(os.path.sep)[-2], f.split(os.path.sep)[-1])
         for idx, (m, c) in enumerate(zip(ms, cs)):
             click_fn = os.path.join(clickmap_saves, "{}_idx".format(f))
             im_fn = os.path.join(image_saves, "{}_idx".format(f))
