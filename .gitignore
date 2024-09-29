@@ -5,4 +5,5 @@ assets/
 clickme_test_images/
 human_ceiling_results.npz
 __pycache__
+individual_clickme_maps
 

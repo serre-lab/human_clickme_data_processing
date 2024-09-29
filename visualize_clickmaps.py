@@ -93,11 +93,10 @@ if __name__ == "__main__":
     
     # Plot and save all images
     for (f, ms), cs in tqdm(zip(final_clickmaps.items(), all_clickmaps), total=len(all_clickmaps), desc="Writing data"):
-        import pdb;pdb.set_trace()
-        a = 2
-        f = "{}_{}".format(f.split(os.path.sep)[-2], f.split(os.path.sep)[-1])
+        f = "{}_{}".format(f.split(os.path.sep)[-2], f.split(os.path.sep)[-1]).split(".")[0]
         for idx, (m, c) in enumerate(zip(ms, cs)):
-            click_fn = os.path.join(clickmap_saves, "{}_idx".format(f))
-            im_fn = os.path.join(image_saves, "{}_idx".format(f))
+            c = (c - c.min()) / (c.max() - c.min())
+            click_fn = os.path.join(clickmap_saves, "{}_{}.npy".format(f, idx))
+            im_fn = os.path.join(image_saves, "{}_{}.png".format(f, idx))
             np.save(click_fn, m)
             io.imsave(im_fn, c)
