@@ -1,4 +1,4 @@
-import os
+import os, sys
 import numpy as np
 import pandas as pd
 import utils
@@ -39,7 +39,10 @@ def get_medians(point_lists, mode='image', thresh=50):
 
 if __name__ == "__main__":
 
-    # Args
+    # Get config file
+    config_file = utils.get_config(sys.argv)
+
+    # Other Args
     debug = False
     config_file = os.path.join("configs", "co3d_config.yaml")
     image_dir = "CO3D_ClickMe2/"
@@ -47,22 +50,14 @@ if __name__ == "__main__":
     clickmap_saves  = "clickmap_data"
     image_saves = "clickmap_images"
     percentile_thresh = 50
+    pos_sample = 20
     center_crop = False
-    display_image_keys = [
-        'mouse/372_41138_81919_renders_00017.png',
-        'skateboard/55_3249_9602_renders_00041.png',
-        'couch/617_99940_198836_renders_00040.png',
-        'microwave/482_69090_134714_renders_00033.png',
-        'bottle/601_92782_185443_renders_00030.png',
-        'kite/399_51022_100078_renders_00049.png',
-        'carrot/405_54110_105495_renders_00039.png',
-        'banana/49_2817_7682_renders_00025.png',
-        'parkingmeter/429_60366_116962_renders_00032.png'
-    ]
 
     # Load config
     config = utils.process_config(config_file)
-    co3d_clickme_data = pd.read_csv(config["clickme_data"])
+
+    # Load data
+    co3d_clickme_data = utils.process_clickme_data(config["clickme_data"])
     blur_size = config["blur_size"]
     blur_sigma = np.sqrt(blur_size)
     min_pixels = (2 * blur_size) ** 2  # Minimum number of pixels for a map to be included following filtering
@@ -91,11 +86,24 @@ if __name__ == "__main__":
         min_subjects=config["min_subjects"],
         center_crop=center_crop)
     
+    import pdb;pdb.set_trace()
+    # Go through maps and let's filter per category 
+    # Set positive maps to be the modal maps from each
+    # Set negative maps to be outliers.
+    # When training a model we will also generate "random walk" versions of the negative maps to equalize +/- classes
+    
+
     # Plot and save all images
+    if pos_sample:
+        sel_idx = np.random.permutation(len(final_clickmaps))[:pos_sample]
+        final_clickmaps = {k: v for idx, (k, v) in enumerate(final_clickmaps.items()) if idx in sel_idx}
+        all_clickmaps = [x for idx, x in enumerate(all_clickmaps) if idx in sel_idx]
+        print("Using {} clickmaps".format(len(all_clickmaps)))
+
     for (f, ms), cs in tqdm(zip(final_clickmaps.items(), all_clickmaps), total=len(all_clickmaps), desc="Writing data"):
         f = "{}_{}".format(f.split(os.path.sep)[-2], f.split(os.path.sep)[-1]).split(".")[0]
         for idx, (m, c) in enumerate(zip(ms, cs)):
-            c = (c - c.min()) / (c.max() - c.min())
+            c = ((c - c.min()) / (c.max() - c.min()) * 255).astype(np.uint8)
             click_fn = os.path.join(clickmap_saves, "{}_{}.npy".format(f, idx))
             im_fn = os.path.join(image_saves, "{}_{}.png".format(f, idx))
             np.save(click_fn, m)

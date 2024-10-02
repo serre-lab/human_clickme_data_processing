@@ -1,13 +1,59 @@
 import re
+import os
 import torch
 import yaml
 import numpy as np
+import pandas as pd
 from torch.nn import functional as F
 from scipy.stats import spearmanr
 from tqdm import tqdm
 from torchvision.transforms import functional as tvF
 from scipy.spatial.distance import cdist
-from matplotlib import pyplot as plt
+
+
+def process_clickme_data(data_file, catch_thresh=0.95):
+    if "csv" in data_file:
+        return pd.read_csv(data_file)
+    elif "npz" in data_file:
+        data = np.load(data_file, allow_pickle=True)
+        image_path = data["file_pointer"]
+        clickmap_x = data["clickmap_x"]
+        clickmap_y = data["clickmap_y"]
+        user_id = data["user_id"]
+        user_catch_trial = data["user_catch_trial"]
+
+        # Filter subjects by catch trials
+        catch_trials = user_catch_trial >= catch_thresh
+        image_path = image_path[catch_trials]
+        clickmap_x = clickmap_x[catch_trials]
+        clickmap_y = clickmap_y[catch_trials]
+        user_id = user_id[catch_trials]
+        print("Catch trial filter from {} to {}".format(len(user_catch_trial), catch_trials.sum()))
+
+        # Combine clickmap_x/y into tuples to match Jay's format
+        clicks = [list(zip(x, y)) for x, y in zip(clickmap_x, clickmap_y)]
+
+        # Create dataframe
+        df = pd.DataFrame({"image_path": image_path, "clicks": clicks, "user_id": user_id})
+
+        # Close npz
+        del data.f
+        data.close()  # avoid the "too many files are open" error
+        return df
+    else:
+        raise NotImplementedError("Cannot process {}".format(data_file))
+
+
+def get_config(argv):
+    if len(argv) == 2:
+        if "configs" + os.path.sep in argv[1]:
+            config_file = argv[1]
+        else:
+            config_file = os.path.join("configs", argv[1])
+    else:
+        config_file = os.path.join("configs", "co3d_config.yaml")
+    assert os.path.exists(config_file), "Cannot find config file: {}".format(config_file)
+    return config_file
 
 
 def process_config(config_file):
@@ -19,7 +65,7 @@ def process_config(config_file):
 def process_clickmap_files(clickme_data, min_clicks, max_clicks, process_max="trim"):
     clickmaps = {}
     for _, row in clickme_data.iterrows():
-        image_file_name = row['image_path'].replace("CO3D_ClickMe2/", "")
+        image_file_name = os.path.sep.join(row['image_path'].split(os.path.sep)[-2:])
         if image_file_name not in clickmaps.keys():
             clickmaps[image_file_name] = [row["clicks"]]
         else:
@@ -31,16 +77,25 @@ def process_clickmap_files(clickme_data, min_clicks, max_clicks, process_max="tr
     for image in clickmaps:
         n_clickmaps = 0
         for clickmap in clickmaps[image]:
-            clean_string = re.sub(r'[{}"]', '', clickmap)
-            tuple_strings = clean_string.split(', ')
-            data_list = tuple_strings[0].strip("()").split("),(")
-            if len(data_list) == 1:  # Remove empty clickmaps
+            if not len(clickmap):
                 n_empty_clickmap += 1
                 continue
 
-            tuples_list = [tuple(map(int, pair.split(','))) for pair in data_list]
-            if process_max == "exclude":
+            if isinstance(clickmap, str):
+                clean_string = re.sub(r'[{}"]', '', clickmap)
+                tuple_strings = clean_string.split(', ')
+                data_list = tuple_strings[0].strip("()").split("),(")
+                if len(data_list) == 1:  # Remove empty clickmaps
+                    n_empty_clickmap += 1
+                    continue
+                tuples_list = [tuple(map(int, pair.split(','))) for pair in data_list]
+            else:
+                tuples_list = clickmap
+                if len(tuples_list) == 1:  # Remove empty clickmaps
+                    n_empty_clickmap += 1
+                    continue
 
+            if process_max == "exclude":
                 if len(tuples_list) <= min_clicks | len(tuples_list) > max_clicks:
                     n_empty_clickmap += 1
                     continue

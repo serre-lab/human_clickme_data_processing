@@ -1,8 +1,6 @@
-import os
+import os, sys
 import numpy as np
-import torch
 from PIL import Image
-import re
 import pandas as pd
 import utils
 from matplotlib import pyplot as plt
@@ -147,7 +145,10 @@ def main(
 
 if __name__ == "__main__":
 
-    # Args
+    # Get config file
+    config_file = utils.get_config(sys.argv)
+
+    # Other Args
     debug = False
     config_file = os.path.join("configs", "co3d_config.yaml")
 
@@ -157,10 +158,8 @@ if __name__ == "__main__":
     blur_sigma = np.sqrt(blur_size)
     min_pixels = (2 * blur_size) ** 2  # Minimum number of pixels for a map to be included following filtering
 
-    if config["preprocess_db_data"]:
-        clickme_data = utils.preprocess(config["clickme_data"])
-    else:
-        clickme_data = pd.read_csv(config["clickme_data"])
+    # Load data
+    clickme_data = utils.process_clickme_data(config["clickme_data"])
     del config["experiment_name"], config["clickme_data"], config["preprocess_db_data"]
 
     # Process data

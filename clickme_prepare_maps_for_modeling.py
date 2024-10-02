@@ -1,4 +1,4 @@
-import os
+import os, sys
 import numpy as np
 import pandas as pd
 from PIL import Image
@@ -40,29 +40,19 @@ def get_medians(point_lists, mode='image', thresh=50):
 
 if __name__ == "__main__":
 
-    # Args
+    # Get config file
+    config_file = utils.get_config(sys.argv)
+
+    # Other Args
     debug = False
-    config_file = os.path.join("configs", "co3d_config.yaml")
-    image_dir = "CO3D_ClickMe2/"
     output_dir = "assets"
     image_output_dir = "clickme_test_images"
     percentile_thresh = 50
     center_crop = False
-    display_image_keys = [
-        'mouse/372_41138_81919_renders_00017.png',
-        'skateboard/55_3249_9602_renders_00041.png',
-        'couch/617_99940_198836_renders_00040.png',
-        'microwave/482_69090_134714_renders_00033.png',
-        'bottle/601_92782_185443_renders_00030.png',
-        'kite/399_51022_100078_renders_00049.png',
-        'carrot/405_54110_105495_renders_00039.png',
-        'banana/49_2817_7682_renders_00025.png',
-        'parkingmeter/429_60366_116962_renders_00032.png'
-    ]
 
     # Load config
     config = utils.process_config(config_file)
-    co3d_clickme_data = pd.read_csv(config["clickme_data"])
+    clickme_data = utils.process_clickme_data(config["clickme_data"])
     blur_size = config["blur_size"]
     blur_sigma = np.sqrt(blur_size)
     min_pixels = (2 * blur_size) ** 2  # Minimum number of pixels for a map to be included following filtering
@@ -73,10 +63,13 @@ if __name__ == "__main__":
     os.makedirs(output_dir, exist_ok=True)
 
     # Process files in serial
-    clickmaps, _ = utils.process_clickmap_files(
-        clickme_data=co3d_clickme_data,
+    clickmaps, clickmap_counts = utils.process_clickmap_files(
+        clickme_data=clickme_data,
         min_clicks=config["min_clicks"],
         max_clicks=config["max_clicks"])
+    # srt = np.argsort(clickmap_counts)[-10:]
+    # fls = np.asarray([k for k in clickmaps.keys()])[srt]
+    # print(fls)
 
     # Prepare maps
     final_clickmaps, all_clickmaps, categories, _ = utils.prepare_maps(
@@ -87,31 +80,40 @@ if __name__ == "__main__":
         min_pixels=min_pixels,
         min_subjects=config["min_subjects"],
         center_crop=center_crop)
-    
-    # Load images
-    images, image_names = [], []
-    for image_file in final_clickmaps.keys():
-        image_path = os.path.join(image_dir, image_file)
-        image = Image.open(image_path)
-        image_name = "_".join(image_path.split('/')[-2:])
-        images.append(image)
-        image_names.append(image_file)
-        # image_names.append(image_name)
+        
+    # Visualize if requested
+    if config["display_image_keys"]:
+        # Load images
+        # images, image_names = [], []
+        img_heatmaps = {}
+        # for image_file in final_clickmaps.keys():
+        for image_file in config["display_image_keys"]:
+            image_path = os.path.join(config["image_dir"], image_file)
+            image = Image.open(image_path)
+            image_name = "_".join(image_path.split('/')[-2:])
+            # images.append(image)
+            # image_names.append(image_file)
+            img_heatmaps[image_file] = {
+                "image": image,
+                "heatmap": final_clickmaps[image_file]
+            }
+            # image_names.append(image_name)
+        # Package into legacy format
+        # img_heatmaps = {k: {"image": image, "heatmap": heatmap} for (k, image, heatmap) in zip(final_clickmaps.keys(), images, all_clickmaps)}
 
-    # Package into legacy format
-    img_heatmaps = {k: {"image": image, "heatmap": heatmap} for (k, image, heatmap) in zip(final_clickmaps.keys(), images, all_clickmaps)}
-    for k in display_image_keys:
-        f = plt.figure()
-        plt.subplot(1, 2, 1)
-        plt.imshow(np.asarray(img_heatmaps[k]["image"])[:config["image_shape"][0], :config["image_shape"][1]])
-        plt.axis("off")
-        plt.subplot(1, 2, 2)
-        plt.imshow(img_heatmaps[k]["heatmap"].mean(0))
-        plt.axis("off")
-        plt.savefig(os.path.join(image_output_dir, k.split(os.path.sep)[-1]))
-        if debug:
-            plt.show()
-        plt.close()
+        # And plot
+        for k in config["display_image_keys"]:
+            f = plt.figure()
+            plt.subplot(1, 2, 1)
+            plt.imshow(np.asarray(img_heatmaps[k]["image"])[:config["image_shape"][0], :config["image_shape"][1]])
+            plt.axis("off")
+            plt.subplot(1, 2, 2)
+            plt.imshow(img_heatmaps[k]["heatmap"].mean(0))
+            plt.axis("off")
+            plt.savefig(os.path.join(image_output_dir, k.split(os.path.sep)[-1]))
+            if debug:
+                plt.show()
+            plt.close()
 
     # Get median number of clicks
     medians = get_medians(final_clickmaps, 'image', thresh=percentile_thresh)

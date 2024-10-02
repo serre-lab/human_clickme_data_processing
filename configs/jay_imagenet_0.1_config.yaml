@@ -1,7 +1,7 @@
 experiment_name: jay_imagenet_0.1
-clickme_data: clickme_vCO3D.csv
-imagenet_train_folder: /media/data_cifs/projects/prj_video_imagenet/imagenet/ILSVRC/Data/CLS-LOC/train
-imagenet_val_folder: /media/data_cifs/projects/prj_video_imagenet/imagenet/ILSVRC/Data/CLS-LOC/val2
+clickme_data: val_imagenet_09_29_2024.npz
+# imagenet_train_folder: /media/data_cifs/projects/prj_video_imagenet/imagenet/ILSVRC/Data/CLS-LOC/train
+image_dir: ImageNet
 preprocess_db_data: True
 blur_size: 21
 min_clicks: 10  # Minimum number of clicks for a map to be included
@@ -11,3 +11,14 @@ null_iterations: 10
 metric: auc  # AUC, crossentropy, spearman, RSA
 image_shape: [256, 256]
 center_crop: [224, 224]
+display_image_keys:
+  - ImageNet/ILSVRC2012_val_00002838.JPEG
+  - ImageNet/ILSVRC2012_val_00005722.JPEG
+  - ImageNet/ILSVRC2012_val_00006584.JPEG
+  - ImageNet/ILSVRC2012_val_00011212.JPEG
+  - ImageNet/ILSVRC2012_val_00011739.JPEG
+  - ImageNet/ILSVRC2012_val_00019952.JPEG
+  - ImageNet/ILSVRC2012_val_00029961.JPEG
+  - ImageNet/ILSVRC2012_val_00030871.JPEG
+  - ImageNet/ILSVRC2012_val_00039904.JPEG
+  - ImageNet/ILSVRC2012_val_00047009.JPEG
