@@ -162,7 +162,7 @@ if __name__ == "__main__":
     clickme_data = utils.process_clickme_data(config["clickme_data"])
 
     # Process data
-    final_clickmaps, all_correlations, null_correlations, all_clickmaps = main(
+    final_clickmaps, instance_correlations, all_correlations, null_correlations, all_clickmaps = main(
         clickme_data=clickme_data,
         blur_sigma=blur_sigma,
         min_pixels=min_pixels,
@@ -183,4 +183,5 @@ if __name__ == "__main__":
         final_clickmaps=final_clickmaps,
         ceiling_correlations=all_correlations,
         null_correlations=null_correlations,
+        instance_correlations=instance_correlations,
     )
