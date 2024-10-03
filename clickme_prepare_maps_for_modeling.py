@@ -44,7 +44,7 @@ if __name__ == "__main__":
     config_file = utils.get_config(sys.argv)
 
     # Other Args
-    debug = False
+    debug = True
     output_dir = "assets"
     image_output_dir = "clickme_test_images"
     percentile_thresh = 50
@@ -67,12 +67,14 @@ if __name__ == "__main__":
         clickme_data=clickme_data,
         min_clicks=config["min_clicks"],
         max_clicks=config["max_clicks"])
+    
+    # Top images according to the number of participants per map
     # srt = np.argsort(clickmap_counts)[-10:]
     # fls = np.asarray([k for k in clickmaps.keys()])[srt]
     # print(fls)
 
     # Prepare maps
-    final_clickmaps, all_clickmaps, categories, _ = utils.prepare_maps(
+    final_clickmaps, all_clickmaps, categories, final_keep_index = utils.prepare_maps(
         final_clickmaps=clickmaps,
         blur_size=blur_size,
         blur_sigma=blur_sigma,
@@ -80,12 +82,17 @@ if __name__ == "__main__":
         min_pixels=min_pixels,
         min_subjects=config["min_subjects"],
         center_crop=center_crop)
-        
+
     # Visualize if requested
+    szs = [len(x) for x in all_clickmaps]
+    arg = np.argsort(szs)
+    tops = np.asarray(final_keep_index)[arg[-10:]]
     if config["display_image_keys"]:
         # Load images
         # images, image_names = [], []
         img_heatmaps = {}
+        fck = np.asarray([k for k in final_clickmaps.keys()])
+        tfck = [k.split(os.path.sep)[-1] for k in final_clickmaps.keys()]
         # for image_file in final_clickmaps.keys():
         for image_file in config["display_image_keys"]:
             image_path = os.path.join(config["image_dir"], image_file)
@@ -93,9 +100,13 @@ if __name__ == "__main__":
             image_name = "_".join(image_path.split('/')[-2:])
             # images.append(image)
             # image_names.append(image_file)
+            find_key = [idx for idx, k in enumerate(tfck) if k in image_file]
+            assert len(find_key) == 1, "Image not found in final clickmaps"
+            # find_key = fck[find_key[0]]
+            find_key = find_key[0]
             img_heatmaps[image_file] = {
                 "image": image,
-                "heatmap": final_clickmaps[image_file]
+                "heatmap": all_clickmaps[find_key]
             }
             # image_names.append(image_name)
         # Package into legacy format
@@ -122,6 +133,7 @@ if __name__ == "__main__":
     medians_json = json.dumps(medians, indent=4)
 
     # Save data
+    import pdb; pdb.set_trace()
     np.save(os.path.join(output_dir, "co3d_clickmaps_normalized.npy"), img_heatmaps)
     with open("./assets/click_medians.json", 'w') as f:
         f.write(medians_json)

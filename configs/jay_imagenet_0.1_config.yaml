@@ -1,24 +1,23 @@
 experiment_name: jay_imagenet_0.1
-clickme_data: val_imagenet_09_29_2024.npz
-# imagenet_train_folder: /media/data_cifs/projects/prj_video_imagenet/imagenet/ILSVRC/Data/CLS-LOC/train
+clickme_data: clickme_datasets/val_imagenet_09_29_2024.npz
 image_dir: ImageNet
 preprocess_db_data: True
 blur_size: 21
 min_clicks: 10  # Minimum number of clicks for a map to be included
 max_clicks: 75 # Maximum number of clicks for a map to be included
-min_subjects: 10  # Minimum number of subjects for an image to be included
+min_subjects: 5  # Minimum number of subjects for an image to be included
 null_iterations: 10
 metric: auc  # AUC, crossentropy, spearman, RSA
 image_shape: [256, 256]
 center_crop: [224, 224]
 display_image_keys:
-  - ImageNet/ILSVRC2012_val_00002838.JPEG
-  - ImageNet/ILSVRC2012_val_00005722.JPEG
-  - ImageNet/ILSVRC2012_val_00006584.JPEG
-  - ImageNet/ILSVRC2012_val_00011212.JPEG
-  - ImageNet/ILSVRC2012_val_00011739.JPEG
-  - ImageNet/ILSVRC2012_val_00019952.JPEG
-  - ImageNet/ILSVRC2012_val_00029961.JPEG
-  - ImageNet/ILSVRC2012_val_00030871.JPEG
-  - ImageNet/ILSVRC2012_val_00039904.JPEG
-  - ImageNet/ILSVRC2012_val_00047009.JPEG
+- ILSVRC2012_val_00009492.JPEG
+- ILSVRC2012_val_00032959.JPEG
+- ILSVRC2012_val_00048414.JPEG
+- ILSVRC2012_val_00033949.JPEG
+- ILSVRC2012_val_00011212.JPEG
+- ILSVRC2012_val_00044671.JPEG
+- ILSVRC2012_val_00021923.JPEG
+- ILSVRC2012_val_00043013.JPEG
+- ILSVRC2012_val_00007272.JPEG
+- ILSVRC2012_val_00011751.JPEG

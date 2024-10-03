@@ -1,5 +1,5 @@
 experiment_name: co3d
-clickme_data: clickme_vCO3D.csv
+clickme_data: clickme_datasets/clickme_vCO3D.csv
 image_dir: CO3D_ClickMe2
 preprocess_db_data: False
 blur_size: 21
