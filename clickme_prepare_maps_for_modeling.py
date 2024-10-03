@@ -1,10 +1,9 @@
 import os, sys
 import numpy as np
-import pandas as pd
 from PIL import Image
 import json
 from matplotlib import pyplot as plt
-import utils
+from src import utils
 
 
 def get_medians(point_lists, mode='image', thresh=50):

@@ -1,8 +1,7 @@
 import os, sys
 import numpy as np
 from PIL import Image
-import pandas as pd
-import utils
+from src import utils
 from matplotlib import pyplot as plt
 from tqdm import tqdm
 from joblib import Parallel, delayed

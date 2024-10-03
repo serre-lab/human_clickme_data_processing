@@ -1,7 +1,6 @@
 import os, sys
 import numpy as np
-import pandas as pd
-import utils
+from src import utils
 from skimage import io
 from tqdm import tqdm
 
