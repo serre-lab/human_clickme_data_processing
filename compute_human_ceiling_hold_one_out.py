@@ -153,24 +153,33 @@ if __name__ == "__main__":
 
     # Load config
     config = utils.process_config(config_file)
+    output_dir = config["assets"]
     blur_size = config["blur_size"]
     blur_sigma = np.sqrt(blur_size)
     min_pixels = (2 * blur_size) ** 2  # Minimum number of pixels for a map to be included following filtering
 
     # Load data
     clickme_data = utils.process_clickme_data(config["clickme_data"])
-    del config["experiment_name"], config["clickme_data"], config["preprocess_db_data"]
 
     # Process data
     final_clickmaps, all_correlations, null_correlations, all_clickmaps = main(
         clickme_data=clickme_data,
         blur_sigma=blur_sigma,
         min_pixels=min_pixels,
-        **config)
+        debug=debug,
+        blur_size=blur_size,
+        clickme_folder=config["image_dir"],
+        null_iterations=config["null_iterations"],
+        image_shape=config["image_shape"],
+        center_crop=config["center_crop"],
+        min_subjects=config["min_subjects"],
+        min_clicks=config["min_clicks"],
+        max_clicks=config["max_clicks"],
+        metric=config["metric"])
     print(f"Mean human correlation full set: {np.nanmean(all_correlations)}")
     print(f"Null correlations full set: {np.nanmean(null_correlations)}")
     np.savez(
-        "human_ceiling_results.npz",
+        os.path.join(output_dir, "human_ceiling_results.npz"),
         final_clickmaps=final_clickmaps,
         ceiling_correlations=all_correlations,
         null_correlations=null_correlations,

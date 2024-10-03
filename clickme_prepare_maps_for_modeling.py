@@ -43,19 +43,17 @@ if __name__ == "__main__":
     config_file = utils.get_config(sys.argv)
 
     # Other Args
-    debug = True
-    output_dir = "assets"
-    image_output_dir = "clickme_test_images"
+    debug = False
     percentile_thresh = 50
-    center_crop = False
 
     # Load config
     config = utils.process_config(config_file)
     clickme_data = utils.process_clickme_data(config["clickme_data"])
+    output_dir = config["assets"]
     blur_size = config["blur_size"]
+    image_output_dir = config["example_image_output_dir"]
     blur_sigma = np.sqrt(blur_size)
     min_pixels = (2 * blur_size) ** 2  # Minimum number of pixels for a map to be included following filtering
-    del config["experiment_name"], config["clickme_data"]
 
     # Start processing
     os.makedirs(image_output_dir, exist_ok=True)
@@ -80,7 +78,7 @@ if __name__ == "__main__":
         image_shape=config["image_shape"],
         min_pixels=min_pixels,
         min_subjects=config["min_subjects"],
-        center_crop=center_crop)
+        center_crop=False)
 
     # Visualize if requested
     szs = [len(x) for x in all_clickmaps]
@@ -132,7 +130,9 @@ if __name__ == "__main__":
     medians_json = json.dumps(medians, indent=4)
 
     # Save data
-    import pdb; pdb.set_trace()
-    np.save(os.path.join(output_dir, "co3d_clickmaps_normalized.npy"), img_heatmaps)
-    with open("./assets/click_medians.json", 'w') as f:
+    final_data = {k: v for k, v in zip(final_keep_index, all_clickmaps)}
+    np.save(
+        os.path.join(output_dir, config["processed_clickme_file"]),
+        final_data)
+    with open(os.path.join(output_dir, config["processed_medians"]), 'w') as f:
         f.write(medians_json)

@@ -1,5 +1,9 @@
 experiment_name: jay_imagenet_0.1
 clickme_data: clickme_datasets/val_imagenet_09_29_2024.npz
+processed_clickme_file: "jay_imagenet_0.1_processed.npz"
+processed_medians: "jay_imagenet_0.1_medians.json"
+example_image_output_dir: "jay_imagenet_0.1_images"
+assets: "assets"
 image_dir: ImageNet
 preprocess_db_data: True
 blur_size: 21

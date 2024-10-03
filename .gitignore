@@ -3,6 +3,7 @@ CO3D_ClickMe2
 .DS_Store
 assets/
 clickme_test_images/
+jay_imagenet_0.1_images
 human_ceiling_results.npz
 __pycache__
 individual_clickme_maps

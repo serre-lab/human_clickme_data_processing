@@ -1,5 +1,9 @@
 experiment_name: co3d
 clickme_data: clickme_datasets/clickme_vCO3D.csv
+processed_clickme_file: "co3d_processed.npz"
+processed_medians: "co3d_medians.json"
+example_image_output_dir: "co3d_images"
+assets: "assets"
 image_dir: CO3D_ClickMe2
 preprocess_db_data: False
 blur_size: 21
