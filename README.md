@@ -1,4 +1,3 @@
-```markdown:README.md
 # ClickMe Heatmap Generator
 
 This project processes ClickMe data for CO3D images, generating heatmaps and analyzing click statistics. It provides tools to compute various correlation metrics, including AUC, cross-entropy, Spearman, and RSA, to evaluate the quality of generated heatmaps.
@@ -12,6 +11,8 @@ This project processes ClickMe data for CO3D images, generating heatmaps and ana
   - [Running the Scripts](#running-the-scripts)
     - [Compute Human Ceiling Split Half](#compute-human-ceiling-split-half)
     - [Compute Human Ceiling Hold One Out](#compute-human-ceiling-hold-one-out)
+    - [Prepare Clickmaps for Modeling](#prepare-clickmaps-for-modeling)
+    - [Visualize Clickmaps](#visualize-clickmaps)
 - [Metrics](#metrics)
 - [Project Structure](#project-structure)
 - [Dependencies](#dependencies)
@@ -20,10 +21,10 @@ This project processes ClickMe data for CO3D images, generating heatmaps and ana
 
 ## Features
 
-- **Data Processing:** Processes ClickMe CSV data to generate clickmaps.
+- **Data Processing:** Processes ClickMe CSV or NPZ data to generate clickmaps.
 - **Heatmap Generation:** Creates heatmaps from click data with optional Gaussian blurring.
 - **Correlation Analysis:** Calculates split-half correlations and null correlations using various metrics.
-- **Visualization:** Provides tools for debugging and analysis.
+- **Visualization:** Provides tools for debugging and analysis of clickmaps and heatmaps.
 - **Configuration Driven:** Easily configurable through YAML configuration files.
 
 ## Installation
@@ -54,27 +55,52 @@ Follow these steps to set up the project:
 
 ### Configuration
 
-Before running the scripts, ensure that the `configs/co3d_config.yaml` file is properly configured. Below is an example configuration:
+Before running the scripts, ensure that the configuration file is properly set up. The project uses YAML configuration files located in the `configs/` directory. Below is an example of `configs/co3d_config.yaml`:
 
 ```yaml:configs/co3d_config.yaml
 experiment_name: co3d
-co3d_clickme_data: clickme_vCO3D.csv
-co3d_clickme_folder: CO3D_ClickMe2
+clickme_data: clickme_vCO3D.csv
+image_dir: CO3D_ClickMe2
+preprocess_db_data: False
 blur_size: 21
 min_clicks: 10  # Minimum number of clicks for a map to be included
-max_clicks: 75 # Maximum number of clicks for a map to be included
+max_clicks: 75  # Maximum number of clicks for a map to be included
 min_subjects: 10  # Minimum number of subjects for an image to be included
 null_iterations: 10
-metric: auc  # AUC, crossentropy, spearman, RSA
+metric: auc  # Options: AUC, crossentropy, spearman, RSA
 image_shape: [256, 256]
 center_crop: [224, 224]
+display_image_keys:
+  - mouse/372_41138_81919_renders_00017.png
+  - skateboard/55_3249_9602_renders_00041.png
+  - couch/617_99940_198836_renders_00040.png
+  - microwave/482_69090_134714_renders_00033.png
+  - bottle/601_92782_185443_renders_00030.png
+  - kite/399_51022_100078_renders_00049.png
+  - carrot/405_54110_105495_renders_00039.png
+  - banana/49_2817_7682_renders_00025.png
+  - parkingmeter/429_60366_116962_renders_00032.png
 ```
 
-Ensure that the paths and parameters match your dataset and desired settings.
+**Key Configuration Parameters:**
+
+- `experiment_name`: Name of the experiment.
+- `clickme_data`: Path to the ClickMe data file (CSV or NPZ).
+- `image_dir`: Directory containing the images.
+- `preprocess_db_data`: Boolean indicating whether to preprocess database data.
+- `blur_size`: Size of the Gaussian blur kernel.
+- `min_clicks`: Minimum number of clicks required for a map to be included.
+- `max_clicks`: Maximum number of clicks allowed for a map to be included.
+- `min_subjects`: Minimum number of subjects required for an image to be included.
+- `null_iterations`: Number of iterations for null correlation computations.
+- `metric`: Correlation metric to use (`auc`, `crossentropy`, `spearman`, `RSA`).
+- `image_shape`: Shape of the images (height, width).
+- `center_crop`: Size for center cropping the images.
+- `display_image_keys`: List of image keys to visualize.
 
 ### Running the Scripts
 
-There are two main scripts provided in this repository for computing human ceiling correlations:
+The repository provides several scripts for processing and analyzing ClickMe data. Below are the primary scripts along with examples using the updated configuration interface.
 
 #### Compute Human Ceiling Split Half
 
@@ -85,7 +111,7 @@ This script performs split-half correlation analysis on the clickmaps.
 **Usage:**
 
 ```bash
-python compute_human_ceiling_split_half.py
+python compute_human_ceiling_split_half.py --config configs/co3d_config.yaml
 ```
 
 **Description:**
@@ -93,16 +119,8 @@ python compute_human_ceiling_split_half.py
 - Processes ClickMe data to generate clickmaps.
 - Applies Gaussian blur and optional center cropping.
 - Computes split-half correlations using the specified metric.
-- Optionally, visualizes the clickmaps for debugging purposes.
+- Optionally visualizes the clickmaps for debugging purposes.
 - Saves the results to `human_ceiling_results.npz`.
-
-**Example Command:**
-
-```bash
-python compute_human_ceiling_split_half.py
-```
-
-Ensure that the `co3d_config.yaml` is properly set up before running the script.
 
 #### Compute Human Ceiling Hold One Out
 
@@ -113,7 +131,7 @@ This script performs a hold-one-out correlation analysis on the clickmaps using 
 **Usage:**
 
 ```bash
-python compute_human_ceiling_hold_one_out.py
+python compute_human_ceiling_hold_one_out.py --config configs/co3d_config.yaml
 ```
 
 **Description:**
@@ -123,13 +141,43 @@ python compute_human_ceiling_hold_one_out.py
 - Computes both split-half and null correlations using the specified metric.
 - Saves the results to `human_ceiling_results.npz`.
 
-**Example Command:**
+**Note:** Adjust the `null_iterations` parameter in the configuration file to control the number of null correlation computations.
+
+#### Prepare Clickmaps for Modeling
+
+This script prepares the clickmaps for modeling by processing the data and saving the processed clickmaps and medians.
+
+**Script:** `clickme_prepare_maps_for_modeling.py`
+
+**Usage:**
 
 ```bash
-python compute_human_ceiling_hold_one_out.py
+python clickme_prepare_maps_for_modeling.py --config configs/co3d_config.yaml
 ```
 
-**Note:** Adjust the `null_iterations` parameter in the configuration file to control the number of null correlation computations.
+**Description:**
+
+- Processes ClickMe data to generate and prepare clickmaps.
+- Applies Gaussian blur and center cropping as specified in the configuration.
+- Saves the prepared clickmaps and median statistics to the `assets/` directory.
+
+#### Visualize Clickmaps
+
+This script visualizes the processed clickmaps and their corresponding images.
+
+**Script:** `visualize_clickmaps.py`
+
+**Usage:**
+
+```bash
+python visualize_clickmaps.py --config configs/co3d_config.yaml
+```
+
+**Description:**
+
+- Loads the processed clickmaps.
+- Visualizes the heatmaps alongside the original images.
+- Saves the visualization images to the specified output directory.
 
 ## Metrics
 
@@ -138,9 +186,9 @@ The project supports the following correlation metrics to evaluate the quality o
 - **AUC (Area Under the Curve):** Measures the ability of the heatmap to discriminate between relevant and non-relevant regions.
 - **Cross-Entropy:** Evaluates the difference between the predicted heatmap distribution and the target distribution.
 - **Spearman:** Computes the Spearman rank-order correlation coefficient between two heatmaps.
-- **RSA (Representational Similarity Analysis):** Assess the similarity between two representations by comparing their correlation matrices.
+- **RSA (Representational Similarity Analysis):** Assesses the similarity between two representations by comparing their correlation matrices.
 
-You can specify the desired metric in the `co3d_config.yaml` file under the `metric` key.
+You can specify the desired metric in the configuration file under the `metric` key.
 
 ## Project Structure
 
@@ -148,8 +196,11 @@ You can specify the desired metric in the `co3d_config.yaml` file under the `met
 ├── compute_human_ceiling_hold_one_out.py
 ├── compute_human_ceiling_split_half.py
 ├── configs/
-│   └── co3d_config.yaml
+│   ├── co3d_config.yaml
+│   └── jay_imagenet_0.1_config.yaml
 ├── utils.py
+├── clickme_prepare_maps_for_modeling.py
+├── visualize_clickmaps.py
 ├── requirements.txt
 ├── .gitignore
 └── README.md
@@ -157,7 +208,10 @@ You can specify the desired metric in the `co3d_config.yaml` file under the `met
 
 - **compute_human_ceiling_split_half.py:** Script for split-half correlation analysis.
 - **compute_human_ceiling_hold_one_out.py:** Script for hold-one-out correlation analysis with parallel processing.
-- **configs/co3d_config.yaml:** Configuration file containing parameters and paths.
+- **clickme_prepare_maps_for_modeling.py:** Script to prepare clickmaps for modeling.
+- **visualize_clickmaps.py:** Script to visualize clickmaps alongside images.
+- **configs/co3d_config.yaml:** Configuration file for the CO3D dataset.
+- **configs/jay_imagenet_0.1_config.yaml:** Configuration file for the ImageNet dataset.
 - **utils.py:** Utility functions for processing data, generating heatmaps, and computing metrics.
 - **requirements.txt:** List of Python dependencies.
 - **.gitignore:** Specifies files and directories to be ignored by Git.
@@ -210,7 +264,7 @@ Contributions are welcome! Please follow these steps to contribute:
 
 5. **Open a Pull Request**
 
-Provide a clear description of your changes and submit the pull request for review.
+   Provide a clear description of your changes and submit the pull request for review.
 
 ## License
 
@@ -219,4 +273,3 @@ This project is licensed under the [MIT License](LICENSE).
 ---
 
 Feel free to reach out if you have any questions or need further assistance!
-```
