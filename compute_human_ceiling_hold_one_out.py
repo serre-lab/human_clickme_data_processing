@@ -179,7 +179,7 @@ if __name__ == "__main__":
     print(f"Mean human correlation full set: {np.nanmean(all_correlations)}")
     print(f"Null correlations full set: {np.nanmean(null_correlations)}")
     np.savez(
-        os.path.join(output_dir, "human_ceiling_results.npz"),
+        os.path.join(output_dir, "human_ceiling_hold_one_out_{}.npz".format(config["experiment_name"])),
         final_clickmaps=final_clickmaps,
         ceiling_correlations=all_correlations,
         null_correlations=null_correlations,
