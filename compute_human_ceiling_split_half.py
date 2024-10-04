@@ -1,11 +1,10 @@
-import os
+import os, sys
 import numpy as np
 from PIL import Image
-import pandas as pd
-import utils
+from src import utils
 from matplotlib import pyplot as plt
 from tqdm import tqdm
-import yaml
+from joblib import Parallel, delayed
 
 
 def compute_inner_correlations(i, all_clickmaps, category_indices, metric):
@@ -47,8 +46,8 @@ def compute_inner_correlations(i, all_clickmaps, category_indices, metric):
 
 
 def main(
-        co3d_clickme_data,
-        co3d_clickme_folder,
+        clickme_data,
+        clickme_folder,
         debug=False,
         blur_size=11 * 2,
         blur_sigma=np.sqrt(11 * 2),
@@ -59,7 +58,6 @@ def main(
         min_subjects=10,
         min_clicks=10,
         max_clicks=50,
-        randomization_iters=10,
         metric="auc"  # AUC, crossentropy, spearman, RSA
     ):
     """
@@ -68,7 +66,7 @@ def main(
     Args:
         final_clickmaps (dict): A dictionary where keys are image identifiers and values
                                 are lists of click trials for each image.
-        co3d_clickme_folder (str): Path to the folder containing the images.
+        clickme_folder (str): Path to the folder containing the images.
         n_splits (int): Number of splits to use in split-half correlation calculation.
         debug (bool): If True, print debug information.
         blur_size (int): Size of the Gaussian blur kernel.
@@ -83,7 +81,7 @@ def main(
 
     # Process files in serial
     clickmaps, _ = utils.process_clickmap_files(
-        co3d_clickme_data=co3d_clickme_data,
+        clickme_data=clickme_data,
         min_clicks=min_clicks,
         max_clicks=max_clicks)
 
@@ -100,7 +98,7 @@ def main(
     if debug:
         for imn in range(len(final_clickmaps)):
             f = [x for x in final_clickmaps.keys()][imn]
-            image_path = os.path.join(co3d_clickme_folder, f)
+            image_path = os.path.join(clickme_folder, f)
             image_data = Image.open(image_path)
             for idx in range(min(len(all_clickmaps[imn]), 18)):
                 plt.subplot(4, 5, idx + 1)
@@ -172,28 +170,42 @@ def main(
 
 if __name__ == "__main__":
 
-    # Args
+    # Get config file
+    config_file = utils.get_config(sys.argv)
+
+    # Other Args
     debug = False
     config_file = os.path.join("configs", "co3d_config.yaml")
 
     # Load config
     config = utils.process_config(config_file)
-    co3d_clickme_data = pd.read_csv(config["co3d_clickme_data"])
+    output_dir = config["assets"]
     blur_size = config["blur_size"]
     blur_sigma = np.sqrt(blur_size)
     min_pixels = (2 * blur_size) ** 2  # Minimum number of pixels for a map to be included following filtering
-    del config["experiment_name"], config["co3d_clickme_data"]
+
+    # Load data
+    clickme_data = utils.process_clickme_data(config["clickme_data"])
 
     # Process data
     final_clickmaps, all_correlations, null_correlations, all_clickmaps = main(
-        co3d_clickme_data=co3d_clickme_data,
+        clickme_data=clickme_data,
         blur_sigma=blur_sigma,
         min_pixels=min_pixels,
-        **config)
+        debug=debug,
+        blur_size=blur_size,
+        clickme_folder=config["image_dir"],
+        null_iterations=config["null_iterations"],
+        image_shape=config["image_shape"],
+        center_crop=config["center_crop"],
+        min_subjects=config["min_subjects"],
+        min_clicks=config["min_clicks"],
+        max_clicks=config["max_clicks"],
+        metric=config["metric"])
     print(f"Mean human correlation full set: {np.nanmean(all_correlations)}")
     print(f"Null correlations full set: {np.nanmean(null_correlations)}")
     np.savez(
-        "human_ceiling_results.npz",
+        os.path.join(output_dir, "human_ceiling_split_half_{}.npz".format(config["experiment_name"])),
         final_clickmaps=final_clickmaps,
         ceiling_correlations=all_correlations,
         null_correlations=null_correlations,

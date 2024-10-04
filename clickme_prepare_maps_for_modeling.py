@@ -43,16 +43,18 @@ if __name__ == "__main__":
     config_file = utils.get_config(sys.argv)
 
     # Other Args
-    debug = False
+    debug = True
     percentile_thresh = 50
 
     # Load config
     config = utils.process_config(config_file)
     clickme_data = utils.process_clickme_data(config["clickme_data"])
     output_dir = config["assets"]
-    blur_size = config["blur_size"]
     image_output_dir = config["example_image_output_dir"]
+    blur_size = config["blur_size"]
     blur_sigma = np.sqrt(blur_size)
+    # blur_size = 41
+    # blur_sigma = 20
     min_pixels = (2 * blur_size) ** 2  # Minimum number of pixels for a map to be included following filtering
 
     # Start processing
