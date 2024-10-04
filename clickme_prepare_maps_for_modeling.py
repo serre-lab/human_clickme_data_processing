@@ -6,6 +6,36 @@ import json
 from matplotlib import pyplot as plt
 import utils
 
+def sample_half_pos(point_lists, num_samples=100):
+    num_pos = {}
+    for image in point_lists:
+        sample_nums = []
+        for i in range(num_samples):
+            clickmaps = point_lists[image]
+            all_maps = []
+            map_indices = list(range(len(clickmaps)))
+            random_indices = np.random.choice(map_indices, int(len(clickmaps)//2))
+            s1 = []
+            s2 = []
+            for j, clickmap in enumerate(clickmaps):
+                if j in random_indices:
+                    s1 += clickmap
+                else:
+                    s2 += clickmap
+            sample_nums += [len(set(s1)), len(set(s2))]
+        num_pos[image] = np.mean(sample_nums)
+    return num_pos
+    
+def get_num_pos(point_lists):
+    num_pos = {}
+    for image in point_lists:
+        clickmaps = point_lists[image]
+        all_maps = []
+        for clickmap in clickmaps:
+            all_maps += clickmap
+        all_maps = set(all_maps)
+        num_pos[image] = len(all_maps)
+    return num_pos
 
 def get_medians(point_lists, mode='image', thresh=50):
     medians = {}
@@ -93,7 +123,6 @@ if __name__ == "__main__":
     for image_file in final_clickmaps.keys():
         image_path = os.path.join(image_dir, image_file)
         image = Image.open(image_path)
-        image_name = "_".join(image_path.split('/')[-2:])
         images.append(image)
         image_names.append(image_file)
         # image_names.append(image_name)
@@ -117,9 +146,12 @@ if __name__ == "__main__":
     medians = get_medians(final_clickmaps, 'image', thresh=percentile_thresh)
     medians.update(get_medians(final_clickmaps, 'category', thresh=percentile_thresh))
     medians.update(get_medians(final_clickmaps, 'all', thresh=percentile_thresh))
-    medians_json = json.dumps(medians, indent=4)
-
+    num_pos = get_num_pos(final_clickmaps)
+    half_num_pos = sample_half_pos(final_clickmaps)
+    clickmap_stats = {'num_pos': num_pos, 'half_num_pos':half_num_pos, 'medians': medians}
+    medians_json = json.dumps(clickmap_stats, indent=4)
+    
     # Save data
     np.save(os.path.join(output_dir, "co3d_clickmaps_normalized.npy"), img_heatmaps)
-    with open("./assets/click_medians.json", 'w') as f:
+    with open("./assets/click_stats.json", 'w') as f:
         f.write(medians_json)
