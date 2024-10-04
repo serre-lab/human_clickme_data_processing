@@ -5,6 +5,36 @@ import json
 from matplotlib import pyplot as plt
 from src import utils
 
+def sample_half_pos(point_lists, num_samples=100):
+    num_pos = {}
+    for image in point_lists:
+        sample_nums = []
+        for i in range(num_samples):
+            clickmaps = point_lists[image]
+            all_maps = []
+            map_indices = list(range(len(clickmaps)))
+            random_indices = np.random.choice(map_indices, int(len(clickmaps)//2))
+            s1 = []
+            s2 = []
+            for j, clickmap in enumerate(clickmaps):
+                if j in random_indices:
+                    s1 += clickmap
+                else:
+                    s2 += clickmap
+            sample_nums += [len(set(s1)), len(set(s2))]
+        num_pos[image] = np.mean(sample_nums)
+    return num_pos
+    
+def get_num_pos(point_lists):
+    num_pos = {}
+    for image in point_lists:
+        clickmaps = point_lists[image]
+        all_maps = []
+        for clickmap in clickmaps:
+            all_maps += clickmap
+        all_maps = set(all_maps)
+        num_pos[image] = len(all_maps)
+    return num_pos
 
 def get_medians(point_lists, mode='image', thresh=50):
     medians = {}
@@ -107,7 +137,7 @@ if __name__ == "__main__":
             }
             # image_names.append(image_name)
         # Package into legacy format
-        # img_heatmaps = {k: {"image": image, "heatmap": heatmap} for (k, image, heatmap) in zip(final_clickmaps.keys(), images, all_clickmaps)}
+        # img_heatmaps = {k: {"image": image, "heatmap": heatmap} for (k, image, heatmap) in zip(final_clickmaps.keys(), images, all_clickmaps)
 
         # And plot
         for k in config["display_image_keys"]:
@@ -127,8 +157,11 @@ if __name__ == "__main__":
     medians = get_medians(final_clickmaps, 'image', thresh=percentile_thresh)
     medians.update(get_medians(final_clickmaps, 'category', thresh=percentile_thresh))
     medians.update(get_medians(final_clickmaps, 'all', thresh=percentile_thresh))
-    medians_json = json.dumps(medians, indent=4)
-
+    num_pos = get_num_pos(final_clickmaps)
+    half_num_pos = sample_half_pos(final_clickmaps)
+    clickmap_stats = {'num_pos': num_pos, 'half_num_pos':half_num_pos, 'medians': medians}
+    medians_json = json.dumps(clickmap_stats, indent=4)
+    
     # Save data
     final_data = {k: v for k, v in zip(final_keep_index, all_clickmaps)}
     np.save(
