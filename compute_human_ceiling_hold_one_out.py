@@ -160,7 +160,7 @@ if __name__ == "__main__":
     min_pixels = (2 * blur_size) ** 2  # Minimum number of pixels for a map to be included following filtering
 
     # Load metadata
-    if config["metadata_file"] is not None:
+    if config["metadata_file"]:
         metadata = np.load(config["metadata_file"], allow_pickle=True)
         metadata = {k: v for k, v in metadata.items()}
     else:
