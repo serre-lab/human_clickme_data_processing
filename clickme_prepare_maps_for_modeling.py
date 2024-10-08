@@ -45,6 +45,8 @@ if __name__ == "__main__":
     # Other Args
     debug = True
     percentile_thresh = 50
+    blur_sigma_function = lambda x: np.sqrt(x)
+    blur_sigma_function = lambda x: x / 2
 
     # Load config
     config = utils.process_config(config_file)
@@ -52,7 +54,7 @@ if __name__ == "__main__":
     output_dir = config["assets"]
     image_output_dir = config["example_image_output_dir"]
     blur_size = config["blur_size"]
-    blur_sigma = np.sqrt(blur_size)
+    blur_sigma = blur_sigma_function(blur_size)
     min_pixels = (2 * blur_size) ** 2  # Minimum number of pixels for a map to be included following filtering
 
     # Load metadata
@@ -70,11 +72,15 @@ if __name__ == "__main__":
         clickme_data=clickme_data,
         min_clicks=config["min_clicks"],
         max_clicks=config["max_clicks"])
-    
-    # Top images according to the number of participants per map
-    # srt = np.argsort(clickmap_counts)[-10:]
-    # fls = np.asarray([k for k in clickmaps.keys()])[srt]
-    # print(fls)
+
+    # Prepare maps
+    if debug:
+        new_clickmaps = {}
+        for k in config["display_image_keys"]:
+            click_match = [k_ for k_ in clickmaps.keys() if k in k_]
+            assert len(click_match) == 1, "Clickmap not found"
+            new_clickmaps[click_match[0]] = clickmaps[click_match[0]]
+        clickmaps = new_clickmaps
 
     # Prepare maps
     final_clickmaps, all_clickmaps, categories, final_keep_index = utils.prepare_maps(
@@ -85,6 +91,7 @@ if __name__ == "__main__":
         min_pixels=min_pixels,
         min_subjects=config["min_subjects"],
         metadata=metadata,
+        blur_sigma_function=blur_sigma_function,
         center_crop=False)
 
     # Visualize if requested
@@ -101,6 +108,11 @@ if __name__ == "__main__":
         for image_file in config["display_image_keys"]:
             image_path = os.path.join(config["image_dir"], image_file)
             image = Image.open(image_path)
+            if metadata:
+                click_match = [k_ for k_ in clickmaps.keys() if image_file in k_]
+                assert len(click_match) == 1, "Clickmap not found"
+                metadata_size = metadata[click_match[0]]
+                image = image.resize(metadata_size)
             image_name = "_".join(image_path.split('/')[-2:])
             # images.append(image)
             # image_names.append(image_file)
@@ -120,7 +132,7 @@ if __name__ == "__main__":
         for k in config["display_image_keys"]:
             f = plt.figure()
             plt.subplot(1, 2, 1)
-            plt.imshow(np.asarray(img_heatmaps[k]["image"])[:config["image_shape"][0], :config["image_shape"][1]])
+            plt.imshow(np.asarray(img_heatmaps[k]["image"]))
             plt.axis("off")
             plt.subplot(1, 2, 2)
             plt.imshow(img_heatmaps[k]["heatmap"].mean(0))

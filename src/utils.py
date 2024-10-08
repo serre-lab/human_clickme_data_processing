@@ -131,29 +131,48 @@ def prepare_maps(
         min_subjects,
         center_crop,
         metadata=None,
-        duplicate_thresh=0.01):
+        blur_sigma_function=None,
+        duplicate_thresh=0.01,
+        max_kernel_size=51):
+    
+    assert blur_sigma_function is not None, "Blur sigma function not passed."
     category_correlations = {}
     all_clickmaps = []
     keep_index = []
     blur_kernel = gaussian_kernel(blur_size, blur_sigma)
     categories = []
+    count = 0
     for image_key in tqdm(final_clickmaps, desc="Preparing maps", total=len(final_clickmaps)):
+        count += 1
         category = image_key.split("/")[0]
         if category not in category_correlations.keys():
             category_correlations[category] = []
         image_trials = final_clickmaps[image_key]
-        clickmaps = np.asarray([create_clickmap([trials], image_shape) for trials in image_trials])
-        clickmaps = torch.from_numpy(clickmaps).float().unsqueeze(1)
+        # clickmaps = np.asarray([create_clickmap([trials], image_shape) for trials in image_trials])
+        # clickmaps = torch.from_numpy(clickmaps).float().unsqueeze(1)
         if metadata is not None:
-            native_size = metadata[image_key]
-            short_side = min(native_size)
-            scale = short_side / min(image_shape)
-            adj_blur_size = blur_size * scale
-            if not adj_blur_size % 2:
-                adj_blur_size += 1  # Ensure odd kernel size
-            adj_blur_kernel = gaussian_kernel(adj_blur_size, blur_sigma * scale)
-            clickmaps = gaussian_blur(clickmaps, adj_blur_kernel)
+            if image_key not in metadata:
+                print(f"Image key {image_key} not in metadata")
+                clickmaps = np.asarray([create_clickmap([trials], image_shape) for trials in image_trials])
+                clickmaps = torch.from_numpy(clickmaps).float().unsqueeze(1)
+                clickmaps = gaussian_blur(clickmaps, blur_kernel)
+            else:
+                native_size = metadata[image_key]
+                short_side = min(native_size)
+                scale = short_side / min(image_shape)
+                adj_blur_size = int(np.round(blur_size * scale))
+                if not adj_blur_size % 2:
+                    adj_blur_size += 1  # Ensure odd kernel size
+                adj_blur_size = min(adj_blur_size, max_kernel_size)
+                adj_blur_sigma = blur_sigma_function(adj_blur_size)
+                clickmaps = np.asarray([create_clickmap([trials], native_size[::-1]) for trials in image_trials])
+                clickmaps = torch.from_numpy(clickmaps).float().unsqueeze(1)
+                adj_blur_kernel = gaussian_kernel(adj_blur_size, adj_blur_sigma)
+                clickmaps = gaussian_blur(clickmaps, adj_blur_kernel)
+                del adj_blur_kernel
         else:
+            clickmaps = np.asarray([create_clickmap([trials], image_shape) for trials in image_trials])
+            clickmaps = torch.from_numpy(clickmaps).float().unsqueeze(1)
             clickmaps = gaussian_blur(clickmaps, blur_kernel)
         if center_crop:
             clickmaps = tvF.center_crop(clickmaps, center_crop)
