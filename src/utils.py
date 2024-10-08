@@ -148,9 +148,10 @@ def prepare_maps(
             native_size = metadata[image_key]
             short_side = min(native_size)
             scale = short_side / min(image_shape)
-            adj_blur_kernel = gaussian_kernel(blur_size * scale, blur_sigma * scale)
-            if not adj_blur_kernel % 2:
-                adj_blur_kernel += 1  # Ensure odd kernel size
+            adj_blur_size = blur_size * scale
+            if not adj_blur_size % 2:
+                adj_blur_size += 1  # Ensure odd kernel size
+            adj_blur_kernel = gaussian_kernel(adj_blur_size, blur_sigma * scale)
             clickmaps = gaussian_blur(clickmaps, adj_blur_kernel)
         else:
             clickmaps = gaussian_blur(clickmaps, blur_kernel)
