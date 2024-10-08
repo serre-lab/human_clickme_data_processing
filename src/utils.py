@@ -62,7 +62,12 @@ def process_config(config_file):
     return config
 
 
-def process_clickmap_files(clickme_data, min_clicks, max_clicks, process_max="trim"):
+def process_clickmap_files(
+        clickme_data,
+        metadata,
+        min_clicks,
+        max_clicks,
+        process_max="trim"):
     clickmaps = {}
     for _, row in clickme_data.iterrows():
         image_file_name = os.path.sep.join(row['image_path'].split(os.path.sep)[-2:])
@@ -118,7 +123,16 @@ def process_clickmap_files(clickme_data, min_clicks, max_clicks, process_max="tr
     return proc_clickmaps, number_of_maps
 
 
-def prepare_maps(final_clickmaps, blur_size, blur_sigma, image_shape, min_pixels, min_subjects, center_crop, duplicate_thresh=0.01):
+def prepare_maps(
+        final_clickmaps,
+        blur_size,
+        blur_sigma,
+        image_shape,
+        min_pixels,
+        min_subjects,
+        center_crop,
+        metadata=None,
+        duplicate_thresh=0.01):
     category_correlations = {}
     all_clickmaps = []
     keep_index = []
@@ -130,8 +144,16 @@ def prepare_maps(final_clickmaps, blur_size, blur_sigma, image_shape, min_pixels
             category_correlations[category] = []
         image_trials = final_clickmaps[image_key]
         clickmaps = np.asarray([create_clickmap([trials], image_shape) for trials in image_trials])
-        clickmaps = torch.from_numpy(clickmaps).float().unsqueeze(1)        
-        clickmaps = gaussian_blur(clickmaps, blur_kernel)
+        clickmaps = torch.from_numpy(clickmaps).float().unsqueeze(1)
+        if metadata is not None:
+            native_size = metadata[image_key]
+            short_side = min(native_size)
+            scale = short_side / min(image_shape)
+            adj_blur_kernel = gaussian_kernel(blur_size * scale, blur_sigma * scale)
+            import pdb;pdb.set_trace()
+            clickmaps = gaussian_blur(clickmaps, adj_blur_kernel)
+        else:
+            clickmaps = gaussian_blur(clickmaps, blur_kernel)
         if center_crop:
             clickmaps = tvF.center_crop(clickmaps, center_crop)
         clickmaps = clickmaps.squeeze()

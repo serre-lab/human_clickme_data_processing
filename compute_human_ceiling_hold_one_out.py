@@ -93,6 +93,7 @@ def main(
         image_shape=image_shape,
         min_pixels=min_pixels,
         min_subjects=min_subjects,
+        metadata=metadata,
         center_crop=center_crop)
 
     if debug:
@@ -157,6 +158,13 @@ if __name__ == "__main__":
     blur_size = config["blur_size"]
     blur_sigma = np.sqrt(blur_size)
     min_pixels = (2 * blur_size) ** 2  # Minimum number of pixels for a map to be included following filtering
+
+    # Load metadata
+    if config["metadata_file"] is not None:
+        metadata = np.load(config["metadata_file"], allow_pickle=True)
+        metadata = {k: v for k, v in metadata.items()}
+    else:
+        metadata = None
 
     # Load data
     clickme_data = utils.process_clickme_data(config["clickme_data"])

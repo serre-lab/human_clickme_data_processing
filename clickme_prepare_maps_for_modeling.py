@@ -53,9 +53,14 @@ if __name__ == "__main__":
     image_output_dir = config["example_image_output_dir"]
     blur_size = config["blur_size"]
     blur_sigma = np.sqrt(blur_size)
-    # blur_size = 41
-    # blur_sigma = 20
     min_pixels = (2 * blur_size) ** 2  # Minimum number of pixels for a map to be included following filtering
+
+    # Load metadata
+    if config["metadata_file"] is not None:
+        metadata = np.load(config["metadata_file"], allow_pickle=True)
+        metadata = {k: v for k, v in metadata.items()}
+    else:
+        metadata = None
 
     # Start processing
     os.makedirs(image_output_dir, exist_ok=True)
@@ -80,6 +85,7 @@ if __name__ == "__main__":
         image_shape=config["image_shape"],
         min_pixels=min_pixels,
         min_subjects=config["min_subjects"],
+        metadata=metadata,
         center_crop=False)
 
     # Visualize if requested

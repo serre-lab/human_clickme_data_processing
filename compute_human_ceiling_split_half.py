@@ -58,6 +58,8 @@ def main(
         min_subjects=10,
         min_clicks=10,
         max_clicks=50,
+        randomization_iters=10,
+        metadata=None,
         metric="auc"  # AUC, crossentropy, spearman, RSA
     ):
     """
@@ -93,6 +95,7 @@ def main(
         image_shape=image_shape,
         min_pixels=min_pixels,
         min_subjects=min_subjects,
+        metadata=metadata,
         center_crop=center_crop)
 
     if debug:
@@ -184,6 +187,13 @@ if __name__ == "__main__":
     blur_sigma = np.sqrt(blur_size)
     min_pixels = (2 * blur_size) ** 2  # Minimum number of pixels for a map to be included following filtering
 
+    # Load metadata
+    if config["metadata_file"] is not None:
+        metadata = np.load(config["metadata_file"], allow_pickle=True)
+        metadata = {k: v for k, v in metadata.items()}
+    else:
+        metadata = None
+
     # Load data
     clickme_data = utils.process_clickme_data(config["clickme_data"])
 
@@ -201,6 +211,7 @@ if __name__ == "__main__":
         min_subjects=config["min_subjects"],
         min_clicks=config["min_clicks"],
         max_clicks=config["max_clicks"],
+        metadata=metadata,
         metric=config["metric"])
     print(f"Mean human correlation full set: {np.nanmean(all_correlations)}")
     print(f"Null correlations full set: {np.nanmean(null_correlations)}")
