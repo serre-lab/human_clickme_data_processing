@@ -189,8 +189,7 @@ if __name__ == "__main__":
 
     # Load metadata
     if config["metadata_file"]:
-        metadata = np.load(config["metadata_file"], allow_pickle=True)
-        metadata = {k: v for k, v in metadata.items()}
+        metadata = np.load(config["metadata_file"], allow_pickle=True).item()
     else:
         metadata = None
 

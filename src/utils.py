@@ -64,7 +64,6 @@ def process_config(config_file):
 
 def process_clickmap_files(
         clickme_data,
-        metadata,
         min_clicks,
         max_clicks,
         process_max="trim"):
@@ -150,7 +149,8 @@ def prepare_maps(
             short_side = min(native_size)
             scale = short_side / min(image_shape)
             adj_blur_kernel = gaussian_kernel(blur_size * scale, blur_sigma * scale)
-            import pdb;pdb.set_trace()
+            if not adj_blur_kernel % 2:
+                adj_blur_kernel += 1  # Ensure odd kernel size
             clickmaps = gaussian_blur(clickmaps, adj_blur_kernel)
         else:
             clickmaps = gaussian_blur(clickmaps, blur_kernel)
