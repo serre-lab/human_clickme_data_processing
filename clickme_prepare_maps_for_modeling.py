@@ -116,7 +116,7 @@ if __name__ == "__main__":
     szs = [len(x) for x in all_clickmaps]
     arg = np.argsort(szs)
     tops = np.asarray(final_keep_index)[arg[-10:]]
-    if config["display_image_keys"]:
+    if "display_image_keys" in config.keys() and config["display_image_keys"]:
         # Load images
         # images, image_names = [], []
         img_heatmaps = {}
@@ -165,9 +165,19 @@ if __name__ == "__main__":
     medians_json = json.dumps(clickmap_stats, indent=4)
     
     # Save data
-    final_data = {k: v for k, v in zip(final_keep_index, all_clickmaps)}
-    np.save(
-        os.path.join(output_dir, config["processed_clickme_file"]),
-        final_data)
+    # final_data = {k: v for k, v in zip(final_keep_index, all_clickmaps)} 
+    # np.save(
+    #     os.path.join(output_dir, config["processed_clickme_file"]),
+    #     final_data)
+    img_heatmaps = {}
+    for img_name, hmp in zip(final_keep_index, all_clickmaps):
+        img = Image.open(os.path.join(config["image_dir"], img_name))
+        img_heatmaps[img_name] = {"image":img, "heatmap":hmp}
+
+    # Package into legacy format
+    # img_heatmaps = {k: {"image": image, "heatmap": heatmap} for (k, image, heatmap) in zip(final_clickmaps.keys(), images, all_clickmaps)
+    np.savez(os.path.join(output_dir,  config["processed_clickme_file"]), 
+            **img_heatmaps
+            )
     with open(os.path.join(output_dir, config["processed_medians"]), 'w') as f:
         f.write(medians_json)

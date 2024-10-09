@@ -115,7 +115,7 @@ def main(
     for clickmaps in tqdm(all_clickmaps, desc="Processing ceiling", total=len(all_clickmaps)):
         n = len(clickmaps)
         rand_corrs = []
-        for _ in range(randomization_iters):
+        for _ in range(100):
             rand_perm = np.random.permutation(n)
             fh = rand_perm[:(n // 2)]
             sh = rand_perm[(n // 2):]
