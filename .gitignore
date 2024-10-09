@@ -8,4 +8,4 @@ human_ceiling_results.npz
 __pycache__
 individual_clickme_maps
 *.npz
-
+*.npy
