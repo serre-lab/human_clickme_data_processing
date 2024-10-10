@@ -196,7 +196,12 @@ def prepare_maps(
                 print(f"Image key {image_key} not in metadata")
                 clickmaps = np.asarray([create_clickmap([trials], image_shape) for trials in image_trials])
                 clickmaps = torch.from_numpy(clickmaps).float().unsqueeze(1)
-                clickmaps = convolve(clickmaps, blur_kernel)
+                if kernel_type == "gaussian":
+                    clickmaps = convolve(clickmaps, blur_kernel)
+                elif kernel_type == "circle":
+                    clickmaps = convolve(clickmaps, blur_kernel, double_conv=True)
+                else:
+                    raise NotImplementedError(kernel_type)
             else:
                 native_size = metadata[image_key]
                 short_side = min(native_size)
@@ -210,16 +215,22 @@ def prepare_maps(
                 clickmaps = torch.from_numpy(clickmaps).float().unsqueeze(1)
                 if kernel_type == "gaussian":
                     adj_blur_kernel = gaussian_kernel(adj_blur_size, adj_blur_sigma)
+                    clickmaps = convolve(clickmaps, adj_blur_kernel)
                 elif kernel_type == "circle":
                     adj_blur_kernel = circle_kernel(adj_blur_size, adj_blur_sigma)
+                    clickmaps = convolve(clickmaps, adj_blur_kernel, double_conv=True)
                 else:
                     raise NotImplementedError(kernel_type)
-                clickmaps = convolve(clickmaps, adj_blur_kernel)
                 del adj_blur_kernel
         else:
             clickmaps = np.asarray([create_clickmap([trials], image_shape) for trials in image_trials])
             clickmaps = torch.from_numpy(clickmaps).float().unsqueeze(1)
-            clickmaps = convolve(clickmaps, blur_kernel)
+            if kernel_type == "gaussian":
+                clickmaps = convolve(clickmaps, blur_kernel)
+            elif kernel_type == "circle":
+                clickmaps = convolve(clickmaps, blur_kernel, double_conv=True)
+            else:
+                raise NotImplementedError(kernel_type)
         if center_crop:
             clickmaps = tvF.center_crop(clickmaps, center_crop)
         clickmaps = clickmaps.squeeze()
@@ -336,7 +347,7 @@ def gaussian_kernel(size, sigma):
     return kernel
 
 
-def convolve(heatmap, kernel):
+def convolve(heatmap, kernel, double_conv=False):
     """
     Apply Gaussian blur to a heatmap.
 
@@ -349,7 +360,8 @@ def convolve(heatmap, kernel):
     """
     # heatmap = heatmap.unsqueeze(0) if heatmap.dim() == 3 else heatmap
     blurred_heatmap = F.conv2d(heatmap, kernel, padding='same')
-
+    if double_conv:
+        blurred_heatmap = F.conv2d(blurred_heatmap, kernel, padding='same')
     return blurred_heatmap  # [0]
 
 
