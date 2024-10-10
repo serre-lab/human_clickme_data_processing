@@ -9,3 +9,5 @@ __pycache__
 individual_clickme_maps
 *.npz
 *.npy
+jay_imagenet_val_0.1_images/
+co3d_val_images/

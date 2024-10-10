@@ -30,7 +30,6 @@ def process_clickme_data(data_file, filter_mobile, catch_thresh=0.95):
             else:
                 is_mobile.append(False)
             is_mobile_lens.append(len(x))
-
         is_mobile = np.asarray(is_mobile)
 
         # Filter subjects by catch trials
