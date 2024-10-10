@@ -1,3 +1,5 @@
+# TODO: Incorporate class filter to filter down imagenet to the co3d overlap. FIgure out the mobile-only set. Add subject classifier for filtering experiments.
+
 # ClickMe Heatmap Generator
 
 This project processes ClickMe data for CO3D images, generating heatmaps and analyzing click statistics. It provides tools to compute various correlation metrics, including AUC, cross-entropy, Spearman, and RSA, to evaluate the quality of generated heatmaps.
