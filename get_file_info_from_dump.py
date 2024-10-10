@@ -17,7 +17,7 @@ def get_image_size(prep_file):
 
 
 experiment_name = "imagenet_validation_clickme"
-click_dump = "prj_clickmev2_val_imagenet_no_clicks_10_06_2024.npz"
+click_dump = "clickme_datasets/prj_clickmev2_val_imagenet_10_10_2024.npz"
 filter = "imagenet/val"
 remove_string = "imagenet/val/"  # in case you want to trim paths
 image_path = "/media/data_cifs/projects/prj_video_imagenet/imagenet/ILSVRC/Data/CLS-LOC/val2"
