@@ -45,8 +45,9 @@ if __name__ == "__main__":
     # Other Args
     debug = True
     percentile_thresh = 50
-    blur_sigma_function = lambda x: np.sqrt(x)
-    blur_sigma_function = lambda x: x / 2
+    # blur_sigma_function = lambda x: np.sqrt(x)
+    # blur_sigma_function = lambda x: x / 2
+    blur_sigma_function = lambda x: x
 
     # Load config
     config = utils.process_config(config_file)

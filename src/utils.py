@@ -51,7 +51,7 @@ def get_config(argv):
         else:
             config_file = os.path.join("configs", argv[1])
     else:
-        config_file = os.path.join("configs", "co3d_config.yaml")
+        config_file = os.path.join("configs", "co3d.yaml")
     assert os.path.exists(config_file), "Cannot find config file: {}".format(config_file)
     return config_file
 
@@ -122,6 +122,40 @@ def process_clickmap_files(
     return proc_clickmaps, number_of_maps
 
 
+def circle_kernel(size, sigma=None):
+    """
+    Create a flat circular kernel where the values are the average of the total number of on pixels in the filter.
+
+    Args:
+        size (int): The diameter of the circle and the size of the kernel (size x size).
+        sigma (float, optional): Not used for flat kernel. Included for compatibility. Default is None.
+
+    Returns:
+        torch.Tensor: A 2D circular kernel normalized so that the sum of its elements is 1.
+    """
+    # Create a grid of (x,y) coordinates
+    y, x = torch.meshgrid(torch.arange(size), torch.arange(size), indexing='ij')
+    center = (size - 1) / 2
+    radius = (size - 1) / 2
+
+    # Create a mask for the circle
+    mask = (x - center) ** 2 + (y - center) ** 2 <= radius ** 2
+
+    # Initialize kernel with zeros and set ones inside the circle
+    kernel = torch.zeros((size, size), dtype=torch.float32)
+    kernel[mask] = 1.0
+
+    # Normalize the kernel so that the sum of all elements is 1
+    num_on_pixels = mask.sum()
+    if num_on_pixels > 0:
+        kernel = kernel / num_on_pixels
+
+    # Add batch and channel dimensions
+    kernel = kernel.unsqueeze(0).unsqueeze(0)
+
+    return kernel
+
+
 def prepare_maps(
         final_clickmaps,
         blur_size,
@@ -132,14 +166,21 @@ def prepare_maps(
         center_crop,
         metadata=None,
         blur_sigma_function=None,
+        kernel_type="circle",  # circle or gaussian
         duplicate_thresh=0.01,
         max_kernel_size=51):
     
     assert blur_sigma_function is not None, "Blur sigma function not passed."
+    if kernel_type == "gaussian":
+        blur_kernel = gaussian_kernel(blur_size, blur_sigma)
+    elif kernel_type == "circle":
+        blur_kernel = circle_kernel(blur_size, blur_sigma)
+    else:
+        raise NotImplementedError(kernel_type)
+
     category_correlations = {}
     all_clickmaps = []
     keep_index = []
-    blur_kernel = gaussian_kernel(blur_size, blur_sigma)
     categories = []
     count = 0
     for image_key in tqdm(final_clickmaps, desc="Preparing maps", total=len(final_clickmaps)):
@@ -155,7 +196,7 @@ def prepare_maps(
                 print(f"Image key {image_key} not in metadata")
                 clickmaps = np.asarray([create_clickmap([trials], image_shape) for trials in image_trials])
                 clickmaps = torch.from_numpy(clickmaps).float().unsqueeze(1)
-                clickmaps = gaussian_blur(clickmaps, blur_kernel)
+                clickmaps = convolve(clickmaps, blur_kernel)
             else:
                 native_size = metadata[image_key]
                 short_side = min(native_size)
@@ -167,13 +208,18 @@ def prepare_maps(
                 adj_blur_sigma = blur_sigma_function(adj_blur_size)
                 clickmaps = np.asarray([create_clickmap([trials], native_size[::-1]) for trials in image_trials])
                 clickmaps = torch.from_numpy(clickmaps).float().unsqueeze(1)
-                adj_blur_kernel = gaussian_kernel(adj_blur_size, adj_blur_sigma)
-                clickmaps = gaussian_blur(clickmaps, adj_blur_kernel)
+                if kernel_type == "gaussian":
+                    adj_blur_kernel = gaussian_kernel(adj_blur_size, adj_blur_sigma)
+                elif kernel_type == "circle":
+                    adj_blur_kernel = circle_kernel(adj_blur_size, adj_blur_sigma)
+                else:
+                    raise NotImplementedError(kernel_type)
+                clickmaps = convolve(clickmaps, adj_blur_kernel)
                 del adj_blur_kernel
         else:
             clickmaps = np.asarray([create_clickmap([trials], image_shape) for trials in image_trials])
             clickmaps = torch.from_numpy(clickmaps).float().unsqueeze(1)
-            clickmaps = gaussian_blur(clickmaps, blur_kernel)
+            clickmaps = convolve(clickmaps, blur_kernel)
         if center_crop:
             clickmaps = tvF.center_crop(clickmaps, center_crop)
         clickmaps = clickmaps.squeeze()
@@ -290,7 +336,7 @@ def gaussian_kernel(size, sigma):
     return kernel
 
 
-def gaussian_blur(heatmap, kernel):
+def convolve(heatmap, kernel):
     """
     Apply Gaussian blur to a heatmap.
 

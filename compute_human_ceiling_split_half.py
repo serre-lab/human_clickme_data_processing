@@ -60,7 +60,8 @@ def main(
         max_clicks=50,
         randomization_iters=10,
         metadata=None,
-        metric="auc"  # AUC, crossentropy, spearman, RSA
+        metric="auc",  # AUC, crossentropy, spearman, RSA
+        blur_sigma_function=None
     ):
     """
     Calculate split-half correlations for clickmaps across different image categories.
@@ -81,6 +82,8 @@ def main(
             - list: All individual image correlations.
     """
 
+    assert blur_sigma_function is not None, "Blur sigma function needs to be provided."
+
     # Process files in serial
     clickmaps, _ = utils.process_clickmap_files(
         clickme_data=clickme_data,
@@ -96,6 +99,7 @@ def main(
         min_pixels=min_pixels,
         min_subjects=min_subjects,
         metadata=metadata,
+        blur_sigma_function=blur_sigma_function,
         center_crop=center_crop)
 
     if debug:
@@ -179,6 +183,9 @@ if __name__ == "__main__":
     # Other Args
     debug = False
     config_file = os.path.join("configs", "co3d_config.yaml")
+    # blur_sigma_function = lambda x: np.sqrt(x)
+    # blur_sigma_function = lambda x: x / 2
+    blur_sigma_function = lambda x: x
 
     # Load config
     config = utils.process_config(config_file)
@@ -211,7 +218,8 @@ if __name__ == "__main__":
         min_clicks=config["min_clicks"],
         max_clicks=config["max_clicks"],
         metadata=metadata,
-        metric=config["metric"])
+        metric=config["metric"],
+        blur_sigma_function=blur_sigma_function)
     print(f"Mean human correlation full set: {np.nanmean(all_correlations)}")
     print(f"Null correlations full set: {np.nanmean(null_correlations)}")
     np.savez(
