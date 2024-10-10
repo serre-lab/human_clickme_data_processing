@@ -121,7 +121,7 @@ if __name__ == "__main__":
             # image_names.append(image_file)
             find_key = [idx for idx, k in enumerate(tfck) if k in image_file]
             try:
-                assert len(find_key) == 1, "Image {} not found in final clickmaps".format(image_file)
+                assert len(find_key) == 1
                 # find_key = fck[find_key[0]]
                 find_key = find_key[0]
                 img_heatmaps[image_file] = {
@@ -129,10 +129,10 @@ if __name__ == "__main__":
                     "heatmap": all_clickmaps[find_key]
                 }
             except Exception as e:
-                pass
+                print("Image {} not found in final clickmaps".format(image_file))
 
         # And plot
-        for k in config["display_image_keys"]:
+        for k in img_heatmaps.keys():
             f = plt.figure()
             plt.subplot(1, 2, 1)
             plt.imshow(np.asarray(img_heatmaps[k]["image"]))

@@ -64,7 +64,7 @@ def get_config(argv):
         else:
             config_file = os.path.join("configs", argv[1])
     else:
-        config_file = os.path.join("configs", "co3d.yaml")
+        raise ValueError("Usage: python clickme_prepare_maps_for_modeling.py <config_file>")
     assert os.path.exists(config_file), "Cannot find config file: {}".format(config_file)
     return config_file
 
