@@ -1,7 +1,7 @@
-experiment_name: jay_imagenet_0.1
-clickme_data: clickme_datasets/prj_clickmev2_val_imagenet_10_10_2024.npz
-processed_clickme_file: "jay_imagenet_0.1_processed.npz"
-processed_medians: "jay_imagenet_0.1_medians.json"
+experiment_name: jay_imagenet_train_0.1
+clickme_data: clickme_datasets/prj_clickmev2_train_imagenet_10_10_2024.npz
+processed_clickme_file: "jay_imagenet_train_0.1_processed.npz"
+processed_medians: "jay_imagenet_train_0.1_medians.json"
 example_image_output_dir: "jay_imagenet_0.1_images"
 assets: "assets"
 image_dir: ImageNet
