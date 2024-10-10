@@ -51,7 +51,9 @@ if __name__ == "__main__":
 
     # Load config
     config = utils.process_config(config_file)
-    clickme_data = utils.process_clickme_data(config["clickme_data"])
+    clickme_data = utils.process_clickme_data(
+        config["clickme_data"],
+        config["filter_mobile"])
     output_dir = config["assets"]
     image_output_dir = config["example_image_output_dir"]
     blur_size = config["blur_size"]
@@ -118,16 +120,16 @@ if __name__ == "__main__":
             # images.append(image)
             # image_names.append(image_file)
             find_key = [idx for idx, k in enumerate(tfck) if k in image_file]
-            assert len(find_key) == 1, "Image not found in final clickmaps"
-            # find_key = fck[find_key[0]]
-            find_key = find_key[0]
-            img_heatmaps[image_file] = {
-                "image": image,
-                "heatmap": all_clickmaps[find_key]
-            }
-            # image_names.append(image_name)
-        # Package into legacy format
-        # img_heatmaps = {k: {"image": image, "heatmap": heatmap} for (k, image, heatmap) in zip(final_clickmaps.keys(), images, all_clickmaps)}
+            try:
+                assert len(find_key) == 1, "Image {} not found in final clickmaps".format(image_file)
+                # find_key = fck[find_key[0]]
+                find_key = find_key[0]
+                img_heatmaps[image_file] = {
+                    "image": image,
+                    "heatmap": all_clickmaps[find_key]
+                }
+            except Exception as e:
+                pass
 
         # And plot
         for k in config["display_image_keys"]:

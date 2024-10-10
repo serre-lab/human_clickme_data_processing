@@ -11,7 +11,7 @@ from torchvision.transforms import functional as tvF
 from scipy.spatial.distance import cdist
 
 
-def process_clickme_data(data_file, catch_thresh=0.95):
+def process_clickme_data(data_file, filter_mobile, catch_thresh=0.95):
     if "csv" in data_file:
         return pd.read_csv(data_file)
     elif "npz" in data_file:
@@ -21,14 +21,27 @@ def process_clickme_data(data_file, catch_thresh=0.95):
         clickmap_y = data["clickmap_y"]
         user_id = data["user_id"]
         user_catch_trial = data["user_catch_trial"]
+        is_mobile = []
+        is_mobile_lens = []
+        # TODO: Figure out why there's empty entries in this
+        for x in data["is_mobile"]:
+            if len(x):
+                is_mobile.append(x[0])
+            else:
+                is_mobile.append(False)
+            is_mobile_lens.append(len(x))
+
+        is_mobile = np.asarray(is_mobile)
 
         # Filter subjects by catch trials
         catch_trials = user_catch_trial >= catch_thresh
+        if filter_mobile:
+            catch_trials = catch_trials & ~is_mobile
         image_path = image_path[catch_trials]
         clickmap_x = clickmap_x[catch_trials]
         clickmap_y = clickmap_y[catch_trials]
         user_id = user_id[catch_trials]
-        print("Catch trial filter from {} to {}".format(len(user_catch_trial), catch_trials.sum()))
+        print("Trials filtered from {} to {}".format(len(user_catch_trial), catch_trials.sum()))
 
         # Combine clickmap_x/y into tuples to match Jay's format
         clicks = [list(zip(x, y)) for x, y in zip(clickmap_x, clickmap_y)]

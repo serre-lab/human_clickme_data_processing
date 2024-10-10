@@ -172,7 +172,9 @@ if __name__ == "__main__":
         metadata = None
 
     # Load data
-    clickme_data = utils.process_clickme_data(config["clickme_data"])
+    clickme_data = utils.process_clickme_data(
+        config["clickme_data"],
+        config["filter_mobile"])
 
     # Process data
     final_clickmaps, instance_correlations, all_correlations, null_correlations, all_clickmaps = main(
