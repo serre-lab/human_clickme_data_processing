@@ -9,6 +9,26 @@ from scipy.stats import spearmanr
 from tqdm import tqdm
 from torchvision.transforms import functional as tvF
 from scipy.spatial.distance import cdist
+from glob import glob
+
+
+def load_masks(mask_dir, wc="*.pth"):
+    files = glob(os.path.join(mask_dir, wc))
+    masks = {}
+    for f in files:
+        masks[os.path.basename(f).split(".")[0]] = torch.load(f)
+    return masks
+
+
+def filter_for_foreground_masks(
+        final_clickmaps,
+        all_clickmaps,
+        categories,
+        final_keep_index,
+        masks,
+        mask_threshold):
+    import pdb; pdb.set_trace()
+    masks, final_clickmaps
 
 
 def process_clickme_data(data_file, filter_mobile, catch_thresh=0.95):

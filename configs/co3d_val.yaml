@@ -16,6 +16,8 @@ metric: auc  # AUC, crossentropy, spearman, RSA
 image_shape: [256, 256]
 center_crop: [256, 256]
 metadata_file: False
+mask_dir: clickme_co3d  # Directory containing masks for each image
+mask_threshold: 0.8  # Threshold for foreground mask overlap
 display_image_keys:
   - mouse/372_41138_81919_renders_00017.png
   - skateboard/55_3249_9602_renders_00041.png

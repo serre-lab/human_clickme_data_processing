@@ -96,6 +96,17 @@ if __name__ == "__main__":
         metadata=metadata,
         blur_sigma_function=blur_sigma_function,
         center_crop=False)
+    
+    # Filter for foreground mask overlap if requested
+    if config["mask_dir"]:
+        masks = utils.load_masks(config["mask_dir"])
+        final_clickmaps, all_clickmaps = utils.filter_for_foreground_masks(
+            final_clickmaps=final_clickmaps,
+            all_clickmaps=all_clickmaps,
+            categories=categories,
+            final_keep_index=final_keep_index,
+            masks=masks,
+            mask_threshold=config["mask_threshold"])
 
     # Visualize if requested
     szs = [len(x) for x in all_clickmaps]
