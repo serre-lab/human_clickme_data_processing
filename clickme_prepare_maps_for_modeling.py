@@ -160,7 +160,7 @@ if __name__ == "__main__":
             plt.imshow(img_heatmaps[k]["heatmap"].mean(0))
             plt.axis("off")
             plt.savefig(os.path.join(image_output_dir, k.split(os.path.sep)[-1]))
-            if debug:
+            if config["debug"]:
                 plt.show()
             plt.close()
 

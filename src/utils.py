@@ -79,8 +79,9 @@ def filter_for_foreground_masks(
                 proc_categories.append(categories[idx])
                 proc_final_keep_index.append(k)
             else:
-                import pdb; pdb.set_trace()
-                from matplotlib import pyplot as plt;plt.subplot(121);plt.imshow(mean_click_map);plt.subplot(122);plt.imshow(mask[0]);plt.show()
+                pass
+                # import pdb; pdb.set_trace()
+                # from matplotlib import pyplot as plt;plt.subplot(121);plt.imshow(mean_click_map);plt.subplot(122);plt.imshow(mask[0]);plt.show()
         else:
             print(f"No mask found for {mask_key}")
     return proc_final_clickmaps, proc_all_clickmaps, proc_categories, proc_final_keep_index
