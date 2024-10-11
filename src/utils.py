@@ -14,9 +14,14 @@ from glob import glob
 
 def load_masks(mask_dir, wc="*.pth"):
     files = glob(os.path.join(mask_dir, wc))
+    assert len(files), "No masks found in {}".format(mask_dir)
     masks = {}
     for f in files:
-        masks[os.path.basename(f).split(".")[0]] = torch.load(f)
+        loaded = torch.load(f)  # Akash added image/mask/category
+        # image = loaded[0]
+        mask = loaded[1]
+        cat = loaded[2]
+        masks[os.path.join(cat, os.path.basename(f).split(".")[0])] = mask
     return masks
 
 
@@ -27,8 +32,25 @@ def filter_for_foreground_masks(
         final_keep_index,
         masks,
         mask_threshold):
-    import pdb; pdb.set_trace()
-    masks, final_clickmaps
+    proc_final_clickmaps, proc_all_clickmaps = {}, {}
+    proc_categories, proc_final_keep_index = [], []
+    for idx, k in enumerate(final_keep_index):
+        mask_key = k.split(".")[0]  # Remove image extension
+        mask = masks[mask_key]
+        click_map = all_clickmaps[idx]
+        mean_click_map = np.median(click_map, 0)
+        thresh_click_map = (mean_click_map > mean_click_map.mean()).astype(np.float32)
+        clicks = final_clickmaps[k]
+        iou = fast_ious(thresh_click_map, mask)
+        if iou < mask_threshold:
+            proc_final_clickmaps[k] = clicks
+            proc_all_clickmaps[k] = click_map
+            proc_categories.append(categories[idx])
+            proc_final_keep_index.append(k)
+        else:
+            import pdb; pdb.set_trace()
+            from matplotlib import pyplot as plt;plt.subplot(121);plt.imshow(mean_click_map);plt.subplot(122);plt.imshow(mask[0]);plt.show()
+    return proc_final_clickmaps, proc_all_clickmaps, proc_categories, proc_final_keep_index
 
 
 def process_clickme_data(data_file, filter_mobile, catch_thresh=0.95):

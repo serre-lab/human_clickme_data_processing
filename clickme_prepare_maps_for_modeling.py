@@ -43,8 +43,6 @@ if __name__ == "__main__":
     config_file = utils.get_config(sys.argv)
 
     # Other Args
-    debug = True
-    percentile_thresh = 50
     # blur_sigma_function = lambda x: np.sqrt(x)
     # blur_sigma_function = lambda x: x / 2
     blur_sigma_function = lambda x: x
@@ -77,13 +75,14 @@ if __name__ == "__main__":
         max_clicks=config["max_clicks"])
 
     # Prepare maps
-    if debug:
+    if config["debug"]:
         new_clickmaps = {}
         for k in config["display_image_keys"]:
             click_match = [k_ for k_ in clickmaps.keys() if k in k_]
             assert len(click_match) == 1, "Clickmap not found"
             new_clickmaps[click_match[0]] = clickmaps[click_match[0]]
         clickmaps = new_clickmaps
+        # clickmaps = {k: v for idx, (k, v) in enumerate(clickmaps.items()) if idx < 1000}
 
     # Prepare maps
     final_clickmaps, all_clickmaps, categories, final_keep_index = utils.prepare_maps(
@@ -96,11 +95,11 @@ if __name__ == "__main__":
         metadata=metadata,
         blur_sigma_function=blur_sigma_function,
         center_crop=False)
-    
+
     # Filter for foreground mask overlap if requested
     if config["mask_dir"]:
         masks = utils.load_masks(config["mask_dir"])
-        final_clickmaps, all_clickmaps = utils.filter_for_foreground_masks(
+        final_clickmaps, all_clickmaps, categories, final_keep_index = utils.filter_for_foreground_masks(
             final_clickmaps=final_clickmaps,
             all_clickmaps=all_clickmaps,
             categories=categories,
@@ -157,6 +156,7 @@ if __name__ == "__main__":
             plt.close()
 
     # Get median number of clicks
+    percentile_thresh = config["percentile_thresh"]
     medians = get_medians(final_clickmaps, 'image', thresh=percentile_thresh)
     medians.update(get_medians(final_clickmaps, 'category', thresh=percentile_thresh))
     medians.update(get_medians(final_clickmaps, 'all', thresh=percentile_thresh))

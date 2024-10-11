@@ -181,8 +181,6 @@ if __name__ == "__main__":
     config_file = utils.get_config(sys.argv)
 
     # Other Args
-    debug = False
-    config_file = os.path.join("configs", "co3d_config.yaml")
     # blur_sigma_function = lambda x: np.sqrt(x)
     # blur_sigma_function = lambda x: x / 2
     blur_sigma_function = lambda x: x
@@ -210,7 +208,7 @@ if __name__ == "__main__":
         clickme_data=clickme_data,
         blur_sigma=blur_sigma,
         min_pixels=min_pixels,
-        debug=debug,
+        debug=config["debug"],
         blur_size=blur_size,
         clickme_folder=config["image_dir"],
         null_iterations=config["null_iterations"],
