@@ -61,7 +61,10 @@ def main(
         randomization_iters=10,
         metadata=None,
         metric="auc",  # AUC, crossentropy, spearman, RSA
-        blur_sigma_function=None
+        blur_sigma_function=None,
+        mask_dir=None,
+        mask_threshold=0.5,
+        class_filter_file=None,
     ):
     """
     Calculate split-half correlations for clickmaps across different image categories.
@@ -142,6 +145,26 @@ def main(
         all_correlations.append(np.mean(rand_corrs))
     all_correlations = np.asarray(all_correlations)
 
+    # Filter for foreground mask overlap if requested
+    if mask_dir:
+        masks = utils.load_masks(mask_dir)
+        final_clickmaps, all_clickmaps, categories, final_keep_index = utils.filter_for_foreground_masks(
+            final_clickmaps=final_clickmaps,
+            all_clickmaps=all_clickmaps,
+            categories=categories,
+            final_keep_index=final_keep_index,
+            masks=masks,
+            mask_threshold=mask_threshold)
+
+    # Filter classes if requested
+    if class_filter_file:
+        final_clickmaps, all_clickmaps, categories, final_keep_index = utils.filter_classes(
+            final_clickmaps=final_clickmaps,
+            all_clickmaps=all_clickmaps,
+            categories=categories,
+            final_keep_index=final_keep_index,
+            class_filter_file=class_filter_file)
+
     # Compute null scores
     null_correlations = []
     click_len = len(all_clickmaps)
@@ -219,7 +242,10 @@ if __name__ == "__main__":
         max_clicks=config["max_clicks"],
         metadata=metadata,
         metric=config["metric"],
-        blur_sigma_function=blur_sigma_function)
+        blur_sigma_function=blur_sigma_function,
+        mask_dir=config["mask_dir"],
+        mask_threshold=config["mask_threshold"],
+        class_filter_file=config["class_filter_file"])
     print(f"Mean human correlation full set: {np.nanmean(all_correlations)}")
     print(f"Null correlations full set: {np.nanmean(null_correlations)}")
     np.savez(

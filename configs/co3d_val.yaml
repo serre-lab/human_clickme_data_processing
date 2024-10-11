@@ -10,7 +10,7 @@ preprocess_db_data: False
 blur_size: 21
 min_clicks: 10  # Minimum number of clicks for a map to be included
 max_clicks: 75 # Maximum number of clicks for a map to be included
-min_subjects: 10  # Minimum number of subjects for an image to be included
+min_subjects: 5  # Minimum number of subjects for an image to be included
 null_iterations: 10  # For human-to-human ceiling
 percentile_thresh: 50  # For median splits
 filter_mobile: True

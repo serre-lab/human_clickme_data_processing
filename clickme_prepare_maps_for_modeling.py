@@ -107,6 +107,15 @@ if __name__ == "__main__":
             masks=masks,
             mask_threshold=config["mask_threshold"])
 
+    # Filter classes if requested
+    if config["class_filter_file"]:
+        final_clickmaps, all_clickmaps, categories, final_keep_index = utils.filter_classes(
+            final_clickmaps=final_clickmaps,
+            all_clickmaps=all_clickmaps,
+            categories=categories,
+            final_keep_index=final_keep_index,
+            class_filter_file=config["class_filter_file"])
+
     # Visualize if requested
     szs = [len(x) for x in all_clickmaps]
     arg = np.argsort(szs)
