@@ -117,16 +117,13 @@ if __name__ == "__main__":
             class_filter_file=config["class_filter_file"])
 
     # Visualize if requested
-    szs = [len(x) for x in all_clickmaps]
-    arg = np.argsort(szs)
-    tops = np.asarray(final_keep_index)[arg[-10:]]
+    sz_dict = {k: len(v) for k, v in all_clickmaps.items()}
+    arg = np.argsort(list(sz_dict.values()))
+    tops = np.asarray(list(sz_dict.keys()))[arg[-10:]]
     if config["display_image_keys"]:
         # Load images
-        # images, image_names = [], []
         img_heatmaps = {}
         fck = np.asarray([k for k in final_clickmaps.keys()])
-        tfck = [k.split(os.path.sep)[-1] for k in final_clickmaps.keys()]
-        # for image_file in final_clickmaps.keys():
         for image_file in config["display_image_keys"]:
             image_path = os.path.join(config["image_dir"], image_file)
             image = Image.open(image_path)
@@ -136,18 +133,14 @@ if __name__ == "__main__":
                 metadata_size = metadata[click_match[0]]
                 image = image.resize(metadata_size)
             image_name = "_".join(image_path.split('/')[-2:])
-            # images.append(image)
-            # image_names.append(image_file)
-            find_key = [idx for idx, k in enumerate(tfck) if k in image_file]
-            try:
-                assert len(find_key) == 1
-                # find_key = fck[find_key[0]]
-                find_key = find_key[0]
+            check = fck == image_file
+            if check.any():
+                find_key = np.where(check)[0][0]
                 img_heatmaps[image_file] = {
                     "image": image,
-                    "heatmap": all_clickmaps[find_key]
+                    "heatmap": all_clickmaps[fck[find_key]]
                 }
-            except Exception as e:
+            else:
                 print("Image {} not found in final clickmaps".format(image_file))
 
         # And plot

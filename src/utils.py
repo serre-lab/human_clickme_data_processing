@@ -21,7 +21,12 @@ def load_masks(mask_dir, wc="*.pth"):
         # image = loaded[0]
         mask = loaded[1]
         cat = loaded[2]
-        masks[os.path.join(cat, os.path.basename(f).split(".")[0])] = mask
+        try:
+            if isinstance(cat, list):
+                cat = cat[0]
+            masks[os.path.join(cat, os.path.basename(f).split(".")[0])] = mask
+        except:
+            import pdb; pdb.set_trace()
     return masks
 
 def filter_classes(
@@ -61,22 +66,30 @@ def filter_for_foreground_masks(
         categories,
         final_keep_index,
         masks,
-        mask_threshold):
+        mask_threshold,
+        quantize_threshold=0.5):
+    """
+    quantize_threshold: If <= 0, use mean. If > 0, use this probability threshold for binarization.
+    """
     proc_final_clickmaps, proc_all_clickmaps = {}, {}
     proc_categories, proc_final_keep_index = [], []
     # missing = []
     for idx, k in enumerate(final_keep_index):
         mask_key = k.split(".")[0]  # Remove image extension
         if mask_key in masks.keys():
-            mask = masks[mask_key]
+            mask = masks[mask_key].squeeze()
             click_map = all_clickmaps[idx]
-            mean_click_map = np.median(click_map, 0)
-            thresh_click_map = (mean_click_map > mean_click_map.mean()).astype(np.float32)
-            clicks = final_clickmaps[k]
+            mean_click_map = click_map.mean(0)
+            if quantize_threshold <= 0:
+                clickmap_threshold = np.mean(click_map)
+            else:
+                mean_click_map = mean_click_map / mean_click_map.max()
+                clickmap_threshold = quantize_threshold
+            thresh_click_map = (mean_click_map > clickmap_threshold).astype(np.float32)
             try:
                 iou = fast_ious(thresh_click_map, mask)
                 if iou < mask_threshold:
-                    proc_final_clickmaps[k] = clicks
+                    proc_final_clickmaps[k] = final_clickmaps[k]
                     proc_all_clickmaps[k] = click_map
                     proc_categories.append(categories[idx])
                     proc_final_keep_index.append(k)
@@ -351,6 +364,7 @@ def prepare_maps(
             clickmaps = clickmaps[dup_idx]
 
         if len(clickmaps) >= min_subjects:
+            # Store
             all_clickmaps.append(clickmaps)
             categories.append(category)
             keep_index.append(image_key)

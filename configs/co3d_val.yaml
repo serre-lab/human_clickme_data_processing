@@ -20,14 +20,24 @@ center_crop: [256, 256]
 class_filter_file: False  # Filter classes based on co3d class list
 metadata_file: False
 mask_dir: co3d_masks  # Directory containing masks for each image
-mask_threshold: 0.5  # Max IOU threshold for foreground mask overlap
+mask_threshold: 0.17  # Max IOU threshold for foreground mask overlap
 display_image_keys:
-  - mouse/372_41138_81919_renders_00017.png
-  - skateboard/55_3249_9602_renders_00041.png
-  - couch/617_99940_198836_renders_00040.png
-  - microwave/482_69090_134714_renders_00033.png
-  - bottle/601_92782_185443_renders_00030.png
-  - kite/399_51022_100078_renders_00049.png
-  - carrot/405_54110_105495_renders_00039.png
-  - banana/49_2817_7682_renders_00025.png
-  - parkingmeter/429_60366_116962_renders_00032.png
+  # - mouse/372_41138_81919_renders_00017.png
+  # - skateboard/55_3249_9602_renders_00041.png
+  # - couch/617_99940_198836_renders_00040.png
+  # - microwave/482_69090_134714_renders_00033.png
+  # - bottle/601_92782_185443_renders_00030.png
+  # - kite/399_51022_100078_renders_00049.png
+  # - carrot/405_54110_105495_renders_00039.png
+  # - banana/49_2817_7682_renders_00025.png
+  # - parkingmeter/429_60366_116962_renders_00032.png
+  - apple/151_16774_32223_renders_00003.png
+  - toyplane/407_55198_107015_renders_00010.png
+  - remote/217_22926_48923_renders_00001.png
+  - couch/464_65764_129209_renders_00013.png
+  - cake/407_55087_106814_renders_00001.png
+  - carrot/472_66841_131499_renders_00029.png
+  - motorcycle/417_57639_111025_renders_00040.png
+  - parkingmeter/462_65384_128375_renders_00022.png
+  - parkingmeter/462_65384_128375_renders_00047.png
+  - sandwich/537_78078_150780_renders_00034.png
