@@ -84,6 +84,13 @@ if __name__ == "__main__":
         clickmaps = new_clickmaps
         # clickmaps = {k: v for idx, (k, v) in enumerate(clickmaps.items()) if idx < 1000}
 
+    # Filter classes if requested
+    if config["class_filter_file"]:
+        clickmaps = utils.filter_classes(
+            clickmaps=clickmaps,
+            class_filter_file=config["class_filter_file"])
+        clickmaps
+
     # Prepare maps
     final_clickmaps, all_clickmaps, categories, final_keep_index = utils.prepare_maps(
         final_clickmaps=clickmaps,
@@ -106,15 +113,6 @@ if __name__ == "__main__":
             final_keep_index=final_keep_index,
             masks=masks,
             mask_threshold=config["mask_threshold"])
-
-    # Filter classes if requested
-    if config["class_filter_file"]:
-        final_clickmaps, all_clickmaps, categories, final_keep_index = utils.filter_classes(
-            final_clickmaps=final_clickmaps,
-            all_clickmaps=all_clickmaps,
-            categories=categories,
-            final_keep_index=final_keep_index,
-            class_filter_file=config["class_filter_file"])
 
     # Visualize if requested
     sz_dict = {k: len(v) for k, v in all_clickmaps.items()}

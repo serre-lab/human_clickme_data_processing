@@ -29,35 +29,24 @@ def load_masks(mask_dir, wc="*.pth"):
             import pdb; pdb.set_trace()
     return masks
 
+
 def filter_classes(
-        final_clickmaps,
-        all_clickmaps,
-        categories,
-        final_keep_index,
+        clickmaps,
         class_filter_file):
 
     # Import category map from the specified file
     category_map = np.load(
         class_filter_file,
         allow_pickle=True).item()
+    category_map_keys = np.asarray([k for k in category_map.keys()])
 
     # Filter clickmaps based on the category map
-    filtered_final_clickmaps = {}
-    filtered_all_clickmaps = []
-    filtered_categories = []
-    filtered_final_keep_index = []
-
-    for idx, image_path in enumerate(final_keep_index):
+    filtered_clickmaps = {}
+    for image_path, maps in clickmaps.items():
         category = image_path.split('/')[0]  # Assuming category is the first part of the path
-        synset = next((k for k, v in category_map.items() if v == category), None)
-        
-        if synset:  # If the category is in our filter list
-            filtered_final_clickmaps[image_path] = final_clickmaps[image_path]
-            filtered_all_clickmaps.append(all_clickmaps[idx])
-            filtered_categories.append(categories[idx])
-            filtered_final_keep_index.append(image_path)
-
-    return filtered_final_clickmaps, filtered_all_clickmaps, filtered_categories, filtered_final_keep_index
+        if category in category_map_keys:  # If the category is in our filter list
+            filtered_clickmaps[image_path] = maps
+    return filtered_clickmaps
 
 
 def filter_for_foreground_masks(
