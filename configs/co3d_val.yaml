@@ -5,7 +5,7 @@ processed_medians: "co3d_val_medians.json"
 example_image_output_dir: "co3d_val_images"
 debug: False
 assets: "assets"
-image_dir: CO3D_ClickMe2
+image_dir: /media/data_cifs/projects/prj_video_imagenet/CO3D_ClickMe2  # Location of images
 preprocess_db_data: False
 blur_size: 21
 min_clicks: 10  # Minimum number of clicks for a map to be included
