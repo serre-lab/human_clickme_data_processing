@@ -222,9 +222,9 @@ def process_clickmap_files(
     import pdb;pdb.set_trace()
     for _, row in clickme_data.iterrows():
         image_file_name = os.path.sep.join(row['image_path'].split(os.path.sep)[-2:])
-        if file_inclusion_filter is not None and file_inclusion_filter not in image_file_name:
+        if file_inclusion_filter and file_inclusion_filter not in image_file_name:
             continue
-        if file_exclusion_filter is not None and file_exclusion_filter in image_file_name:
+        if file_exclusion_filter and file_exclusion_filter in image_file_name:
             continue
         if image_file_name not in clickmaps.keys():
             clickmaps[image_file_name] = [row["clicks"]]

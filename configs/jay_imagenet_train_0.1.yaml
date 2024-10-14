@@ -21,8 +21,8 @@ class_filter_file: False  # Filter classes based on co3d class list
 remove_string: "imagenet/train/"
 image_path: /media/data_cifs/projects/prj_video_imagenet/imagenet/ILSVRC/Data/CLS-LOC/train
 metadata_file: "image_metadata/jay_imagenet_train_0.1_dimensions.npy"  # Per image sizes
-file_inclusion_filter: None  # Only include images that match this string
-file_exclusion_filter: None  # Exclude images that match this string
+file_inclusion_filter: False  # Only include images that match this string
+file_exclusion_filter: False  # Exclude images that match this string
 mask_dir: False  # Directory containing masks for each image
 mask_threshold: 1  # Max IOU threshold for foreground mask overlap
 participant_filter: False
