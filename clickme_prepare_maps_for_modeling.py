@@ -69,7 +69,6 @@ if __name__ == "__main__":
     os.makedirs(output_dir, exist_ok=True)
 
     # Process files in serial
-    import pdb; pdb.set_trace()
     clickmaps, clickmap_counts = utils.process_clickmap_files(
         clickme_data=clickme_data,
         file_inclusion_filter=config["file_inclusion_filter"],
