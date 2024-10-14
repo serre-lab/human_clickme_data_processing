@@ -58,7 +58,8 @@ def main(
 
 if __name__ == "__main__":
     config_file = utils.get_config(sys.argv)
+    config = utils.process_config(config_file)
     main(
-        experiment_name=config_file["experiment_name"],
-        click_dump=config_file["clickme_data"],
+        experiment_name=config["experiment_name"],
+        click_dump=config["clickme_data"],
     )
