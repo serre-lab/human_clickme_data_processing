@@ -142,7 +142,7 @@ if __name__ == "__main__":
                 find_key = np.where(check)[0][0]
                 img_heatmaps[image_file] = {
                     "image": image,
-                    "heatmap": np.asarray(final_clickmaps[fck[find_key]])
+                    "heatmap": all_clickmaps[fck[find_key]]
                 }
             else:
                 print("Image {} not found in final clickmaps".format(image_file))
