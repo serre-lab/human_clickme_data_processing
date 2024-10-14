@@ -5,7 +5,7 @@ processed_medians: "jay_imagenet_val_0.1_medians.json"
 example_image_output_dir: "jay_imagenet_val_0.1_images"
 debug: False
 assets: "assets"
-image_dir: ImageNet
+image_dir: /media/data_cifs/projects/prj_video_imagenet/imagenet/ILSVRC/Data/CLS-LOC/val2
 preprocess_db_data: True
 blur_size: 21
 min_clicks: 10  # Minimum number of clicks for a map to be included
@@ -27,13 +27,13 @@ mask_dir: False  # Directory containing masks for each image
 mask_threshold: 1  # Max IOU threshold for foreground mask overlap
 participant_filter: False
 display_image_keys:
-- ILSVRC2012_val_00009492.JPEG
-- ILSVRC2012_val_00032959.JPEG
-- ILSVRC2012_val_00048414.JPEG
-- ILSVRC2012_val_00033949.JPEG
-- ILSVRC2012_val_00011212.JPEG
-- ILSVRC2012_val_00044671.JPEG
-- ILSVRC2012_val_00021923.JPEG
-- ILSVRC2012_val_00043013.JPEG
-- ILSVRC2012_val_00007272.JPEG
-- ILSVRC2012_val_00011751.JPEG
+- n04335435/ILSVRC2012_val_00032692.JPEG
+- n04429376/ILSVRC2012_val_00044863.JPEG
+- n03769881/ILSVRC2012_val_00042007.JPEG
+- n04467665/ILSVRC2012_val_00029849.JPEG
+- n04429376/ILSVRC2012_val_00022850.JPEG
+- n02823428/ILSVRC2012_val_00031840.JPEG
+- n03761084/ILSVRC2012_val_00039433.JPEG
+- n03445777/ILSVRC2012_val_00017247.JPEG
+- n07747607/ILSVRC2012_val_00027083.JPEG
+- n07714990/ILSVRC2012_val_00005143.JPEG
