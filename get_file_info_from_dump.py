@@ -62,4 +62,6 @@ if __name__ == "__main__":
     main(
         experiment_name=config["experiment_name"],
         click_dump=config["clickme_data"],
+        remove_string=config["remove_string"],
+        image_path=config["image_path"],
     )

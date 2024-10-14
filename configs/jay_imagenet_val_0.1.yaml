@@ -18,7 +18,9 @@ metric: auc  # AUC, crossentropy, spearman, RSA
 image_shape: [256, 256]
 center_crop: [256, 256]
 class_filter_file: False  # Filter classes based on co3d class list
-metadata_file: "image_metadata/jay_imagenet_val_0.1_dimensions.npy"  # Per image sizes
+remove_string: imagenet/val/
+image_path: /media/data_cifs/projects/prj_video_imagenet/imagenet/ILSVRC/Data/CLS-LOC/val2
+metadata_file: image_metadata/jay_imagenet_val_0.1_dimensions.npy  # Per image sizes
 mask_dir: False  # Directory containing masks for each image
 mask_threshold: 1  # Max IOU threshold for foreground mask overlap
 participant_filter: False
