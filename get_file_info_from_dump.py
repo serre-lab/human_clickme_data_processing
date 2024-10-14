@@ -8,7 +8,7 @@ from src import utils
 
 
 # Load images and read dimensions using Joblib parallelization
-def get_image_size(prep_file):
+def get_image_size(image_path, prep_file):
     img_path = os.path.join(image_path, prep_file)
     try:
         with Image.open(img_path) as img:
@@ -39,7 +39,7 @@ def main(
     if parallel:
         unique_prep_files = np.unique(prep_files)
         results = Parallel(n_jobs=-1)(
-            delayed(get_image_size)(pf) for pf in tqdm(unique_prep_files, desc="Reading dimensions")
+            delayed(get_image_size)(image_path, pf) for pf in tqdm(unique_prep_files, desc="Reading dimensions")
         )
         dimensions = {pf: size for pf, size in results if size is not None}
     else:
