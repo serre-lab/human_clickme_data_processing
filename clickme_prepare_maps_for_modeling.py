@@ -131,7 +131,7 @@ if __name__ == "__main__":
             image_path = os.path.join(config["image_dir"], image_file)
             image = Image.open(image_path)
             if metadata:
-                click_match = [k_ for k_ in clickmaps.keys() if image_file in k_]
+                click_match = [k_ for k_ in final_clickmaps.keys() if image_file in k_]
                 assert len(click_match) == 1, "Clickmap not found"
                 metadata_size = metadata[click_match[0]]
                 image = image.resize(metadata_size)
@@ -141,7 +141,7 @@ if __name__ == "__main__":
                 find_key = np.where(check)[0][0]
                 img_heatmaps[image_file] = {
                     "image": image,
-                    "heatmap": all_clickmaps[fck[find_key]]
+                    "heatmap": final_clickmaps[fck[find_key]]
                 }
             else:
                 print("Image {} not found in final clickmaps".format(image_file))
