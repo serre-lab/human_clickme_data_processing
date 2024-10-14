@@ -10,6 +10,8 @@ from tqdm import tqdm
 from torchvision.transforms import functional as tvF
 from scipy.spatial.distance import cdist
 from glob import glob
+from train_subject_classifier import RNN
+from accelerate import Accelerator
 
 
 def load_masks(mask_dir, wc="*.pth"):
@@ -47,6 +49,54 @@ def filter_classes(
         if category in category_map_keys:  # If the category is in our filter list
             filtered_clickmaps[image_path] = maps
     return filtered_clickmaps
+
+
+def filter_participants(clickmaps, metadata_file="participant_model_metadata.npz", debug=False):
+    metadata = np.load(metadata_file)
+    max_x = metadata["max_x"]
+    max_y = metadata["max_y"]
+    click_div = int(metadata["click_div"])
+    n_hidden = int(metadata["n_hidden"])
+    input_dim = int(metadata["input_dim"])
+    n_classes = int(metadata["n_classes"])
+    accelerator = Accelerator()
+    device = accelerator.device
+
+    # Load the model
+    ckpts = glob(os.path.join("checkpoints", "*.pth"))
+    sorted_ckpts = sorted(ckpts, key=os.path.getmtime)[-1]
+    model = RNN(input_dim, n_hidden, n_classes)
+    model.load_state_dict(torch.load(sorted_ckpts))
+    model.eval()
+    model.to(device)
+
+    # Get the predictions
+    processed_clickmaps = {}
+    remove_count = 0
+    for image_path, maps in tqdm(clickmaps.items(), desc="Filtering participants", total=len(clickmaps)):
+        # Prepare the data
+        new_maps = []
+        for map in maps:
+            clicks = np.asarray(map) // click_div
+            x_enc = np.zeros((len(clicks), max_x))
+            y_enc = np.zeros((len(clicks), max_y))
+            x_enc[:, clicks[:, 0]] = 1
+            y_enc[:, clicks[:, 1]] = 1
+            click_enc = np.concatenate((x_enc, y_enc), 1)
+            click_enc = torch.from_numpy(click_enc).float().to(device)
+            pred = model(click_enc[None])
+            if debug:
+                # Take the cheaters
+                pred = pred.argmin(1).item()
+            else:
+                pred = pred.argmax(1).item()
+            if pred:
+                new_maps.append(map)
+            else:
+                remove_count += 1
+        processed_clickmaps[image_path] = new_maps
+    print(f"Removed {remove_count} participant maps")
+    return processed_clickmaps
 
 
 def filter_for_foreground_masks(

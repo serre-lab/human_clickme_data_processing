@@ -21,6 +21,7 @@ class_filter_file: False  # Filter classes based on co3d class list
 metadata_file: "image_metadata/imagenet_validation_clickme_dimensions.npy"  # Per image sizes
 mask_dir: False  # Directory containing masks for each image
 mask_threshold: 1  # Max IOU threshold for foreground mask overlap
+participant_filter: False
 display_image_keys:
 - ILSVRC2012_val_00009492.JPEG
 - ILSVRC2012_val_00032959.JPEG

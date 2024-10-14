@@ -89,7 +89,10 @@ if __name__ == "__main__":
         clickmaps = utils.filter_classes(
             clickmaps=clickmaps,
             class_filter_file=config["class_filter_file"])
-        clickmaps
+
+    # Filter participants if requested
+    if config["participant_filter"]:
+        clickmaps = utils.filter_participants(clickmaps)
 
     # Prepare maps
     final_clickmaps, all_clickmaps, categories, final_keep_index = utils.prepare_maps(
