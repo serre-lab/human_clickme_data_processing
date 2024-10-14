@@ -4,7 +4,7 @@ import numpy as np
 from PIL import Image
 from tqdm import tqdm
 from joblib import Parallel, delayed
-import utils
+from src import utils
 
 
 # Load images and read dimensions using Joblib parallelization
