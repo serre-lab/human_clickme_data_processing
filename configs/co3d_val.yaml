@@ -21,6 +21,7 @@ class_filter_file: False  # Filter classes based on co3d class list
 metadata_file: False
 mask_dir: co3d_masks  # Directory containing masks for each image
 mask_threshold: 0.17  # Max IOU threshold for foreground mask overlap
+participant_filter: False
 display_image_keys:
   # - mouse/372_41138_81919_renders_00017.png
   # - skateboard/55_3249_9602_renders_00041.png
