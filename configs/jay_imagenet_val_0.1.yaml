@@ -26,14 +26,14 @@ file_exclusion_filter: False  # Exclude images that match this string
 mask_dir: False  # Directory containing masks for each image
 mask_threshold: 1  # Max IOU threshold for foreground mask overlap
 participant_filter: False
-display_image_keys:
-- ILSVRC2012_val_00009492.JPEG
-- ILSVRC2012_val_00032959.JPEG
-- ILSVRC2012_val_00048414.JPEG
-- ILSVRC2012_val_00033949.JPEG
-- ILSVRC2012_val_00011212.JPEG
-- ILSVRC2012_val_00044671.JPEG
-- ILSVRC2012_val_00021923.JPEG
-- ILSVRC2012_val_00043013.JPEG
-- ILSVRC2012_val_00007272.JPEG
-- ILSVRC2012_val_00011751.JPEG
+display_image_keys: auto   # If "auto", will display the top-10 clicked
+# - ILSVRC2012_val_00009492.JPEG
+# - ILSVRC2012_val_00032959.JPEG
+# - ILSVRC2012_val_00048414.JPEG
+# - ILSVRC2012_val_00033949.JPEG
+# - ILSVRC2012_val_00011212.JPEG
+# - ILSVRC2012_val_00044671.JPEG
+# - ILSVRC2012_val_00021923.JPEG
+# - ILSVRC2012_val_00043013.JPEG
+# - ILSVRC2012_val_00007272.JPEG
+# - ILSVRC2012_val_00011751.JPEG

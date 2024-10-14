@@ -124,6 +124,8 @@ if __name__ == "__main__":
     arg = np.argsort(list(sz_dict.values()))
     tops = np.asarray(list(sz_dict.keys()))[arg[-10:]]
     if config["display_image_keys"]:
+        if config["display_image_keys"] == "auto":
+            config["display_image_keys"] = tops
         # Load images
         img_heatmaps = {}
         fck = np.asarray([k for k in final_clickmaps.keys()])

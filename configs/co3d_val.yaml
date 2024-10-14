@@ -24,14 +24,14 @@ file_exclusion_filter: ILSVRC2012_val  # Exclude images that match this string
 mask_dir: co3d_masks  # Directory containing masks for each image
 mask_threshold: 0.17  # Max IOU threshold for foreground mask overlap
 participant_filter: False
-display_image_keys:
-  - apple/151_16774_32223_renders_00003.png
-  - toyplane/407_55198_107015_renders_00010.png
-  - remote/217_22926_48923_renders_00001.png
-  - couch/464_65764_129209_renders_00013.png
-  - cake/407_55087_106814_renders_00001.png
-  - carrot/472_66841_131499_renders_00029.png
-  - motorcycle/417_57639_111025_renders_00040.png
-  - parkingmeter/462_65384_128375_renders_00022.png
-  - parkingmeter/462_65384_128375_renders_00047.png
-  - sandwich/537_78078_150780_renders_00034.png
+display_image_keys: auto   # If "auto", will display the top-10 clicked
+  # - apple/151_16774_32223_renders_00003.png
+  # - toyplane/407_55198_107015_renders_00010.png
+  # - remote/217_22926_48923_renders_00001.png
+  # - couch/464_65764_129209_renders_00013.png
+  # - cake/407_55087_106814_renders_00001.png
+  # - carrot/472_66841_131499_renders_00029.png
+  # - motorcycle/417_57639_111025_renders_00040.png
+  # - parkingmeter/462_65384_128375_renders_00022.png
+  # - parkingmeter/462_65384_128375_renders_00047.png
+  # - sandwich/537_78078_150780_renders_00034.png
