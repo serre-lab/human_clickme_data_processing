@@ -73,28 +73,29 @@ def filter_participants(clickmaps, metadata_file="participant_model_metadata.npz
     # Get the predictions
     processed_clickmaps = {}
     remove_count = 0
-    for image_path, maps in tqdm(clickmaps.items(), desc="Filtering participants", total=len(clickmaps)):
-        # Prepare the data
-        new_maps = []
-        for map in maps:
-            clicks = np.asarray(map) // click_div
-            x_enc = np.zeros((len(clicks), max_x))
-            y_enc = np.zeros((len(clicks), max_y))
-            x_enc[:, clicks[:, 0]] = 1
-            y_enc[:, clicks[:, 1]] = 1
-            click_enc = np.concatenate((x_enc, y_enc), 1)
-            click_enc = torch.from_numpy(click_enc).float().to(device)
-            pred = model(click_enc[None])
-            if debug:
-                # Take the cheaters
-                pred = pred.argmin(1).item()
-            else:
-                pred = pred.argmax(1).item()
-            if pred:
-                new_maps.append(map)
-            else:
-                remove_count += 1
-        processed_clickmaps[image_path] = new_maps
+    with torch.no_grad():
+        for image_path, maps in tqdm(clickmaps.items(), desc="Filtering participants", total=len(clickmaps)):
+            # Prepare the data
+            new_maps = []
+            for map in maps:
+                clicks = np.asarray(map) // click_div
+                x_enc = np.zeros((len(clicks), max_x))
+                y_enc = np.zeros((len(clicks), max_y))
+                x_enc[:, clicks[:, 0]] = 1
+                y_enc[:, clicks[:, 1]] = 1
+                click_enc = np.concatenate((x_enc, y_enc), 1)
+                click_enc = torch.from_numpy(click_enc).float().to(device)
+                pred = model(click_enc[None])
+                if debug:
+                    # Take the cheaters
+                    pred = pred.argmin(1).item()
+                else:
+                    pred = pred.argmax(1).item()
+                if pred:
+                    new_maps.append(map)
+                else:
+                    remove_count += 1
+            processed_clickmaps[image_path] = new_maps
     print(f"Removed {remove_count} participant maps")
 
     # Remove empty images
