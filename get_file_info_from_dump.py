@@ -19,11 +19,11 @@ def get_image_size(image_path, prep_file):
 
 
 def main(
-        experiment_name="imagenet_validation_clickme",
-        click_dump="clickme_datasets/prj_clickmev2_val_imagenet_10_10_2024.npz",
-        filter="imagenet/val",
-        remove_string="imagenet/val/",
-        image_path="/media/data_cifs/projects/prj_video_imagenet/imagenet/ILSVRC/Data/CLS-LOC/val2",
+        experiment_name,
+        click_dump,
+        filter,
+        remove_string,
+        image_path,
         parallel=True
     ):
 
