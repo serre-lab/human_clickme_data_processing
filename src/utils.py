@@ -338,7 +338,6 @@ def prepare_maps(
     keep_index = []
     categories = []
     count = 0
-    import pdb; pdb.set_trace()
     for image_key in tqdm(final_clickmaps, desc="Preparing maps", total=len(final_clickmaps)):
         count += 1
         category = image_key.split("/")[0]
