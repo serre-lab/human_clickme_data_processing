@@ -65,7 +65,9 @@ def main(
         mask_dir=None,
         mask_threshold=0.5,
         class_filter_file=False,
-        participant_filter=False
+        participant_filter=False,
+        file_inclusion_filter=None,
+        file_exclusion_filter=None,
     ):
     """
     Calculate split-half correlations for clickmaps across different image categories.
@@ -91,6 +93,8 @@ def main(
     # Process files in serial
     clickmaps, _ = utils.process_clickmap_files(
         clickme_data=clickme_data,
+        file_inclusion_filter=file_inclusion_filter,
+        file_exclusion_filter=file_exclusion_filter,
         min_clicks=min_clicks,
         max_clicks=max_clicks)
 
@@ -248,7 +252,9 @@ if __name__ == "__main__":
         mask_dir=config["mask_dir"],
         mask_threshold=config["mask_threshold"],
         class_filter_file=config["class_filter_file"],
-        participant_filter=config["participant_filter"])
+        participant_filter=config["participant_filter"],
+        file_inclusion_filter=config["file_inclusion_filter"],
+        file_exclusion_filter=config["file_exclusion_filter"])
     print(f"Mean human correlation full set: {np.nanmean(all_correlations)}")
     print(f"Null correlations full set: {np.nanmean(null_correlations)}")
     np.savez(

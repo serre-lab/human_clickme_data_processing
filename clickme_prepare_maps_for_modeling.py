@@ -71,6 +71,8 @@ if __name__ == "__main__":
     # Process files in serial
     clickmaps, clickmap_counts = utils.process_clickmap_files(
         clickme_data=clickme_data,
+        file_inclusion_filter=config["file_inclusion_filter"],
+        file_exclusion_filter=config["file_exclusion_filter"],
         min_clicks=config["min_clicks"],
         max_clicks=config["max_clicks"])
 
