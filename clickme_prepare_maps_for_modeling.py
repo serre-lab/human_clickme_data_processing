@@ -120,7 +120,7 @@ if __name__ == "__main__":
             mask_threshold=config["mask_threshold"])
 
     # Visualize if requested
-    sz_dict = {k: len(v) for k, v in all_clickmaps.items()}
+    sz_dict = {k: len(v) for k, v in final_clickmaps.items()}
     arg = np.argsort(list(sz_dict.values()))
     tops = np.asarray(list(sz_dict.keys()))[arg[-10:]]
     if config["display_image_keys"]:
