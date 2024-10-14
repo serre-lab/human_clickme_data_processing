@@ -109,7 +109,6 @@ if __name__ == "__main__":
         center_crop=False)
 
     # Filter for foreground mask overlap if requested
-    import pdb; pdb.set_trace()
     if config["mask_dir"]:
         masks = utils.load_masks(config["mask_dir"])
         final_clickmaps, all_clickmaps, categories, final_keep_index = utils.filter_for_foreground_masks(
@@ -140,6 +139,7 @@ if __name__ == "__main__":
             check = fck == image_file
             if check.any():
                 find_key = np.where(check)[0][0]
+                import pdb; pdb.set_trace()
                 img_heatmaps[image_file] = {
                     "image": image,
                     "heatmap": all_clickmaps[fck[find_key]]
