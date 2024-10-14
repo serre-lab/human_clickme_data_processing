@@ -96,6 +96,9 @@ def filter_participants(clickmaps, metadata_file="participant_model_metadata.npz
                 remove_count += 1
         processed_clickmaps[image_path] = new_maps
     print(f"Removed {remove_count} participant maps")
+
+    # Remove empty images
+    processed_clickmaps = {k: v for k, v in processed_clickmaps.items() if len(v)}
     return processed_clickmaps
 
 
