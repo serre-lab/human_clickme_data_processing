@@ -139,10 +139,9 @@ if __name__ == "__main__":
             check = fck == image_file
             if check.any():
                 find_key = np.where(check)[0][0]
-                import pdb; pdb.set_trace()
                 img_heatmaps[image_file] = {
                     "image": image,
-                    "heatmap": all_clickmaps[fck[find_key]]
+                    "heatmap": all_clickmaps[find_key]
                 }
             else:
                 print("Image {} not found in final clickmaps".format(image_file))
