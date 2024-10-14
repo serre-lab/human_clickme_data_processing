@@ -53,7 +53,7 @@ def main(
                 print(f"Error processing {prep_file}: {e}")
 
     # Save to file
-    np.save(f"{experiment_name}_dimensions.npy", dimensions)
+    np.save(os.path.join("image_metadata", f"{experiment_name}_dimensions.npy"), dimensions)
 
 
 if __name__ == "__main__":
