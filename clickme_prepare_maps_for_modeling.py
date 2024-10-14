@@ -139,6 +139,7 @@ if __name__ == "__main__":
             check = fck == image_file
             if check.any():
                 find_key = np.where(check)[0][0]
+                import pdb;pdb.set_trace()
                 img_heatmaps[image_file] = {
                     "image": image,
                     "heatmap": np.asarray(final_clickmaps[fck[find_key]])
