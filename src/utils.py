@@ -1,5 +1,7 @@
 import re
 import os
+import sys
+sys.path.append(os.path.abspath('../../'))
 import torch
 import yaml
 import numpy as np
