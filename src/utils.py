@@ -118,7 +118,7 @@ def filter_for_foreground_masks(
     proc_all_clickmaps = []
     proc_categories = []
     # missing = []
-    for idx, k in enumerate(final_keep_index):
+    for idx, k in enumerate(final_clickmaps.keys()):
         mask_key = k.split(".")[0]  # Remove image extension
         if mask_key in masks.keys():
             mask = masks[mask_key].squeeze()
