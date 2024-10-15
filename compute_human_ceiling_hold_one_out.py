@@ -62,9 +62,10 @@ def main(
         blur_sigma_function=None,
         mask_dir=None,
         mask_threshold=0.5,
-        class_filter_file=None,
-        file_inclusion_filter=None,
-        file_exclusion_filter=None,
+        class_filter_file=False,
+        participant_filter=False,
+        file_inclusion_filter=False,
+        file_exclusion_filter=False,
     ):
     """
     Calculate split-half correlations for clickmaps across different image categories.
@@ -94,6 +95,16 @@ def main(
         file_inclusion_filter=file_inclusion_filter,
         file_exclusion_filter=file_exclusion_filter)
 
+    # Filter classes if requested
+    if class_filter_file:
+        clickmaps = utils.filter_classes(
+            clickmaps=clickmaps,
+            class_filter_file=class_filter_file)
+
+    # Filter participants if requested
+    if participant_filter:
+        clickmaps = utils.filter_participants(clickmaps)
+
     # Prepare maps
     final_clickmaps, all_clickmaps, categories, _ = utils.prepare_maps(
         final_clickmaps=clickmaps,
@@ -105,16 +116,6 @@ def main(
         metadata=metadata,
         blur_sigma_function=blur_sigma_function,
         center_crop=center_crop)
-
-    # Filter classes if requested
-    if config["class_filter_file"]:
-        clickmaps = utils.filter_classes(
-            clickmaps=clickmaps,
-            class_filter_file=config["class_filter_file"])
-
-    # Filter participants if requested
-    if config["participant_filter"]:
-        clickmaps = utils.filter_participants(clickmaps)
 
     if debug:
         for imn in range(len(final_clickmaps)):
