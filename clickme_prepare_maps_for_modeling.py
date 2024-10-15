@@ -131,6 +131,7 @@ if __name__ == "__main__":
         fck = np.asarray([k for k in final_clickmaps.keys()])
         for image_file in config["display_image_keys"]:
             image_path = os.path.join(config["image_dir"], image_file)
+            import pdb; pdb.set_trace()
             image = Image.open(image_path)
             if metadata:
                 click_match = [k_ for k_ in final_clickmaps.keys() if image_file in k_]
