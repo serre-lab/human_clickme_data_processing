@@ -115,7 +115,6 @@ if __name__ == "__main__":
             final_clickmaps=final_clickmaps,
             all_clickmaps=all_clickmaps,
             categories=categories,
-            final_keep_index=final_keep_index,
             masks=masks,
             mask_threshold=config["mask_threshold"])
 
