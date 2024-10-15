@@ -141,13 +141,12 @@ if __name__ == "__main__":
     # Filter for foreground mask overlap if requested
     if config["mask_dir"]:
         masks = utils.load_masks(config["mask_dir"])
-        final_clickmaps, all_clickmaps, categories = utils.filter_for_foreground_masks(
+        final_clickmaps, all_clickmaps, categories, final_keep_index = utils.filter_for_foreground_masks(
             final_clickmaps=final_clickmaps,
             all_clickmaps=all_clickmaps,
             categories=categories,
             masks=masks,
             mask_threshold=config["mask_threshold"])
-
     # Visualize if requested
     sz_dict = {k: len(v) for k, v in final_clickmaps.items()}
     arg = np.argsort(list(sz_dict.values()))
@@ -207,16 +206,22 @@ if __name__ == "__main__":
         f.write(medians_json)
 
     img_heatmaps = {}
-    for img_name in final_keep_index:
-        if not os.path.exists(os.path.join(config["image_dir"], img_name)):
-            print(os.path.join(config["image_dir"], img_name))
+    for i, img_name in enumerate(final_keep_index):
+        if not os.path.exists(os.path.join(config["image_path"], img_name)):
+            print(os.path.join(config["image_path"], img_name))
             continue
         if img_name not in final_clickmaps.keys():
             continue
-        hmp = final_clickmaps[img_name]
-        img = Image.open(os.path.join(config["image_dir"], img_name))
+        hmp = all_clickmaps[i]
+        img = Image.open(os.path.join(config["image_path"], img_name))
+        if metadata:
+            click_match = [k_ for k_ in final_clickmaps.keys() if img_name in k_]
+            assert len(click_match) == 1, "Clickmap not found"
+            metadata_size = metadata[click_match[0]]
+            img = img.resize(metadata_size)
+
         img_heatmaps[img_name] = {"image":img, "heatmap":hmp}
-    
+    print(len(img_heatmaps))
     np.savez(os.path.join(output_dir,  config["processed_clickme_file"]), 
             **img_heatmaps
             )
