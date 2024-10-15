@@ -1,8 +1,8 @@
-experiment_name: jay_imagenet_val_0.1
+experiment_name: jay_imagenet_for_co3d_val_0.1
 clickme_data: clickme_datasets/prj_clickmev2_val_imagenet_10_10_2024.npz
-processed_clickme_file: "jay_imagenet_val_0.1_processed.npz"
-processed_medians: "jay_imagenet_val_0.1_medians.json"
-example_image_output_dir: "jay_imagenet_val_0.1_images"
+processed_clickme_file: "jay_imagenet_for_co3d_val_0.1_processed.npz"
+processed_medians: "jay_imagenet_for_co3d_val_0.1_medians.json"
+example_image_output_dir: "jay_imagenet_for_co3d_val_0.1_images"
 debug: False
 assets: "assets"
 preprocess_db_data: True
