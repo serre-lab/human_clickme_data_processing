@@ -5,7 +5,6 @@ processed_medians: "jay_imagenet_train_0.1_medians.json"
 example_image_output_dir: "jay_imagenet_0.1_images"
 debug: False
 assets: "assets"
-image_dir: ImageNet
 preprocess_db_data: True
 blur_size: 21
 min_clicks: 10  # Minimum number of clicks for a map to be included

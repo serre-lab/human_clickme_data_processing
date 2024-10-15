@@ -130,7 +130,7 @@ if __name__ == "__main__":
         img_heatmaps = {}
         fck = np.asarray([k for k in final_clickmaps.keys()])
         for image_file in config["display_image_keys"]:
-            image_path = os.path.join(config["image_dir"], image_file)
+            image_path = os.path.join(config["image_path"], image_file)
             import pdb; pdb.set_trace()
             image = Image.open(image_path)
             if metadata:

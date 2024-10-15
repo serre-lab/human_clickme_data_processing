@@ -47,7 +47,7 @@ def compute_inner_correlations(i, all_clickmaps, category_indices, metric):
 
 def main(
         clickme_data,
-        clickme_folder,
+        clickme_image_folder,
         debug=False,
         blur_size=11 * 2,
         blur_sigma=np.sqrt(11 * 2),
@@ -119,7 +119,7 @@ def main(
     if debug:
         for imn in range(len(final_clickmaps)):
             f = [x for x in final_clickmaps.keys()][imn]
-            image_path = os.path.join(clickme_folder, f)
+            image_path = os.path.join(clickme_image_folder, f)
             image_data = Image.open(image_path)
             for idx in range(min(len(all_clickmaps[imn]), 18)):
                 plt.subplot(4, 5, idx + 1)
@@ -209,7 +209,7 @@ if __name__ == "__main__":
         min_pixels=min_pixels,
         debug=config["debug"],
         blur_size=blur_size,
-        clickme_folder=config["image_dir"],
+        clickme_image_folder=config["image_path"],
         null_iterations=config["null_iterations"],
         image_shape=config["image_shape"],
         center_crop=config["center_crop"],
