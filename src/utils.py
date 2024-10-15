@@ -224,12 +224,13 @@ def process_clickmap_files(
     clickmaps = {}
     import pdb; pdb.set_trace()
     if file_inclusion_filter == "CO3D_ClickmeV2":
-        image_files = glob(os.path.join(image_path, "*"))
+        # Patch for val co3d
+        image_files = glob(os.path.join(image_path, "**", "*.png"))
     for _, row in clickme_data.iterrows():
         image_file_name = os.path.sep.join(row['image_path'].split(os.path.sep)[-2:])
-        # Patch for val co3d
         if file_inclusion_filter == "CO3D_ClickmeV2":
-            if image_file_name not in image_files:
+            # Patch for val co3d
+            if not np.any([image_file_name in x for x in image_files]):
                 continue
         elif file_inclusion_filter and file_inclusion_filter not in image_file_name:
             continue
