@@ -153,7 +153,7 @@ def main(
     # Filter for foreground mask overlap if requested
     if mask_dir:
         masks = utils.load_masks(mask_dir)
-        final_clickmaps, all_clickmaps, categories = utils.filter_for_foreground_masks(
+        final_clickmaps, all_clickmaps, categories, _ = utils.filter_for_foreground_masks(
             final_clickmaps=final_clickmaps,
             all_clickmaps=all_clickmaps,
             categories=categories,

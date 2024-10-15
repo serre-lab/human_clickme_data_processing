@@ -115,10 +115,10 @@ def filter_for_foreground_masks(
     """
     quantize_threshold: If <= 0, use mean. If > 0, use this probability threshold for binarization.
     """
-    # proc_final_clickmaps, proc_all_clickmaps = {}, {}
     proc_final_clickmaps = {}
     proc_all_clickmaps = []
     proc_categories = []
+    proc_final_keep_index = []
     # missing = []
     for idx, k in enumerate(final_clickmaps.keys()):
         mask_key = k.split(".")[0]  # Remove image extension
@@ -139,7 +139,7 @@ def filter_for_foreground_masks(
                     # proc_all_clickmaps[k] = click_map
                     proc_all_clickmaps.append(click_map)
                     proc_categories.append(categories[idx])
-                    # proc_final_keep_index.append(k)
+                    proc_final_keep_index.append(k)
                 else:
                     pass
                     # import pdb; pdb.set_trace()
@@ -149,7 +149,7 @@ def filter_for_foreground_masks(
         else:
             print(f"No mask found for {mask_key}")
             # missing.append(mask_key)
-    return proc_final_clickmaps, proc_all_clickmaps, proc_categories
+    return proc_final_clickmaps, proc_all_clickmaps, proc_categories, proc_final_keep_index
 
 
 def process_clickme_data(data_file, filter_mobile, catch_thresh=0.95):
