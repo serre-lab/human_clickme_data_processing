@@ -107,7 +107,6 @@ def filter_for_foreground_masks(
         final_clickmaps,
         all_clickmaps,
         categories,
-        final_keep_index,
         masks,
         mask_threshold,
         quantize_threshold=0.5):
