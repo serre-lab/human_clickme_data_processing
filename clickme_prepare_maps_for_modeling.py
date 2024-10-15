@@ -141,11 +141,11 @@ if __name__ == "__main__":
     # Filter for foreground mask overlap if requested
     if config["mask_dir"]:
         masks = utils.load_masks(config["mask_dir"])
-        final_clickmaps, all_clickmaps, categories, final_keep_index = utils.filter_for_foreground_masks(
+        final_clickmaps, all_clickmaps, categories = utils.filter_for_foreground_masks(
             final_clickmaps=final_clickmaps,
             all_clickmaps=all_clickmaps,
             categories=categories,
-            final_keep_index=final_keep_index,
+            #final_keep_index=final_keep_index,
             masks=masks,
             mask_threshold=config["mask_threshold"])
 
@@ -212,7 +212,9 @@ if __name__ == "__main__":
         if not os.path.exists(os.path.join(config["image_dir"], img_name)):
             print(os.path.join(config["image_dir"], img_name))
             continue
-        hmp = all_clickmaps[img_name]
+        if img_name not in final_clickmaps.keys():
+            continue
+        hmp = final_clickmaps[img_name]
         img = Image.open(os.path.join(config["image_dir"], img_name))
         img_heatmaps[img_name] = {"image":img, "heatmap":hmp}
     
