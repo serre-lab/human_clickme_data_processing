@@ -222,7 +222,6 @@ def process_clickmap_files(
         file_exclusion_filter=None,
         process_max="trim"):
     clickmaps = {}
-    import pdb; pdb.set_trace()
     if file_inclusion_filter == "CO3D_ClickmeV2":
         # Patch for val co3d
         image_files = glob(os.path.join(image_path, "**", "*.png"))
