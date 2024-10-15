@@ -93,6 +93,7 @@ def main(
     # Process files in serial
     clickmaps, _ = utils.process_clickmap_files(
         clickme_data=clickme_data,
+        image_path=clickme_image_folder,
         file_inclusion_filter=file_inclusion_filter,
         file_exclusion_filter=file_exclusion_filter,
         min_clicks=min_clicks,
