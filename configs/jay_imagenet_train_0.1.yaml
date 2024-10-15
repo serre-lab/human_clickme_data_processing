@@ -1,8 +1,8 @@
 experiment_name: jay_imagenet_train_0.1
 clickme_data: clickme_datasets/prj_clickmev2_train_imagenet_10_10_2024.npz
-processed_clickme_file: "jay_imagenet_train_0.1_processed.npz"
-processed_medians: "jay_imagenet_train_0.1_medians.json"
-example_image_output_dir: "jay_imagenet_0.1_images"
+processed_clickme_file: jay_imagenet_train_0.1_processed.npz
+processed_medians: jay_imagenet_train_0.1_medians.json
+example_image_output_dir: jay_imagenet_train_0.1_images
 debug: False
 assets: "assets"
 preprocess_db_data: True
@@ -26,13 +26,3 @@ mask_dir: False  # Directory containing masks for each image
 mask_threshold: 1  # Max IOU threshold for foreground mask overlap
 participant_filter: False
 display_image_keys: auto   # If "auto", will display the top-10 clicked
-# - ILSVRC2012_val_00009492.JPEG
-# - ILSVRC2012_val_00032959.JPEG
-# - ILSVRC2012_val_00048414.JPEG
-# - ILSVRC2012_val_00033949.JPEG
-# - ILSVRC2012_val_00011212.JPEG
-# - ILSVRC2012_val_00044671.JPEG
-# - ILSVRC2012_val_00021923.JPEG
-# - ILSVRC2012_val_00043013.JPEG
-# - ILSVRC2012_val_00007272.JPEG
-# - ILSVRC2012_val_00011751.JPEG
