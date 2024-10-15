@@ -114,7 +114,9 @@ def filter_for_foreground_masks(
     """
     quantize_threshold: If <= 0, use mean. If > 0, use this probability threshold for binarization.
     """
-    proc_final_clickmaps, proc_all_clickmaps = {}, {}
+    # proc_final_clickmaps, proc_all_clickmaps = {}, {}
+    proc_final_clickmaps = {}
+    proc_all_clickmaps = []
     proc_categories, proc_final_keep_index = [], []
     # missing = []
     for idx, k in enumerate(final_keep_index):
@@ -133,7 +135,8 @@ def filter_for_foreground_masks(
                 iou = fast_ious(thresh_click_map, mask)
                 if iou < mask_threshold:
                     proc_final_clickmaps[k] = final_clickmaps[k]
-                    proc_all_clickmaps[k] = click_map
+                    # proc_all_clickmaps[k] = click_map
+                    proc_all_clickmaps.append(click_map)
                     proc_categories.append(categories[idx])
                     proc_final_keep_index.append(k)
                 else:
