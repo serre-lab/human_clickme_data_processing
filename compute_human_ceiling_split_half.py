@@ -98,17 +98,14 @@ def main(
         file_exclusion_filter=file_exclusion_filter,
         min_clicks=min_clicks,
         max_clicks=max_clicks)
-
     # Filter classes if requested
     if class_filter_file:
         clickmaps = utils.filter_classes(
             clickmaps=clickmaps,
             class_filter_file=class_filter_file)
-
     # Filter participants if requested
     if participant_filter:
         clickmaps = utils.filter_participants(clickmaps)
-
     # Prepare maps
     final_clickmaps, all_clickmaps, categories, _ = utils.prepare_maps(
         final_clickmaps=clickmaps,
@@ -120,7 +117,14 @@ def main(
         metadata=metadata,
         blur_sigma_function=blur_sigma_function,
         center_crop=center_crop)
-
+    if mask_dir:
+        masks = utils.load_masks(mask_dir)
+        final_clickmaps, all_clickmaps, categories, final_keep_index = utils.filter_for_foreground_masks(
+            final_clickmaps=final_clickmaps,
+            all_clickmaps=all_clickmaps,
+            categories=categories,
+            masks=masks,
+            mask_threshold=mask_threshold)
     if debug:
         for imn in range(len(final_clickmaps)):
             f = [x for x in final_clickmaps.keys()][imn]
@@ -160,16 +164,6 @@ def main(
             rand_corrs.append(correlation)
         all_correlations.append(np.mean(rand_corrs))
     all_correlations = np.asarray(all_correlations)
-
-    # Filter for foreground mask overlap if requested
-    if mask_dir:
-        masks = utils.load_masks(mask_dir)
-        final_clickmaps, all_clickmaps, categories, _ = utils.filter_for_foreground_masks(
-            final_clickmaps=final_clickmaps,
-            all_clickmaps=all_clickmaps,
-            categories=categories,
-            masks=masks,
-            mask_threshold=mask_threshold)
 
     # Compute null scores
     null_correlations = []

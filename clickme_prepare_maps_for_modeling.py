@@ -126,7 +126,7 @@ if __name__ == "__main__":
     # Filter participants if requested
     if config["participant_filter"]:
         clickmaps = utils.filter_participants(clickmaps)
-
+    print(len(clickmaps))
     # Prepare maps
     final_clickmaps, all_clickmaps, categories, final_keep_index = utils.prepare_maps(
         final_clickmaps=clickmaps,
@@ -138,7 +138,7 @@ if __name__ == "__main__":
         metadata=metadata,
         blur_sigma_function=blur_sigma_function,
         center_crop=False)
-
+    print(len(final_clickmaps), len(all_clickmaps))
     # Filter for foreground mask overlap if requested
     if config["mask_dir"]:
         masks = utils.load_masks(config["mask_dir"])

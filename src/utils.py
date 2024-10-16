@@ -12,7 +12,7 @@ from tqdm import tqdm
 from torchvision.transforms import functional as tvF
 from scipy.spatial.distance import cdist
 from glob import glob
-from train_subject_classifier import RNN
+from submodules.clickme_processing.train_subject_classifier import RNN
 from accelerate import Accelerator
 
 
@@ -399,6 +399,7 @@ def prepare_maps(
             else:
                 raise NotImplementedError(kernel_type)
         if center_crop:
+            clickmaps = tvF.resize(clickmaps, min(center_crop))
             clickmaps = tvF.center_crop(clickmaps, center_crop)
         clickmaps = clickmaps.squeeze()
         clickmaps = clickmaps.numpy()
