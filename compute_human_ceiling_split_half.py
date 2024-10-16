@@ -117,6 +117,8 @@ def main(
         metadata=metadata,
         blur_sigma_function=blur_sigma_function,
         center_crop=center_crop)
+        
+    # Filter for foreground mask overlap if requested  
     if mask_dir:
         masks = utils.load_masks(mask_dir)
         final_clickmaps, all_clickmaps, categories, final_keep_index = utils.filter_for_foreground_masks(
@@ -125,6 +127,7 @@ def main(
             categories=categories,
             masks=masks,
             mask_threshold=mask_threshold)
+            
     if debug:
         for imn in range(len(final_clickmaps)):
             f = [x for x in final_clickmaps.keys()][imn]
@@ -178,8 +181,8 @@ def main(
             other_clickmaps = all_clickmaps[j]
             rand_perm_sel = np.random.permutation(len(selected_clickmaps))
             rand_perm_other = np.random.permutation(len(other_clickmaps))
-            fh = rand_perm_sel[:(n // 2)]
-            sh = rand_perm_other[(n // 2):]
+            fh = rand_perm_sel[:(len(selected_clickmaps) // 2)]
+            sh = rand_perm_other[(len(other_clickmaps) // 2):]
             test_maps = selected_clickmaps[fh].mean(0)
             remaining_maps = other_clickmaps[sh].mean(0)
             test_maps = (test_maps - test_maps.min()) / (test_maps.max() - test_maps.min())
