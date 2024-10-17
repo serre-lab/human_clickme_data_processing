@@ -4,7 +4,7 @@ processed_clickme_file: jay_imagenet_for_co3d_val_0.1_processed.npz
 processed_medians: jay_imagenet_for_co3d_val_0.1_medians.json
 example_image_output_dir: jay_imagenet_for_co3d_val_0.1_images
 debug: False
-assets: "assets"
+assets: assets
 preprocess_db_data: True
 blur_size: 21
 min_clicks: 10  # Minimum number of clicks for a map to be included
@@ -13,7 +13,7 @@ min_subjects: 5  # Minimum number of subjects for an image to be included
 null_iterations: 10
 percentile_thresh: 50  # For median splits
 filter_mobile: True
-metric: auc  # AUC, crossentropy, spearman, RSA
+metric: spearman  # AUC, crossentropy, spearman, RSA
 image_shape: [256, 256]
 center_crop: [256, 256]
 class_filter_file: category_maps/synset_to_co3d.npy  # Filter classes based on co3d class list
@@ -26,13 +26,3 @@ mask_dir: False  # Directory containing masks for each image
 mask_threshold: 1  # Max IOU threshold for foreground mask overlap
 participant_filter: False
 display_image_keys: auto   # If "auto", will display the top-10 clicked
-# - n04335435/ILSVRC2012_val_00032692.JPEG
-# - n04429376/ILSVRC2012_val_00044863.JPEG
-# - n03769881/ILSVRC2012_val_00042007.JPEG
-# - n04467665/ILSVRC2012_val_00029849.JPEG
-# - n04429376/ILSVRC2012_val_00022850.JPEG
-# - n02823428/ILSVRC2012_val_00031840.JPEG
-# - n03761084/ILSVRC2012_val_00039433.JPEG
-# - n03445777/ILSVRC2012_val_00017247.JPEG
-# - n07747607/ILSVRC2012_val_00027083.JPEG
-# - n07714990/ILSVRC2012_val_00005143.JPEG

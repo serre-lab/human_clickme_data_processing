@@ -4,7 +4,7 @@ processed_clickme_file: co3d_val_processed.npz
 processed_medians: co3d_val_medians.json
 example_image_output_dir: co3d_val_images
 debug: False
-assets: "assets"
+assets: assets
 preprocess_db_data: False
 blur_size: 21
 min_clicks: 10  # Minimum number of clicks for a map to be included
@@ -13,7 +13,7 @@ min_subjects: 5  # Minimum number of subjects for an image to be included
 null_iterations: 10  # For human-to-human ceiling
 percentile_thresh: 50  # For median splits
 filter_mobile: True
-metric: auc  # AUC, crossentropy, spearman, RSA
+metric: spearman  # AUC, crossentropy, spearman, RSA
 image_shape: [256, 256]
 center_crop: [256, 256]
 class_filter_file: False  # Filter classes based on co3d class list
@@ -26,13 +26,3 @@ mask_dir: co3d_masks  # Directory containing masks for each image
 mask_threshold: 0.17  # Max IOU threshold for foreground mask overlap
 participant_filter: False
 display_image_keys: auto   # If "auto", will display the top-10 clicked
-  # - apple/151_16774_32223_renders_00003.png
-  # - toyplane/407_55198_107015_renders_00010.png
-  # - remote/217_22926_48923_renders_00001.png
-  # - couch/464_65764_129209_renders_00013.png
-  # - cake/407_55087_106814_renders_00001.png
-  # - carrot/472_66841_131499_renders_00029.png
-  # - motorcycle/417_57639_111025_renders_00040.png
-  # - parkingmeter/462_65384_128375_renders_00022.png
-  # - parkingmeter/462_65384_128375_renders_00047.png
-  # - sandwich/537_78078_150780_renders_00034.png
