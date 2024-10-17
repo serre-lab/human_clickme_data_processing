@@ -18,7 +18,7 @@ image_shape: [256, 256]
 center_crop: [256, 256]
 class_filter_file: False  # Filter classes based on co3d class list
 remove_string: False
-image_path: /media/data_cifs/projects/prj_video_imagenet/CO3D_ClickMe2  # Location of images
+image_path: /cifs/data/tserre_lrs/projects/projects/prj_video_imagenet/CO3D_ClickMe2  # Location of images
 metadata_file: False
 file_inclusion_filter: CO3D_ClickmeV2  # Patch — only include val co3d images
 file_exclusion_filter: ILSVRC2012_val  # Exclude images that match this string
