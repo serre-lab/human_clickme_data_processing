@@ -1,7 +1,6 @@
 import re
 import os
 import sys
-sys.path.append(os.path.abspath('../../'))
 import torch
 import yaml
 import numpy as np
@@ -12,7 +11,7 @@ from tqdm import tqdm
 from torchvision.transforms import functional as tvF
 from scipy.spatial.distance import cdist
 from glob import glob
-from submodules.clickme_processing.train_subject_classifier import RNN
+from train_subject_classifier import RNN
 from accelerate import Accelerator
 
 
