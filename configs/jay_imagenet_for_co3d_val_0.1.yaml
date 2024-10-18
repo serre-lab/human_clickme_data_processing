@@ -1,5 +1,5 @@
 experiment_name: jay_imagenet_for_co3d_val_0.1
-clickme_data: clickme_datasets/prj_clickmev2_val_imagenet_10_17_2024.npz
+clickme_data: clickme_datasets/val_imagenet_10_17_2024.npz
 processed_clickme_file: jay_imagenet_for_co3d_val_0.1_processed.npz
 processed_medians: jay_imagenet_for_co3d_val_0.1_medians.json
 example_image_output_dir: jay_imagenet_for_co3d_val_0.1_images
