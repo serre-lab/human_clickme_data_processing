@@ -223,6 +223,16 @@ if __name__ == "__main__":
 
         img_heatmaps[img_name] = {"image":img, "heatmap":hmp}
     print(len(img_heatmaps))
-    np.savez(os.path.join(output_dir,  config["processed_clickme_file"]), 
+
+    # Patch: Sometimes img_heatmaps is too large
+    import pdb;pdb.set_trace()
+    if len(img_heatmaps) > 10000:
+        os.makedirs(os.path.join(output_dir, config["experiment_name"]), exist_ok=True)
+        for hn, hm in img_heatmaps.keys():
+            np.save(os.path.join(output_dir, config["experiment_name"], "{}.npy".format(hn)), 
+                    hm
+                )
+    else:
+        np.savez(os.path.join(output_dir,  config["processed_clickme_file"]), 
             **img_heatmaps
-            )
+        )
