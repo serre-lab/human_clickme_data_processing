@@ -14,6 +14,9 @@ from accelerate import InitProcessGroupKwargs
 from accelerate import Accelerator
 from datetime import timedelta
 from functools import partial
+from sklearn.model_selection import train_test_split
+import argparse
+import random
 
 
 # Define a custom dataset class
@@ -47,28 +50,67 @@ class ClickDataset(Dataset):
         return label, click_enc
 
 class RNN(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size, num_layers=2):
+    def __init__(self, input_size, hidden_size, output_size, num_layers=2, **kwargs):
         super(RNN, self).__init__()
 
+        self.kwargs = kwargs
         self.hidden_size = hidden_size
         self.xy_proj = nn.Linear(input_size, hidden_size)
-        self.rnn = nn.GRU(
-            hidden_size * 2, 
-            hidden_size, 
-            num_layers=num_layers,
-            batch_first=True,
-            bidirectional=True
-        )
+        if kwargs['model_name'] in ["rnn", "gru", "lstm"]:
+            rnn_class = getattr(nn, kwargs['model_name'].upper())
+            self.rnn = rnn_class(
+                hidden_size * 2, 
+                hidden_size, 
+                num_layers=num_layers,
+                batch_first=True,
+                bidirectional=True
+            )
+        else:
+            raise ValueError("Invalid model name.")
+        
         self.readout = nn.Linear(hidden_size * 2, output_size)
 
+        if kwargs['attention'] == True:
+            self.attention = nn.MultiheadAttention(
+                hidden_size * 2,
+                num_heads=4,
+                batch_first=True
+            )
+            self.readout = nn.Sequential(
+                nn.Linear(hidden_size * 2, hidden_size),
+                nn.ReLU(),
+                nn.Dropout(0.2),
+                nn.Linear(hidden_size, output_size)
+            )
+            
     def forward(self, input):
         x_proj = self.xy_proj(input[:, ..., :input.shape[-1]//2])
         y_proj = self.xy_proj(input[:, ..., input.shape[-1]//2:])
         proj = torch.concat((x_proj, y_proj), dim=-1)
         output, _ = self.rnn(proj)  # Default hidden at t0 to 0 init
+        if self.kwargs['attention'] == True:
+            output, _ = self.attention(output, output, output)
         output = self.readout(output[:, -1])
         return output
 
+class MLP(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size, num_layers=2):
+        super(MLP, self).__init__()
+
+        layers = []
+        for i in range(num_layers):
+            if i == 0:
+                layers.append(nn.Linear(input_size, hidden_size))
+            else:
+                layers.append(nn.Linear(hidden_size, hidden_size))
+            layers.append(nn.ReLU())
+        layers.append(nn.Linear(hidden_size, output_size))
+        self.net = nn.Sequential(*layers)
+
+    def forward(self, input):
+        output = self.net(input.view(input.shape[0], -1))
+        return output
+    
 
 def compute_clicks(clickmap_x, clickmap_y, n_jobs=-1):
     """
@@ -92,7 +134,35 @@ def compute_clicks(clickmap_x, clickmap_y, n_jobs=-1):
     return clicks
 
 
+def seed_everything(s: int):
+    """
+    This function allows us to set the seed for all of our random functions
+    so that we can get reproducible results.
+
+    Parameters
+    ----------
+    s : int
+        seed to seed all random functions with
+    """
+    random.seed(s)
+    torch.manual_seed(s)
+    torch.cuda.manual_seed_all(s)
+    np.random.seed(s)
+    torch.backends.cudnn.deterministic = True
+
+
 def main():
+    parser = argparse.ArgumentParser(description='Train a subject classifier model')
+    parser.add_argument('--model_name', type=str, required=True, help='Name of the model to train')
+    parser.add_argument('--epochs', type=int, required=True, help='Number of epochs to train the model')
+    parser.add_argument('--output', type=str, required=True, help='Output file name')
+    parser.add_argument('--attention', type=bool, default=False, help='Whether to use attention in the model')
+
+    args = parser.parse_args()
+
+    SEED = 42
+    seed_everything(SEED)
+
     # Inputs
     cheaters = [780,1045,1551,1548,1549,1550,1173]
     bad_players = [1164,664,933,219,961,596,1378,501]
@@ -166,8 +236,12 @@ def main():
     del data.f
     data.close()  # avoid the "too many files are open" error
 
+    train_df, val_df = train_test_split(df, test_size=0.2, random_state=42)
+    # train_df.reset_index(drop=True, inplace=True)
+    # val_df.reset_index(drop=True, inplace=True)
+    
     # Create data loaders
-    train_label_index = df.label.values
+    train_label_index = train_df.label.values
     unique_classes, class_sample_count = np.unique(train_label_index, return_counts=True)
     class_weights = compute_class_weight("balanced", classes=unique_classes, y=train_label_index)
     class_weights = torch.from_numpy(class_weights).float()
@@ -175,11 +249,22 @@ def main():
     samples_weight_train = torch.from_numpy(samples_weight_train).double()
     sampler = WeightedRandomSampler(samples_weight_train, len(samples_weight_train))
     print("Building dataloaders")
+
     train_loader = DataLoader(
-        ClickDataset(df, max_x, max_y, click_div=click_div),
+        ClickDataset(train_df, max_x, max_y, click_div=click_div),
         batch_size=train_batch_size,
         sampler=sampler,
         drop_last=True,
+        pin_memory=True,
+        num_workers=train_num_workers
+    )
+
+    # Create validation data loader
+    val_loader = DataLoader(
+        ClickDataset(val_df, max_x, max_y, click_div=click_div),
+        batch_size=train_batch_size,
+        shuffle=False,
+        drop_last=False,
         pin_memory=True,
         num_workers=train_num_workers
     )
@@ -188,7 +273,8 @@ def main():
     print("Preparing models")
     n_hidden = 32
     input_dim = max_x  # Do a one-hot encoding of x concatenated with one-hot encoding of y
-    model = RNN(input_dim, n_hidden, len(unique_classes))
+    model = RNN(input_dim, n_hidden, len(unique_classes), model_name=args.model_name)
+    # model = MLP(input_dim, n_hidden, len(unique_classes), num_layers=4)
 
     # Save meta data needed to run the model
     np.savez(
@@ -209,10 +295,10 @@ def main():
     optimizer = schedulefree.AdamWScheduleFree(model.parameters(), lr=lr)
 
     # Prepare accelerator
-    model, optimizer, train_loader = accelerator.prepare(model, optimizer, train_loader)
+    model, optimizer, train_loader, val_loader = accelerator.prepare(model, optimizer, train_loader, val_loader)
 
     # Train model
-    epochs = 10
+    epochs = args.epochs
     best_loss = np.inf
     losses = []
     steps_per_epoch = None
@@ -220,11 +306,11 @@ def main():
         model.train()
         if steps_per_epoch is None:
             steps_per_epoch = len(train_loader)
-        if accelerator.is_main_process:
-            train_progress = tqdm(
-                total=steps_per_epoch, 
-                desc=f"Training Epoch {epoch+1}/{epochs}"
-            )
+        # if accelerator.is_main_process:
+        #     train_progress = tqdm(
+        #         total=steps_per_epoch, 
+        #         desc=f"Training Epoch {epoch+1}/{epochs}"
+        #     )
 
         for label, click_enc in train_loader:
             optimizer.zero_grad(set_to_none=True)
@@ -239,15 +325,33 @@ def main():
                 loss = loss.item()
                 losses.append(loss)
 
-            if accelerator.is_main_process:
-                train_progress.set_postfix({"Train loss": f"{loss:.4f}"})
-                train_progress.update()
+            # if accelerator.is_main_process:
+            #     train_progress.set_postfix({"Train loss": f"{loss:.4f}"})
+            #     train_progress.update()
+        
+        if accelerator.is_main_process:
+            with open(args.output, "a") as f:
+                f.write(f"Training loss at epoch {epoch+1}: {np.mean(losses):.4f}\n")
 
-            if accelerator.is_main_process:
-                if loss < best_loss:
-                    checkpoint_filename = os.path.join(ckpts, f'model_epoch_{epoch+1}.pth')
-                    torch.save(accelerator.unwrap_model(model).state_dict(), checkpoint_filename)
-                    best_loss = loss
+        # Validation loop
+        model.eval()
+        val_losses = []
+        with torch.no_grad():
+            for label, click_enc in val_loader:
+                pred = model(click_enc)
+                loss = F.cross_entropy(pred, label)
+                val_losses.append(loss.item())
+
+        val_loss = np.mean(val_losses)
+        if accelerator.is_main_process:
+            with open(args.output, "a") as f:
+                f.write(f"Validation loss at epoch {epoch+1}: {val_loss:.4f}\n")
+
+        if accelerator.is_main_process:
+            if val_loss < best_loss:
+                checkpoint_filename = os.path.join(ckpts, f'model_epoch_{epoch+1}.pth')
+                torch.save(accelerator.unwrap_model(model).state_dict(), checkpoint_filename)
+                best_loss = val_loss
         accelerator.wait_for_everyone()
 
 if __name__ == "__main__":
