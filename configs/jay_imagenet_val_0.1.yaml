@@ -24,7 +24,7 @@ file_inclusion_filter: ILSVRC2012_val  # Only include images that match this str
 file_exclusion_filter: False  # Exclude images that match this string
 mask_dir: False  # Directory containing masks for each image
 mask_threshold: 1  # Max IOU threshold for foreground mask overlap
-participant_filter: False
+participant_filter: True
 display_image_keys: auto   # If "auto", will display the top-10 clicked
 # - ILSVRC2012_val_00009492.JPEG
 # - ILSVRC2012_val_00032959.JPEG
