@@ -1,0 +1,10 @@
+Training loss at epoch 1: 0.3439
+Validation loss at epoch 1: 0.2344
+Training loss at epoch 2: 0.2417
+Validation loss at epoch 2: 0.1694
+Training loss at epoch 3: 0.1993
+Validation loss at epoch 3: 0.1448
+Training loss at epoch 4: 0.1760
+Validation loss at epoch 4: 0.1303
+Training loss at epoch 5: 0.1581
+Validation loss at epoch 5: 0.1307
