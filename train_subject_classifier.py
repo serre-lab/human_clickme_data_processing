@@ -168,7 +168,7 @@ def main():
     bad_players = [1164,664,933,219,961,596,1378,501]
     good_players = [1131,1176,350,279,758,969,431, 339,1420,331,1346,878,540,607,1221,686,849, 984,355,931,790,575,1425,1099,347, 743,522,293,264, 976, 988, 619, 869, 1417, 1294, 707, 329, 930, 952, 270, 1382, 1441, 1391, 1486, 404, 1430, 317, 855, 703, 945, 708, 1354, 525, 1124, 182, 783, 222, 870, 326, 382, 434, 701, 1339, 367, 611, 1063, 1042, 385, 694, 625, 1006, 370, 463, 1258, 852, 1278,1002, 671,1076, 1016,729,337,420,1061,281, 368,811,1485,566]
     catch_thresh = 0.95
-    data_file = "clickme_datasets/prj_clickmev2_train_imagenet_10_10_2024.npz"
+    data_file = "clickme_datasets/train_imagenet_10_28_2024.npz"
     train_batch_size = 32
     train_num_workers = 0
     # max_x, max_y = 1000, 1000
@@ -273,7 +273,7 @@ def main():
     print("Preparing models")
     n_hidden = 32
     input_dim = max_x  # Do a one-hot encoding of x concatenated with one-hot encoding of y
-    model = RNN(input_dim, n_hidden, len(unique_classes), model_name=args.model_name)
+    model = RNN(input_dim, n_hidden, len(unique_classes), model_name=args.model_name, attention=args.attention)
     # model = MLP(input_dim, n_hidden, len(unique_classes), num_layers=4)
 
     # Save meta data needed to run the model
