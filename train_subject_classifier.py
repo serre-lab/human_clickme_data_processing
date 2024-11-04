@@ -19,6 +19,13 @@ import argparse
 import random
 
 
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE, SpectralEmbedding
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+
 # Define a custom dataset class
 class ClickDataset(Dataset):
     def __init__(self, df, max_x, max_y, click_div=4):
@@ -133,6 +140,33 @@ def compute_clicks(clickmap_x, clickmap_y, n_jobs=-1):
     )
     return clicks
 
+def compute_sequence_stats(clicks):
+    if len(clicks) < 2:
+        return [len(clicks), 0, 0, 0, 0, 0, 0]  # Return zeros for sequences with less than 2 clicks
+    
+    x_coords, y_coords = zip(*clicks)
+    
+    # Calculate mean distance between consecutive clicks
+    distances = [((x[0]-y[0])**2 + (x[1]-y[1])**2)**0.5 for x, y in zip(clicks[:-1], clicks[1:])]
+    mean_distance = np.mean(distances) if distances else 0
+    
+    # Calculate mean absolute slope, handling division by zero
+    slopes = []
+    for (x1, y1), (x2, y2) in zip(clicks[:-1], clicks[1:]):
+        if x2 != x1:
+            slopes.append(abs((y2-y1)/(x2-x1)))
+    mean_slope = np.mean(slopes) if slopes else 0
+    
+    return [
+        len(clicks),
+        np.mean(x_coords),
+        np.std(x_coords) if len(x_coords) > 1 else 0,
+        np.mean(y_coords),
+        np.std(y_coords) if len(y_coords) > 1 else 0,
+        mean_distance,
+        mean_slope
+    ]
+
 
 def seed_everything(s: int):
     """
@@ -176,6 +210,7 @@ def main():
     lr = 1e-3
     ckpts = "checkpoints"
     os.makedirs(ckpts, exist_ok=True)
+    os.makedirs("logs", exist_ok=True)
 
     # Prepare indices
     cheaters_and_bad_players = np.concatenate([cheaters, bad_players])
@@ -273,7 +308,8 @@ def main():
     print("Preparing models")
     n_hidden = 32
     input_dim = max_x  # Do a one-hot encoding of x concatenated with one-hot encoding of y
-    model = RNN(input_dim, n_hidden, len(unique_classes), model_name=args.model_name, attention=args.attention)
+    # model = RNN(input_dim, n_hidden, len(unique_classes), model_name=args.model_name, attention=args.attention)
+    model = RNN(input_dim, n_hidden, len(unique_classes), **args.__dict__)
     # model = MLP(input_dim, n_hidden, len(unique_classes), num_layers=4)
 
     # Save meta data needed to run the model
