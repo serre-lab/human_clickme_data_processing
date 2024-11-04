@@ -140,6 +140,33 @@ def compute_clicks(clickmap_x, clickmap_y, n_jobs=-1):
     )
     return clicks
 
+def compute_sequence_stats(clicks):
+    if len(clicks) < 2:
+        return [len(clicks), 0, 0, 0, 0, 0, 0]  # Return zeros for sequences with less than 2 clicks
+    
+    x_coords, y_coords = zip(*clicks)
+    
+    # Calculate mean distance between consecutive clicks
+    distances = [((x[0]-y[0])**2 + (x[1]-y[1])**2)**0.5 for x, y in zip(clicks[:-1], clicks[1:])]
+    mean_distance = np.mean(distances) if distances else 0
+    
+    # Calculate mean absolute slope, handling division by zero
+    slopes = []
+    for (x1, y1), (x2, y2) in zip(clicks[:-1], clicks[1:]):
+        if x2 != x1:
+            slopes.append(abs((y2-y1)/(x2-x1)))
+    mean_slope = np.mean(slopes) if slopes else 0
+    
+    return [
+        len(clicks),
+        np.mean(x_coords),
+        np.std(x_coords) if len(x_coords) > 1 else 0,
+        np.mean(y_coords),
+        np.std(y_coords) if len(y_coords) > 1 else 0,
+        mean_distance,
+        mean_slope
+    ]
+
 
 def seed_everything(s: int):
     """
@@ -239,103 +266,6 @@ def main():
 
     # Create dataframe
     df = pd.DataFrame({"image_path": image_path, "label": label, "clicks": clicks, "user_id": user_id})
-    print(df['clicks'])
-    df['len'] = df['clicks'].apply(len)
-    print(df['len'].value_counts())
-
-    # make a histogram of the number of clicks
-    sns.histplot(df['len'])
-    plt.savefig('click_histogram.png')
-
-
-
-    def compute_sequence_stats(clicks):
-        if len(clicks) < 2:
-            return [len(clicks), 0, 0, 0, 0, 0, 0]  # Return zeros for sequences with less than 2 clicks
-        
-        x_coords, y_coords = zip(*clicks)
-        
-        # Calculate mean distance between consecutive clicks
-        distances = [((x[0]-y[0])**2 + (x[1]-y[1])**2)**0.5 for x, y in zip(clicks[:-1], clicks[1:])]
-        mean_distance = np.mean(distances) if distances else 0
-        
-        # Calculate mean absolute slope, handling division by zero
-        slopes = []
-        for (x1, y1), (x2, y2) in zip(clicks[:-1], clicks[1:]):
-            if x2 != x1:
-                slopes.append(abs((y2-y1)/(x2-x1)))
-        mean_slope = np.mean(slopes) if slopes else 0
-        
-        return [
-            len(clicks),
-            np.mean(x_coords),
-            np.std(x_coords) if len(x_coords) > 1 else 0,
-            np.mean(y_coords),
-            np.std(y_coords) if len(y_coords) > 1 else 0,
-            mean_distance,
-            mean_slope
-        ]
-
-    def preprocess_clicks(clicks, max_clicks=200):
-        padded = clicks[:max_clicks] + [(0, 0)] * (max_clicks - len(clicks))
-        return np.array(padded).flatten()
-
-    # Preprocess the data
-    X = np.array(df['clicks'].apply(preprocess_clicks).tolist())
-    y = df['label'].values
-
-    # Standardize the features
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
-
-    # Apply PCA
-    pca = PCA(n_components=2)
-    X_pca = pca.fit_transform(X_scaled)
-
-    # Apply t-SNE
-    tsne = TSNE(n_components=2, random_state=42)
-    X_tsne = tsne.fit_transform(X_scaled)
-
-    # Function to create and save plots
-    def plot_and_save(X, y, title, filename):
-        plt.figure(figsize=(10, 8))
-        scatter = plt.scatter(X[:, 0], X[:, 1], c=y, cmap='viridis')
-        plt.colorbar(scatter)
-        plt.title(title)
-        plt.xlabel('Component 1')
-        plt.ylabel('Component 2')
-        plt.savefig(filename, format='png', dpi=300, bbox_inches='tight')
-        plt.close()
-
-    # Create and save t-SNE plot
-    plot_and_save(X_tsne, y, 't-SNE of Click Data', 'tsne_scatter.png')
-
-    # Create and save Spectral Embedding plot
-    # plot_and_save(X_se, y, 'Spectral Embedding of Click Data', 'spectral_embedding_scatter.png')
-
-    # Create and save PCA plot
-    plot_and_save(X_pca, y, 'PCA of Click Data', 'pca_scatter.png')
-
-    print("Plots have been saved as 'tsne_scatter.png' and 'spectral_embedding_scatter.png'")
-
-    stats_df = pd.DataFrame(X, columns=['Length', 'Mean X', 'Std X', 'Mean Y', 'Std Y', 'Mean Distance', 'Mean Abs Slope'])
-    print(stats_df.describe())
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    exit(0)
 
     # Close npz
     del data.f
