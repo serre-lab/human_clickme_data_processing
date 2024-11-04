@@ -14,6 +14,16 @@ from accelerate import InitProcessGroupKwargs
 from accelerate import Accelerator
 from datetime import timedelta
 from functools import partial
+from sklearn.model_selection import train_test_split
+import argparse
+import random
+
+
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE, SpectralEmbedding
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 
 # Define a custom dataset class
@@ -47,28 +57,67 @@ class ClickDataset(Dataset):
         return label, click_enc
 
 class RNN(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size, num_layers=2):
+    def __init__(self, input_size, hidden_size, output_size, num_layers=2, **kwargs):
         super(RNN, self).__init__()
 
+        self.kwargs = kwargs
         self.hidden_size = hidden_size
         self.xy_proj = nn.Linear(input_size, hidden_size)
-        self.rnn = nn.GRU(
-            hidden_size * 2, 
-            hidden_size, 
-            num_layers=num_layers,
-            batch_first=True,
-            bidirectional=True
-        )
+        if kwargs['model_name'] in ["rnn", "gru", "lstm"]:
+            rnn_class = getattr(nn, kwargs['model_name'].upper())
+            self.rnn = rnn_class(
+                hidden_size * 2, 
+                hidden_size, 
+                num_layers=num_layers,
+                batch_first=True,
+                bidirectional=True
+            )
+        else:
+            raise ValueError("Invalid model name.")
+        
         self.readout = nn.Linear(hidden_size * 2, output_size)
 
+        if kwargs['attention'] == True:
+            self.attention = nn.MultiheadAttention(
+                hidden_size * 2,
+                num_heads=4,
+                batch_first=True
+            )
+            self.readout = nn.Sequential(
+                nn.Linear(hidden_size * 2, hidden_size),
+                nn.ReLU(),
+                nn.Dropout(0.2),
+                nn.Linear(hidden_size, output_size)
+            )
+            
     def forward(self, input):
         x_proj = self.xy_proj(input[:, ..., :input.shape[-1]//2])
         y_proj = self.xy_proj(input[:, ..., input.shape[-1]//2:])
         proj = torch.concat((x_proj, y_proj), dim=-1)
         output, _ = self.rnn(proj)  # Default hidden at t0 to 0 init
+        if self.kwargs['attention'] == True:
+            output, _ = self.attention(output, output, output)
         output = self.readout(output[:, -1])
         return output
 
+class MLP(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size, num_layers=2):
+        super(MLP, self).__init__()
+
+        layers = []
+        for i in range(num_layers):
+            if i == 0:
+                layers.append(nn.Linear(input_size, hidden_size))
+            else:
+                layers.append(nn.Linear(hidden_size, hidden_size))
+            layers.append(nn.ReLU())
+        layers.append(nn.Linear(hidden_size, output_size))
+        self.net = nn.Sequential(*layers)
+
+    def forward(self, input):
+        output = self.net(input.view(input.shape[0], -1))
+        return output
+    
 
 def compute_clicks(clickmap_x, clickmap_y, n_jobs=-1):
     """
@@ -91,14 +140,69 @@ def compute_clicks(clickmap_x, clickmap_y, n_jobs=-1):
     )
     return clicks
 
+def compute_sequence_stats(clicks):
+    if len(clicks) < 2:
+        return [len(clicks), 0, 0, 0, 0, 0, 0]  # Return zeros for sequences with less than 2 clicks
+    
+    x_coords, y_coords = zip(*clicks)
+    
+    # Calculate mean distance between consecutive clicks
+    distances = [((x[0]-y[0])**2 + (x[1]-y[1])**2)**0.5 for x, y in zip(clicks[:-1], clicks[1:])]
+    mean_distance = np.mean(distances) if distances else 0
+    
+    # Calculate mean absolute slope, handling division by zero
+    slopes = []
+    for (x1, y1), (x2, y2) in zip(clicks[:-1], clicks[1:]):
+        if x2 != x1:
+            slopes.append(abs((y2-y1)/(x2-x1)))
+    mean_slope = np.mean(slopes) if slopes else 0
+    
+    return [
+        len(clicks),
+        np.mean(x_coords),
+        np.std(x_coords) if len(x_coords) > 1 else 0,
+        np.mean(y_coords),
+        np.std(y_coords) if len(y_coords) > 1 else 0,
+        mean_distance,
+        mean_slope
+    ]
+
+
+def seed_everything(s: int):
+    """
+    This function allows us to set the seed for all of our random functions
+    so that we can get reproducible results.
+
+    Parameters
+    ----------
+    s : int
+        seed to seed all random functions with
+    """
+    random.seed(s)
+    torch.manual_seed(s)
+    torch.cuda.manual_seed_all(s)
+    np.random.seed(s)
+    torch.backends.cudnn.deterministic = True
+
 
 def main():
+    parser = argparse.ArgumentParser(description='Train a subject classifier model')
+    parser.add_argument('--model_name', type=str, required=True, help='Name of the model to train')
+    parser.add_argument('--epochs', type=int, required=True, help='Number of epochs to train the model')
+    parser.add_argument('--output', type=str, required=True, help='Output file name')
+    parser.add_argument('--attention', type=bool, default=False, help='Whether to use attention in the model')
+
+    args = parser.parse_args()
+
+    SEED = 42
+    seed_everything(SEED)
+
     # Inputs
-    cheaters = [780,1045,1551,1548,1549,1550,1173]
+    cheaters = [780,1045,1551,1548,1549,1550,1173,2059,2056,2061,2065,2055,2064,1661,2057,2062,2054,2063,2058]
     bad_players = [1164,664,933,219,961,596,1378,501]
     good_players = [1131,1176,350,279,758,969,431, 339,1420,331,1346,878,540,607,1221,686,849, 984,355,931,790,575,1425,1099,347, 743,522,293,264, 976, 988, 619, 869, 1417, 1294, 707, 329, 930, 952, 270, 1382, 1441, 1391, 1486, 404, 1430, 317, 855, 703, 945, 708, 1354, 525, 1124, 182, 783, 222, 870, 326, 382, 434, 701, 1339, 367, 611, 1063, 1042, 385, 694, 625, 1006, 370, 463, 1258, 852, 1278,1002, 671,1076, 1016,729,337,420,1061,281, 368,811,1485,566]
     catch_thresh = 0.95
-    data_file = "clickme_datasets/prj_clickmev2_train_imagenet_10_10_2024.npz"
+    data_file = "clickme_datasets/train_imagenet_10_28_2024.npz"
     train_batch_size = 32
     train_num_workers = 0
     # max_x, max_y = 1000, 1000
@@ -106,6 +210,7 @@ def main():
     lr = 1e-3
     ckpts = "checkpoints"
     os.makedirs(ckpts, exist_ok=True)
+    os.makedirs("logs", exist_ok=True)
 
     # Prepare indices
     cheaters_and_bad_players = np.concatenate([cheaters, bad_players])
@@ -166,8 +271,12 @@ def main():
     del data.f
     data.close()  # avoid the "too many files are open" error
 
+    train_df, val_df = train_test_split(df, test_size=0.2, random_state=42)
+    # train_df.reset_index(drop=True, inplace=True)
+    # val_df.reset_index(drop=True, inplace=True)
+    
     # Create data loaders
-    train_label_index = df.label.values
+    train_label_index = train_df.label.values
     unique_classes, class_sample_count = np.unique(train_label_index, return_counts=True)
     class_weights = compute_class_weight("balanced", classes=unique_classes, y=train_label_index)
     class_weights = torch.from_numpy(class_weights).float()
@@ -175,11 +284,22 @@ def main():
     samples_weight_train = torch.from_numpy(samples_weight_train).double()
     sampler = WeightedRandomSampler(samples_weight_train, len(samples_weight_train))
     print("Building dataloaders")
+
     train_loader = DataLoader(
-        ClickDataset(df, max_x, max_y, click_div=click_div),
+        ClickDataset(train_df, max_x, max_y, click_div=click_div),
         batch_size=train_batch_size,
         sampler=sampler,
         drop_last=True,
+        pin_memory=True,
+        num_workers=train_num_workers
+    )
+
+    # Create validation data loader
+    val_loader = DataLoader(
+        ClickDataset(val_df, max_x, max_y, click_div=click_div),
+        batch_size=train_batch_size,
+        shuffle=False,
+        drop_last=False,
         pin_memory=True,
         num_workers=train_num_workers
     )
@@ -188,7 +308,9 @@ def main():
     print("Preparing models")
     n_hidden = 32
     input_dim = max_x  # Do a one-hot encoding of x concatenated with one-hot encoding of y
-    model = RNN(input_dim, n_hidden, len(unique_classes))
+    # model = RNN(input_dim, n_hidden, len(unique_classes), model_name=args.model_name, attention=args.attention)
+    model = RNN(input_dim, n_hidden, len(unique_classes), **args.__dict__)
+    # model = MLP(input_dim, n_hidden, len(unique_classes), num_layers=4)
 
     # Save meta data needed to run the model
     np.savez(
@@ -209,10 +331,10 @@ def main():
     optimizer = schedulefree.AdamWScheduleFree(model.parameters(), lr=lr)
 
     # Prepare accelerator
-    model, optimizer, train_loader = accelerator.prepare(model, optimizer, train_loader)
+    model, optimizer, train_loader, val_loader = accelerator.prepare(model, optimizer, train_loader, val_loader)
 
     # Train model
-    epochs = 10
+    epochs = args.epochs
     best_loss = np.inf
     losses = []
     steps_per_epoch = None
@@ -220,11 +342,11 @@ def main():
         model.train()
         if steps_per_epoch is None:
             steps_per_epoch = len(train_loader)
-        if accelerator.is_main_process:
-            train_progress = tqdm(
-                total=steps_per_epoch, 
-                desc=f"Training Epoch {epoch+1}/{epochs}"
-            )
+        # if accelerator.is_main_process:
+        #     train_progress = tqdm(
+        #         total=steps_per_epoch, 
+        #         desc=f"Training Epoch {epoch+1}/{epochs}"
+        #     )
 
         for label, click_enc in train_loader:
             optimizer.zero_grad(set_to_none=True)
@@ -239,9 +361,27 @@ def main():
                 loss = loss.item()
                 losses.append(loss)
 
-            if accelerator.is_main_process:
-                train_progress.set_postfix({"Train loss": f"{loss:.4f}"})
-                train_progress.update()
+            # if accelerator.is_main_process:
+            #     train_progress.set_postfix({"Train loss": f"{loss:.4f}"})
+            #     train_progress.update()
+        
+        if accelerator.is_main_process:
+            with open(args.output, "a") as f:
+                f.write(f"Training loss at epoch {epoch+1}: {np.mean(losses):.4f}\n")
+
+        # Validation loop
+        model.eval()
+        val_losses = []
+        with torch.no_grad():
+            for label, click_enc in val_loader:
+                pred = model(click_enc)
+                loss = F.cross_entropy(pred, label)
+                val_losses.append(loss.item())
+
+        val_loss = np.mean(val_losses)
+        if accelerator.is_main_process:
+            with open(args.output, "a") as f:
+                f.write(f"Validation loss at epoch {epoch+1}: {val_loss:.4f}\n")
 
             if accelerator.is_main_process:
                 if loss < best_loss:
