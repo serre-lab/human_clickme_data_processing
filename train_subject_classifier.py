@@ -17,13 +17,7 @@ from functools import partial
 from sklearn.model_selection import train_test_split
 import argparse
 import random
-
-
-from sklearn.preprocessing import StandardScaler
-from sklearn.decomposition import PCA
-from sklearn.manifold import TSNE, SpectralEmbedding
-import matplotlib.pyplot as plt
-import seaborn as sns
+import pdb
 
 
 # Define a custom dataset class
@@ -44,8 +38,14 @@ class ClickDataset(Dataset):
 
         # Turn clicks into a one-hot encoding of x and y
         clicks = np.asarray(clicks) // self.click_div
+
+        # fix the bounds
+        clicks[:, 0] = np.clip(clicks[:, 0], 0, self.max_x - 1)
+        clicks[:, 1] = np.clip(clicks[:, 1], 0, self.max_y - 1)
+
         x_enc = np.zeros((len(clicks), self.max_x))
         y_enc = np.zeros((len(clicks), self.max_y))
+        
         x_enc[:, clicks[:, 0]] = 1
         y_enc[:, clicks[:, 1]] = 1
         click_enc = np.concatenate((x_enc, y_enc), 1)
@@ -76,7 +76,7 @@ class RNN(nn.Module):
             raise ValueError("Invalid model name.")
         
         self.readout = nn.Linear(hidden_size * 2, output_size)
-
+        print(kwargs)
         if kwargs['attention'] == True:
             self.attention = nn.MultiheadAttention(
                 hidden_size * 2,
@@ -187,10 +187,13 @@ def seed_everything(s: int):
 
 def main():
     parser = argparse.ArgumentParser(description='Train a subject classifier model')
-    parser.add_argument('--model_name', type=str, required=True, help='Name of the model to train')
+    parser.add_argument('--model-name', type=str, required=True, help='Name of the model to train')
     parser.add_argument('--epochs', type=int, required=True, help='Number of epochs to train the model')
     parser.add_argument('--output', type=str, required=True, help='Output file name')
-    parser.add_argument('--attention', type=bool, default=False, help='Whether to use attention in the model')
+    parser.add_argument('--checkpoint-path', type=str, default=None, help='Checkpoint to trained model.')
+    parser.add_argument('--data-path', type=str, required=True, help='Path to the data directory')
+    parser.add_argument('--evaluate-only', type=bool, default=False, help='Whether to only evaluate the model')
+    parser.add_argument('--attention', type=bool, required=False, default=False, help='Whether to use attention in the model') # something is wrong here need to debug, when i put false in cmd line but it parse as True
 
     args = parser.parse_args()
 
@@ -202,7 +205,8 @@ def main():
     bad_players = [1164,664,933,219,961,596,1378,501]
     good_players = [1131,1176,350,279,758,969,431, 339,1420,331,1346,878,540,607,1221,686,849, 984,355,931,790,575,1425,1099,347, 743,522,293,264, 976, 988, 619, 869, 1417, 1294, 707, 329, 930, 952, 270, 1382, 1441, 1391, 1486, 404, 1430, 317, 855, 703, 945, 708, 1354, 525, 1124, 182, 783, 222, 870, 326, 382, 434, 701, 1339, 367, 611, 1063, 1042, 385, 694, 625, 1006, 370, 463, 1258, 852, 1278,1002, 671,1076, 1016,729,337,420,1061,281, 368,811,1485,566]
     catch_thresh = 0.95
-    data_file = "clickme_datasets/train_imagenet_10_28_2024.npz"
+    data_file = args.data_path
+    #"clickme_datasets/train_imagenet_10_28_2024.npz"
     train_batch_size = 32
     train_num_workers = 0
     # max_x, max_y = 1000, 1000
@@ -272,8 +276,6 @@ def main():
     data.close()  # avoid the "too many files are open" error
 
     train_df, val_df = train_test_split(df, test_size=0.2, random_state=42)
-    # train_df.reset_index(drop=True, inplace=True)
-    # val_df.reset_index(drop=True, inplace=True)
     
     # Create data loaders
     train_label_index = train_df.label.values
@@ -311,6 +313,9 @@ def main():
     # model = RNN(input_dim, n_hidden, len(unique_classes), model_name=args.model_name, attention=args.attention)
     model = RNN(input_dim, n_hidden, len(unique_classes), **args.__dict__)
     # model = MLP(input_dim, n_hidden, len(unique_classes), num_layers=4)
+    if args.checkpoint_path is not None:
+        checkpoint = torch.load(args.checkpoint_path, map_location="cpu")
+        model.load_state_dict(checkpoint)
 
     # Save meta data needed to run the model
     np.savez(
@@ -339,35 +344,36 @@ def main():
     losses = []
     steps_per_epoch = None
     for epoch in range(epochs):
-        model.train()
-        if steps_per_epoch is None:
-            steps_per_epoch = len(train_loader)
-        # if accelerator.is_main_process:
-        #     train_progress = tqdm(
-        #         total=steps_per_epoch, 
-        #         desc=f"Training Epoch {epoch+1}/{epochs}"
-        #     )
-
-        for label, click_enc in train_loader:
-            optimizer.zero_grad(set_to_none=True)
-            pred = model(click_enc)
-            loss = F.cross_entropy(pred, label)
-            if torch.isnan(loss):
-                print("Skipping nan loss")
-            else:
-                accelerator.backward(loss)
-                optimizer.step()
-
-                loss = loss.item()
-                losses.append(loss)
-
+        if not args.evaluate_only:
+            model.train()
+            if steps_per_epoch is None:
+                steps_per_epoch = len(train_loader)
             # if accelerator.is_main_process:
-            #     train_progress.set_postfix({"Train loss": f"{loss:.4f}"})
-            #     train_progress.update()
-        
-        if accelerator.is_main_process:
-            with open(args.output, "a") as f:
-                f.write(f"Training loss at epoch {epoch+1}: {np.mean(losses):.4f}\n")
+            #     train_progress = tqdm(
+            #         total=steps_per_epoch, 
+            #         desc=f"Training Epoch {epoch+1}/{epochs}"
+            #     )
+
+            for label, click_enc in train_loader:
+                optimizer.zero_grad(set_to_none=True)
+                pred = model(click_enc)
+                loss = F.cross_entropy(pred, label)
+                if torch.isnan(loss):
+                    print("Skipping nan loss")
+                else:
+                    accelerator.backward(loss)
+                    optimizer.step()
+
+                    loss = loss.item()
+                    losses.append(loss)
+
+                # if accelerator.is_main_process:
+                #     train_progress.set_postfix({"Train loss": f"{loss:.4f}"})
+                #     train_progress.update()
+            
+            if accelerator.is_main_process:
+                with open(args.output, "a") as f:
+                    f.write(f"Training loss at epoch {epoch+1}: {np.mean(losses):.4f}\n")
 
         # Validation loop
         model.eval()
@@ -385,7 +391,7 @@ def main():
 
             if accelerator.is_main_process:
                 if loss < best_loss:
-                    checkpoint_filename = os.path.join(ckpts, f'model_epoch_{epoch+1}.pth')
+                    checkpoint_filename = os.path.join(ckpts, f'model_epoch_ckpt_{epoch+1}.pth')
                     torch.save(accelerator.unwrap_model(model).state_dict(), checkpoint_filename)
                     best_loss = loss
 

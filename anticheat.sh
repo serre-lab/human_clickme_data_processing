@@ -1,5 +1,7 @@
 python train_subject_classifier.py \
-    --model_name gru \
-    --attention true \
-    --epochs 20 \
-    --output ./logs/gru_att.txt
+    --model-name gru \
+    --epochs 5 \
+    --output ./logs/evaluate_jay_model.txt \
+    --checkpoint-path ./checkpoints/model_epoch_5.pth \
+    --data-path ./clickme_datasets/prj_clickmev2_train_imagenet_10_10_2024.npz \
+    # --evaluate-only true 
