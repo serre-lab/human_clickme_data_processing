@@ -9,6 +9,7 @@ if __name__ == "__main__":
 
     # Get config file
     config_file = utils.get_config(sys.argv)
+    keep_images = 50
 
     # Other Args
     blur_sigma_function = lambda x: x
@@ -30,10 +31,31 @@ if __name__ == "__main__":
     else:
         metadata = None
 
-    # Start processing
+    # Find files
+    processed_clicks = np.load(os.path.join(output_dir, config["processed_clickme_file"]), allow_pickle=True)
+
+    # Count clicks per image
+    click_counts = {
+        k: v.item()["heatmap"].shape[0]
+        for k, v in tqdm(
+            processed_clicks.items(), 
+            total=len(processed_clicks), 
+            desc="Counting clicks per image"
+        )
+    }
+    click_vals = np.sort(list(click_counts.values()))[::-1]
+    keep_count = 0
+    for c in click_vals:
+        keep_count += c
+        if keep_count >= keep_images:
+            break
+    filtered_clicks = {k: v for k, v in processed_clicks.items() if click_counts[k] >= click_vals[keep_count]}
     import pdb;pdb.set_trace()
-    os.makedirs(image_output_dir, exist_ok=True)
-    os.makedirs(output_dir, exist_ok=True)
+
+    # Average clicks per image
+    
+
+
 
     # Process files in serial
     clickmaps, clickmap_counts = utils.process_clickmap_files(
@@ -128,21 +150,8 @@ if __name__ == "__main__":
                 plt.show()
             plt.close()
 
-    # Get median number of clicks
-    percentile_thresh = config["percentile_thresh"]
-    medians = get_medians(final_clickmaps, 'image', thresh=percentile_thresh)
-    medians.update(get_medians(final_clickmaps, 'category', thresh=percentile_thresh))
-    medians.update(get_medians(final_clickmaps, 'all', thresh=percentile_thresh))
-    medians_json = json.dumps(medians, indent=4)
 
     # Save data
-    # final_data = {k: v for k, v in zip(final_keep_index, all_clickmaps)}
-    # np.save(
-    #     os.path.join(output_dir, config["processed_clickme_file"]),
-    #     final_data)
-    with open(os.path.join(output_dir, config["processed_medians"]), 'w') as f:
-        f.write(medians_json)
-
     img_heatmaps = {}
     for i, img_name in enumerate(final_keep_index):
         if not os.path.exists(os.path.join(config["image_path"], img_name)):
