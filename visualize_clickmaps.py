@@ -59,6 +59,7 @@ if __name__ == "__main__":
         v = v.item()
         image = np.asarray(v["image"])
         heatmap = v["heatmap"]
+        k = k.split(os.path.sep)[-1]
         np.save(os.path.join(output_dir, "{}_clickmap.npy".format(k)), heatmap)
         np.save(os.path.join(output_dir, "{}.npy".format(k)), image)
 
