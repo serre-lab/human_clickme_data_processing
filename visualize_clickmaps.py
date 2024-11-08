@@ -51,7 +51,6 @@ if __name__ == "__main__":
         if keep_count >= keep_images:
             break
     filtered_clicks = {k: v for k, v in processed_clicks.items() if click_counts[k] >= click_vals[keep_count]}
-    import pdb;pdb.set_trace()
 
     # Average clicks per image and save in a folder
     output_dir = "{}_images".format(config["processed_clickme_file"])
