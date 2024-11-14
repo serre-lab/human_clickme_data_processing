@@ -398,7 +398,7 @@ def prepare_maps(
             else:
                 raise NotImplementedError(kernel_type)
         if center_crop:
-            clickmaps = tvF.resize(clickmaps, min(center_crop))
+            clickmaps = tvF.resize(clickmaps, min(image_shape))
             clickmaps = tvF.center_crop(clickmaps, center_crop)
         clickmaps = clickmaps.squeeze()
         clickmaps = clickmaps.numpy()
