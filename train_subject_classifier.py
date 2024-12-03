@@ -39,9 +39,9 @@ class ClickDataset(Dataset):
         # Turn clicks into a one-hot encoding of x and y
         clicks = np.asarray(clicks) // self.click_div
 
-        # fix the bounds
-        clicks[:, 0] = np.clip(clicks[:, 0], 0, self.max_x - 1)
-        clicks[:, 1] = np.clip(clicks[:, 1], 0, self.max_y - 1)
+        # # fix the bounds
+        # clicks[:, 0] = np.clip(clicks[:, 0], 0, self.max_x - 1)
+        # clicks[:, 1] = np.clip(clicks[:, 1], 0, self.max_y - 1)
 
         x_enc = np.zeros((len(clicks), self.max_x))
         y_enc = np.zeros((len(clicks), self.max_y))
@@ -76,8 +76,8 @@ class RNN(nn.Module):
             raise ValueError("Invalid model name.")
         
         self.readout = nn.Linear(hidden_size * 2, output_size)
-        print(kwargs)
-        if kwargs['attention'] == True:
+
+        if kwargs['use_attention'] == True:
             self.attention = nn.MultiheadAttention(
                 hidden_size * 2,
                 num_heads=4,
@@ -95,7 +95,7 @@ class RNN(nn.Module):
         y_proj = self.xy_proj(input[:, ..., input.shape[-1]//2:])
         proj = torch.concat((x_proj, y_proj), dim=-1)
         output, _ = self.rnn(proj)  # Default hidden at t0 to 0 init
-        if self.kwargs['attention'] == True:
+        if self.kwargs['use_attention'] == True:
             output, _ = self.attention(output, output, output)
         output = self.readout(output[:, -1])
         return output
@@ -185,46 +185,9 @@ def seed_everything(s: int):
     torch.backends.cudnn.deterministic = True
 
 
-def main():
-    parser = argparse.ArgumentParser(description='Train a subject classifier model')
-    parser.add_argument('--model-name', type=str, required=True, help='Name of the model to train')
-    parser.add_argument('--epochs', type=int, required=True, help='Number of epochs to train the model')
-    parser.add_argument('--output', type=str, required=True, help='Output file name')
-    parser.add_argument('--checkpoint-path', type=str, default=None, help='Checkpoint to trained model.')
-    parser.add_argument('--data-path', type=str, required=True, help='Path to the data directory')
-    parser.add_argument('--evaluate-only', type=bool, default=False, help='Whether to only evaluate the model')
-    parser.add_argument('--attention', type=bool, required=False, default=False, help='Whether to use attention in the model') # something is wrong here need to debug, when i put false in cmd line but it parse as True
-
-    args = parser.parse_args()
-
-    SEED = 42
-    seed_everything(SEED)
-
-    # Inputs
-    cheaters = [780,1045,1551,1548,1549,1550,1173,2059,2056,2061,2065,2055,2064,1661,2057,2062,2054,2063,2058]
-    bad_players = [1164,664,933,219,961,596,1378,501]
-    good_players = [1131,1176,350,279,758,969,431, 339,1420,331,1346,878,540,607,1221,686,849, 984,355,931,790,575,1425,1099,347, 743,522,293,264, 976, 988, 619, 869, 1417, 1294, 707, 329, 930, 952, 270, 1382, 1441, 1391, 1486, 404, 1430, 317, 855, 703, 945, 708, 1354, 525, 1124, 182, 783, 222, 870, 326, 382, 434, 701, 1339, 367, 611, 1063, 1042, 385, 694, 625, 1006, 370, 463, 1258, 852, 1278,1002, 671,1076, 1016,729,337,420,1061,281, 368,811,1485,566]
-    catch_thresh = 0.95
-    data_file = args.data_path
-    #"clickme_datasets/train_imagenet_10_28_2024.npz"
-    train_batch_size = 32
-    train_num_workers = 0
-    # max_x, max_y = 1000, 1000
-    click_div = 6
-    lr = 1e-3
-    ckpts = "checkpoints"
-    os.makedirs(ckpts, exist_ok=True)
-    os.makedirs("logs", exist_ok=True)
-
-    # Prepare indices
-    cheaters_and_bad_players = np.concatenate([cheaters, bad_players])
-    good_players = np.asarray(good_players)
-    n = len(cheaters_and_bad_players)
-    np.random.seed(42)
-    good_players = good_players[np.random.permutation(len(good_players))[:n]]
-
-    # Get data
-    data = np.load(data_file, allow_pickle=True)
+def preprocess_dataset(data_path, good_players, cheaters_and_bad_players, catch_thresh, click_div):
+    # Load data
+    data = np.load(data_path, allow_pickle=True)
     image_path = data["file_pointer"]
     clickmap_x = data["clickmap_x"]
     clickmap_y = data["clickmap_y"]
@@ -264,22 +227,84 @@ def main():
     user_id = user_id[flt]
     label = np.in1d(user_id, good_players).astype(int)
 
-    # Usage
+    # Process clicks
     clicks = compute_clicks(clickmap_x, clickmap_y)
     # clicks = [list(zip(x, y)) for x, y in tqdm(zip(clickmap_x, clickmap_y), desc="Reformtting clicks", total=len(clickmap_x))]
 
     # Create dataframe
     df = pd.DataFrame({"image_path": image_path, "label": label, "clicks": clicks, "user_id": user_id})
-
+    
     # Close npz
     del data.f
     data.close()  # avoid the "too many files are open" error
+ 
+    return df, max_x, max_y
 
-    train_df, val_df = train_test_split(df, test_size=0.2, random_state=42)
+
+def main():
+    parser = argparse.ArgumentParser(description='Train a subject classifier model')
+    parser.add_argument('--model-name', type=str, required=True, help='Name of the model to train')
+    parser.add_argument('--epochs', type=int, required=True, help='Number of epochs to train the model')
+    parser.add_argument('--output', type=str, required=True, help='Output file name')
+    parser.add_argument('--checkpoint-path', type=str, default=None, help='Checkpoint to trained model.')
+    parser.add_argument('--train-data-path', type=str, required=True, help='Path to the data directory')
+    parser.add_argument('--val-data-path', type=str, required=True, help='Path to the data directory')
+    parser.add_argument('--evaluate-only', action='store_true', default=False, help='Whether to only evaluate the model')
+    parser.add_argument('--use-attention', action='store_true', default=False, help='Whether to use attention in the model')
+
+    args = parser.parse_args()
+
+    SEED = 42
+    seed_everything(SEED)
+
+    # Inputs
+    cheaters = [780,1045,1551,1548,1549,1550,1173,2059,2056,2061,2065,2055,2064,1661,2057,2062,2054,2063,2058]
+    bad_players = [1164,664,933,219,961,596,1378,501]
+    good_players = [1131,1176,350,279,758,969,431, 339,1420,331,1346,878,540,607,1221,686,849, 984,355,931,790,575,1425,1099,347, 743,522,293,264, 976, 988, 619, 869, 1417, 1294, 707, 329, 930, 952, 270, 1382, 1441, 1391, 1486, 404, 1430, 317, 855, 703, 945, 708, 1354, 525, 1124, 182, 783, 222, 870, 326, 382, 434, 701, 1339, 367, 611, 1063, 1042, 385, 694, 625, 1006, 370, 463, 1258, 852, 1278,1002, 671,1076, 1016,729,337,420,1061,281, 368,811,1485,566]
+    catch_thresh = 0.95
+    # data_file = args.data_path
+    #"clickme_datasets/train_imagenet_10_28_2024.npz"
+    train_batch_size = 32
+    train_num_workers = 0
+    # max_x, max_y = 1000, 1000
+    click_div = 6
+    lr = 1e-3
+    ckpts = "checkpoints"
+    os.makedirs(ckpts, exist_ok=True)
+    os.makedirs("logs", exist_ok=True)
+
+    # Prepare indices
+    cheaters_and_bad_players = np.concatenate([cheaters, bad_players])
+    good_players = np.asarray(good_players)
+    n = len(cheaters_and_bad_players)
+    np.random.seed(42)
+    good_players = good_players[np.random.permutation(len(good_players))[:n]]
+
+    # train_df, val_df = train_test_split(df, test_size=0.2, random_state=42)
+    train_df, train_max_x, train_max_y = preprocess_dataset(
+    args.train_data_path, 
+    good_players, 
+    cheaters_and_bad_players, 
+    catch_thresh, 
+    click_div
+    )
+
+    val_df, val_max_x, val_max_y = preprocess_dataset(
+        args.val_data_path,
+        good_players,
+        cheaters_and_bad_players,
+        catch_thresh,
+        click_div
+    )
+
+    # Use maximum dimensions across both datasets
+    max_x = max(train_max_x, val_max_x)
+    max_y = max(train_max_y, val_max_y)
     
     # Create data loaders
     train_label_index = train_df.label.values
     unique_classes, class_sample_count = np.unique(train_label_index, return_counts=True)
+    # weighted sampling by class
     class_weights = compute_class_weight("balanced", classes=unique_classes, y=train_label_index)
     class_weights = torch.from_numpy(class_weights).float()
     samples_weight_train = np.asarray([class_weights[t] for t in train_label_index])
@@ -311,6 +336,7 @@ def main():
     n_hidden = 32
     input_dim = max_x  # Do a one-hot encoding of x concatenated with one-hot encoding of y
     # model = RNN(input_dim, n_hidden, len(unique_classes), model_name=args.model_name, attention=args.attention)
+    print("input dim: {}, n_hidden: {}, n_classes: {}".format(input_dim, n_hidden, len(unique_classes)))
     model = RNN(input_dim, n_hidden, len(unique_classes), **args.__dict__)
     # model = MLP(input_dim, n_hidden, len(unique_classes), num_layers=4)
     if args.checkpoint_path is not None:
@@ -373,7 +399,9 @@ def main():
             
             if accelerator.is_main_process:
                 with open(args.output, "a") as f:
-                    f.write(f"Training loss at epoch {epoch+1}: {np.mean(losses):.4f}\n")
+                    msg = f"Training loss at epoch {epoch+1}: {np.mean(losses):.4f}\n"
+                    print(msg, end="")
+                    f.write(msg)
 
         # Validation loop
         model.eval()
@@ -387,7 +415,9 @@ def main():
         val_loss = np.mean(val_losses)
         if accelerator.is_main_process:
             with open(args.output, "a") as f:
-                f.write(f"Validation loss at epoch {epoch+1}: {val_loss:.4f}\n")
+                msg = f"Validation loss at epoch {epoch+1}: {val_loss:.4f}\n"
+                print(msg, end="")
+                f.write(msg)
 
             if accelerator.is_main_process:
                 if loss < best_loss:
