@@ -116,18 +116,18 @@ def main():
     
     # Run inference
     predictions = []
-    # with torch.no_grad():
-    #     for click_enc in dataloader:
-    #         outputs = model(click_enc)
-    #         pred = torch.argmax(outputs, dim=1)
-    #         predictions.extend(pred.cpu().numpy())
+    with torch.no_grad():
+        for click_enc in dataloader:
+            outputs = model(click_enc)
+            pred = torch.argmax(outputs, dim=1)
+            predictions.extend(pred.cpu().numpy())
     
     # Convert predictions to numpy array
     predictions = np.array(predictions)
 
     # for test only
     # load predictions
-    predictions = np.load('predictions.npy')
+    # predictions = np.load('predictions.npy')
 
     # Classify users
     print("Bad threshold: ", args.threshold)
