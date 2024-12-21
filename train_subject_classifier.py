@@ -22,20 +22,21 @@ import pdb
 
 # Define a custom dataset class
 class ClickDataset(Dataset):
-    def __init__(self, df, max_x, max_y, click_div=4):
+    def __init__(self, df, max_x, max_y, click_div=4, inference=False):
         self.df = df
         self.max_x = max_x
         self.max_y = max_y
         self.click_div = click_div  # Resample factor
         self.max_clicks = 100
+        self.inference = inference
 
     def __len__(self):
         return len(self.df)
 
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
-        label, clicks = row["label"], row["clicks"]
-
+        clicks = row["clicks"]
+        
         # Turn clicks into a one-hot encoding of x and y
         clicks = np.asarray(clicks) // self.click_div
 
@@ -54,7 +55,10 @@ class ClickDataset(Dataset):
         elif len(click_enc) < self.max_clicks:
             click_enc = np.pad(click_enc, ((0, self.max_clicks - len(click_enc)), (0, 0)))
         click_enc = torch.from_numpy(click_enc).float()
-        return label, click_enc
+
+        if self.inference:
+            return click_enc
+        return row["label"], click_enc
 
 class RNN(nn.Module):
     def __init__(self, input_size, hidden_size, output_size, num_layers=2, **kwargs):
