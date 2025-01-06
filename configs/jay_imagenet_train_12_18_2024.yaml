@@ -4,7 +4,7 @@ processed_clickme_file: jay_imagenet_train_combined_12_18_2024_processed.npz
 processed_medians: jay_imagenet_train_combined_12_18_2024_medians.json
 example_image_output_dir: jay_imagenet_train_combined_12_18_2024_images
 debug: False
-assets: assets
+assets: jay_work_in_progress
 preprocess_db_data: True
 blur_size: 21
 min_clicks: 10  # Minimum number of clicks for a map to be included
