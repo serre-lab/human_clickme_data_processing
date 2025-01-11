@@ -432,7 +432,7 @@ def prepare_maps_parallel(
             kernel_type,
             duplicate_thresh,
             max_kernel_size
-        ) for image_key in final_clickmaps
+        ) for image_key in tqdm(final_clickmaps, total=len(final_clickmaps), desc="Processing images")
     )
 
     # Process results
