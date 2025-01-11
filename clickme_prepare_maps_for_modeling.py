@@ -99,7 +99,11 @@ if __name__ == "__main__":
     os.makedirs(output_dir, exist_ok=True)
 
     # Process files in serial
-    clickmaps, clickmap_counts = utils.process_clickmap_files(
+    if config["parallel_prepare_maps"]:
+        process_clickmap_files = utils.process_clickmap_files_parallel
+    else:
+        process_clickmap_files = utils.process_clickmap_files
+    clickmaps, clickmap_counts = process_clickmap_files(
         clickme_data=clickme_data,
         image_path=config["image_path"],
         file_inclusion_filter=config["file_inclusion_filter"],

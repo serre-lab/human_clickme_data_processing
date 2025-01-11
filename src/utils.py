@@ -289,6 +289,81 @@ def process_clickmap_files(
     return proc_clickmaps, number_of_maps
 
 
+def process_clickmap_files_parallel(
+        clickme_data,
+        min_clicks,
+        max_clicks,
+        image_path,
+        file_inclusion_filter=None,
+        file_exclusion_filter=None,
+        process_max="trim",
+        n_jobs=-1):
+    """Parallelized version of process_clickmap_files using joblib"""
+    
+    def process_single_row(row):
+        """Helper function to process a single row"""
+        image_file_name = os.path.sep.join(row['image_path'].split(os.path.sep)[-2:])
+        
+        # Handle CO3D_ClickmeV2 special case
+        if file_inclusion_filter == "CO3D_ClickmeV2":
+            image_files = glob(os.path.join(image_path, "**", "*.png"))
+            if not np.any([image_file_name in x for x in image_files]):
+                return None
+        elif file_inclusion_filter and file_inclusion_filter not in image_file_name:
+            return None
+        if file_exclusion_filter and file_exclusion_filter in image_file_name:
+            return None
+
+        clickmap = row["clicks"]
+        if isinstance(clickmap, str):
+            clean_string = re.sub(r'[{}"]', '', clickmap)
+            tuple_strings = clean_string.split(', ')
+            data_list = tuple_strings[0].strip("()").split("),(")
+            if len(data_list) == 1:  # Remove empty clickmaps
+                return None
+            tuples_list = [tuple(map(int, pair.split(','))) for pair in data_list]
+        else:
+            tuples_list = clickmap
+            if len(tuples_list) == 1:  # Remove empty clickmaps
+                return None
+
+        if process_max == "exclude":
+            if len(tuples_list) <= min_clicks or len(tuples_list) > max_clicks:
+                return None
+        elif process_max == "trim":
+            if len(tuples_list) <= min_clicks:
+                return None
+            # Trim to the first max_clicks clicks
+            tuples_list = tuples_list[:max_clicks]
+        else:
+            raise NotImplementedError(process_max)
+
+        return (image_file_name, tuples_list)
+
+    # Process rows in parallel
+    results = Parallel(n_jobs=n_jobs)(
+        delayed(process_single_row)(row) 
+        for _, row in tqdm(clickme_data.iterrows(), total=len(clickme_data), desc="Processing clickmaps")
+    )
+
+    # Combine results
+    proc_clickmaps = {}
+    number_of_maps = []
+    
+    for result in results:
+        if result is not None:
+            image_file_name, tuples_list = result
+            if image_file_name not in proc_clickmaps:
+                proc_clickmaps[image_file_name] = []
+            proc_clickmaps[image_file_name].append(tuples_list)
+
+    # Count number of maps per image
+    for image in proc_clickmaps:
+        number_of_maps.append(len(proc_clickmaps[image]))
+
+    return proc_clickmaps, number_of_maps
+
+
 def circle_kernel(size, sigma=None):
     """
     Create a flat circular kernel where the values are the average of the total number of on pixels in the filter.
