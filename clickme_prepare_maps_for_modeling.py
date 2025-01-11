@@ -98,7 +98,6 @@ if __name__ == "__main__":
     os.makedirs(image_output_dir, exist_ok=True)
     os.makedirs(output_dir, exist_ok=True)
 
-    # Process files in serial
     if config["parallel_prepare_maps"]:
         process_clickmap_files = utils.process_clickmap_files_parallel
     else:

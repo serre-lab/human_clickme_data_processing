@@ -91,7 +91,11 @@ def main(
     assert blur_sigma_function is not None, "Blur sigma function needs to be provided."
 
     # Process files in serial
-    clickmaps, _ = utils.process_clickmap_files(
+    if config["parallel_prepare_maps"]:
+        process_clickmap_files = utils.process_clickmap_files_parallel
+    else:
+        process_clickmap_files = utils.process_clickmap_files
+    clickmaps, _ = process_clickmap_files(
         clickme_data=clickme_data,
         image_path=clickme_image_folder,
         file_inclusion_filter=file_inclusion_filter,
@@ -106,8 +110,13 @@ def main(
     # Filter participants if requested
     if participant_filter:
         clickmaps = utils.filter_participants(clickmaps)
+
     # Prepare maps
-    final_clickmaps, all_clickmaps, categories, _ = utils.prepare_maps(
+    if config["parallel_prepare_maps"]:
+        prepare_maps = utils.prepare_maps_parallel
+    else:
+        prepare_maps = utils.prepare_maps
+    final_clickmaps, all_clickmaps, categories, _ = prepare_maps(
         final_clickmaps=clickmaps,
         blur_size=blur_size,
         blur_sigma=blur_sigma,
