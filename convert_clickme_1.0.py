@@ -61,7 +61,13 @@ for path in paths:
     for record in tqdm(dataset, desc="Processing record: {}".format(path.split(os.path.sep)[-1].split(".")[0])):
         # Parse the record
         import pdb;pdb.set_trace()
-        features = tf.io.parse_single_example(record, features=fdict)
+        features = tf.io.parse_single_example(record, features={
+            'label': tf.io.FixedLenFeature([], tf.int64),
+            'image': tf.io.FixedLenFeature([], tf.string),
+            'heatmap': tf.io.FixedLenFeature([], tf.string), 
+            'click_count': tf.io.FixedLenFeature([], tf.int64),
+            'image_path': tf.io.FixedLenFeature([], tf.string), # Changed from file_path to image_path
+        })
         
         # Get feature dictionary
         # features = example.features.feature
