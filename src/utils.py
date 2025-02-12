@@ -16,6 +16,179 @@ from accelerate import Accelerator
 from joblib import Parallel, delayed
 
 
+import numpy as np
+from scipy import stats
+from scipy.spatial.distance import cdist
+
+try:
+    import cupy as cp
+    HAS_CUPY = True
+except ImportError:
+    HAS_CUPY = False
+
+
+def normalize_heatmap(heatmap):
+    """Normalize heatmap to sum to 1 while preserving zeros"""
+    total = heatmap.sum()
+    return heatmap / total if total != 0 else heatmap
+
+
+def get_cost_matrix(shape, device='cpu'):
+    """
+    Compute cost matrix for grid coordinates.
+    Vectorized implementation for speed.
+    """
+    h, w = shape
+    xp = cp if (device == 'gpu' and HAS_CUPY) else np
+    
+    y, x = xp.meshgrid(xp.arange(h), xp.arange(w), indexing='ij')
+    points = xp.stack([y.flatten(), x.flatten()], axis=1)
+    
+    # Compute pairwise distances using broadcasting
+    diff = points[:, None, :] - points[None, :, :]
+    costs = xp.sqrt(xp.sum(diff ** 2, axis=2))
+    
+    return costs
+
+
+def sinkhorn_knopp(cost_matrix, a, b, epsilon=1e-1, max_iters=100, tol=1e-6):
+    """
+    Fast Sinkhorn-Knopp algorithm for approximate optimal transport.
+    
+    Parameters:
+    -----------
+    cost_matrix : array
+        Matrix of transport costs
+    a, b : array
+        Source and target distributions
+    epsilon : float
+        Regularization parameter (smaller = more accurate but slower)
+    """
+    xp = cp if isinstance(cost_matrix, cp.ndarray) else np
+    
+    # Initialization
+    K = xp.exp(-cost_matrix / epsilon)
+    
+    # Initialize scaling vectors
+    u = xp.ones_like(a)
+    v = xp.ones_like(b)
+    
+    # Sinkhorn iterations
+    for _ in range(max_iters):
+        u_old = u.copy()
+        
+        # u update
+        u = a / (K @ v)
+        # v update
+        v = b / (K.T @ u)
+        
+        # Check convergence
+        err = xp.max(xp.abs(u - u_old))
+        if err < tol:
+            break
+    
+    # Compute transport plan
+    P = xp.diag(u) @ K @ xp.diag(v)
+    
+    # Compute total cost
+    cost = xp.sum(P * cost_matrix)
+    
+    return cost
+
+
+def fast_normalized_emd(heatmap1, heatmap2, epsilon=1e-1):
+    """
+    Compute normalized Earth Mover's Distance between two heatmaps.
+    Uses Sinkhorn algorithm for speed and GPU if available.
+    
+    Parameters:
+    -----------
+    heatmap1, heatmap2 : np.ndarray
+        Input heatmaps
+    epsilon : float
+        Regularization parameter for Sinkhorn
+        
+    Returns:
+    --------
+    float
+        Normalized EMD value
+    """
+    if heatmap1.shape != heatmap2.shape:
+        raise ValueError("Heatmaps must have same shape")
+    
+    # Use GPU if available
+    if HAS_CUPY:
+        heatmap1 = cp.array(heatmap1)
+        heatmap2 = cp.array(heatmap2)
+        device = 'gpu'
+    else:
+        device = 'cpu'
+    
+    # Normalize heatmaps
+    a = normalize_heatmap(heatmap1).flatten()
+    b = normalize_heatmap(heatmap2).flatten()
+    
+    # Get or compute cost matrix
+    cost_matrix = get_cost_matrix(heatmap1.shape, device)
+    
+    # Compute EMD using Sinkhorn
+    distance = sinkhorn_knopp(cost_matrix, a, b, epsilon=epsilon)
+    
+    # Move back to CPU if needed
+    if HAS_CUPY:
+        distance = cp.asnumpy(distance)
+    
+    return distance
+
+
+def benchmark_speed(shape=(64, 64), n_iterations=100):
+    """Benchmark the speed of the EMD computation"""
+    import time
+    
+    # Generate random heatmaps
+    heatmap1 = np.random.rand(*shape)
+    heatmap2 = np.random.rand(*shape)
+    
+    start = time.time()
+    for _ in range(n_iterations):
+        _ = fast_normalized_emd(heatmap1, heatmap2)
+    end = time.time()
+    
+    avg_time = (end - start) / n_iterations
+    print(f"Average time per computation: {avg_time*1000:.2f}ms")
+    return avg_time
+
+
+def compute_similarity(heatmap1, heatmap2, method='spatial_correlation', **kwargs):
+    """
+    Wrapper function to compute heatmap similarity using different methods.
+    
+    Parameters:
+    -----------
+    heatmap1, heatmap2 : np.ndarray
+        Input heatmaps
+    method : str
+        Similarity method to use
+    **kwargs : dict
+        Additional parameters for specific methods
+    
+    Returns:
+    --------
+    float
+        Similarity score
+    """
+    methods = {
+        'spatial_correlation': spatial_correlation_similarity,
+        'spearman': lambda x, y: stats.spearmanr(x.flatten(), y.flatten())[0],
+        'pearson': lambda x, y: stats.pearsonr(x.flatten(), y.flatten())[0]
+    }
+    
+    if method not in methods:
+        raise ValueError(f"Method {method} not supported")
+    
+    return methods[method](heatmap1, heatmap2, **kwargs)
+
+
 def load_masks(mask_dir, wc="*.pth"):
     files = glob(os.path.join(mask_dir, wc))
     assert len(files), "No masks found in {}".format(mask_dir)

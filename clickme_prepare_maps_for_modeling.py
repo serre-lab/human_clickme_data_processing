@@ -233,7 +233,6 @@ if __name__ == "__main__":
     print(len(img_heatmaps))
 
     # Patch: Sometimes img_heatmaps is too large
-    import pdb;pdb.set_trace()
     if len(img_heatmaps) > 10000:
         os.makedirs(os.path.join(output_dir, config["experiment_name"]), exist_ok=True)
         for hn, hm in img_heatmaps.keys():
