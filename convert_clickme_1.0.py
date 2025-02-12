@@ -24,7 +24,7 @@ for path in paths:
     clicks, labels, image_paths, user_ids = [], [], [], []
 
     # Iterate through records
-    for record in tqdm(dataset, total=len(dataset), desc="Processing record: {}".format(path.split(os.path.sep)[-1].split(".")[0])):
+    for record in tqdm(dataset, desc="Processing record: {}".format(path.split(os.path.sep)[-1].split(".")[0])):
         # Parse the record
         example = tf.train.Example()
         example.ParseFromString(record.numpy())
