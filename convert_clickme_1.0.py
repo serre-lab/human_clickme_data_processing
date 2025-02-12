@@ -12,11 +12,11 @@ paths = [
 ]
 
 fdict = {
-    'label': tf.FixedLenFeature([], tf.int64),
-    'image': tf.FixedLenFeature([], tf.string),
-    'heatmap': tf.FixedLenFeature([], tf.string),
-    'click_count': tf.FixedLenFeature([], tf.int64),
-    'file_path': tf.FixedLenFeature([], tf.string),
+    'label': tf.io.FixedLenFeature([], tf.int64),
+    'image': tf.io.FixedLenFeature([], tf.string),
+    'heatmap': tf.io.FixedLenFeature([], tf.string),
+    'click_count': tf.io.FixedLenFeature([], tf.int64),
+    'file_path': tf.io.FixedLenFeature([], tf.string),
 }
 
 # Process each tfrecord file
