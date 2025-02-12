@@ -66,7 +66,7 @@ for path in paths:
             'image': tf.io.FixedLenFeature([], tf.string),
             'heatmap': tf.io.FixedLenFeature([], tf.string), 
             'click_count': tf.io.FixedLenFeature([], tf.int64),
-            'image_path': tf.io.FixedLenFeature([], tf.string), # Changed from file_path to image_path
+            'file_path': tf.io.FixedLenFeature([], tf.string), # Changed back to file_path since that's what's in the data
         })
         
         # Get feature dictionary
