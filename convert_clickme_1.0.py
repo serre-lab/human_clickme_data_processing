@@ -5,9 +5,9 @@ import pdb
 
 # Create output directories for each tfrecord file
 paths = [
-    "/media/data_cifs/clickme_experiment/tf_records/archive/clickme_test.tfrecords",
-    "/media/data_cifs/clickme_experiment/tf_records/archive/clickme_train.tfrecords",
-    "/media/data_cifs/clickme_experiment/tf_records/archive/clickme_val.tfrecords",
+    "/media/data_cifs/clicktionary/clickme_experiment/tf_records/archive/clickme_test.tfrecords",
+    "/media/data_cifs/clicktionary/clickme_experiment/tf_records/archive/clickme_train.tfrecords",
+    "/media/data_cifs/clicktionary/clickme_experiment/tf_records/archive/clickme_val.tfrecords",
 ]
 
 # Process each tfrecord file
