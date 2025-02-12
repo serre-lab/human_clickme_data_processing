@@ -19,7 +19,7 @@ fdict = {
     'click_count': tf.io.FixedLenFeature([], tf.int64),
 }
 
-def process_record(record, fdict, image_output_dir, hm_output_dir, image_counts):
+def process_record(record, fdict, image_output_dir, hm_output_dir, idx):
     """Process a single record from the dataset."""
     # Parse the record
     features = tf.io.parse_single_example(record, features=fdict)
@@ -32,9 +32,8 @@ def process_record(record, fdict, image_output_dir, hm_output_dir, image_counts)
     heatmap = tf.io.decode_raw(features["heatmap"], tf.float32)
     heatmap = tf.reshape(heatmap, [256, 256, 1]).numpy()
 
-    # Generate unique image name using atomic counter
-    image_name = "{}_{}.png".format(label, image_counts[label])
-    image_counts[label] += 1
+    # Generate unique image name using index
+    image_name = f"{label}_{idx}.png"
 
     # Create output file paths
     image_output_file = os.path.join(image_output_dir, image_name)
@@ -63,11 +62,6 @@ for path in paths:
     dataset = tf.data.TFRecordDataset(path)
     records = list(dataset)  # Convert to list for parallel processing
 
-    # Initialize image counts with thread-safe counter
-    from multiprocessing import Manager
-    manager = Manager()
-    image_counts = manager.dict()
-
     # Process records in parallel
     results = Parallel(n_jobs=-1)(
         delayed(process_record)(
@@ -75,8 +69,8 @@ for path in paths:
             fdict, 
             image_output_dir, 
             hm_output_dir, 
-            image_counts
-        ) for record in tqdm(records, desc=f"Processing {path.split(os.path.sep)[-1]}")
+            idx
+        ) for idx, record in enumerate(tqdm(records, desc=f"Processing {path.split(os.path.sep)[-1]}"))
     )
 
     # Collect results
