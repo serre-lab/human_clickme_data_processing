@@ -1,7 +1,8 @@
 import os
 import tensorflow as tf
 from tqdm import tqdm
-import cv2
+import numpy as np
+from joblib import Parallel, delayed
 
 
 # Create output directories for each tfrecord file
@@ -18,48 +19,68 @@ fdict = {
     'click_count': tf.io.FixedLenFeature([], tf.int64),
 }
 
+def process_record(record, fdict, image_output_dir, hm_output_dir, image_counts):
+    """Process a single record from the dataset."""
+    # Parse the record
+    features = tf.io.parse_single_example(record, features=fdict)
+    
+    # Get feature dictionary
+    click_count = features["click_count"].numpy()
+    label = features["label"].numpy()
+    image = tf.io.decode_raw(features["image"], tf.float32)
+    image = tf.reshape(image, [256, 256, 3]).numpy().astype(np.uint8)
+    heatmap = tf.io.decode_raw(features["heatmap"], tf.float32)
+    heatmap = tf.reshape(heatmap, [256, 256, 1]).numpy()
+
+    # Generate unique image name using atomic counter
+    image_name = "{}_{}.png".format(label, image_counts[label])
+    image_counts[label] += 1
+
+    # Create output file paths
+    image_output_file = os.path.join(image_output_dir, image_name)
+    hm_output_file = os.path.join(hm_output_dir, image_name)
+
+    # Save image and HM
+    np.save(image_output_file, image)
+    np.save(hm_output_file, heatmap)
+
+    return {
+        'click_count': click_count,
+        'label': label,
+        'image_path': features.get("image_path", None),
+        'user_id': features.get("user_id", None)
+    }
+
 # Process each tfrecord file
 for path in paths:
     # Create output directory
-    output_dir = "{}_v1".format(path.split(os.path.sep)[-1].split(".")[0])
-    os.makedirs(output_dir, exist_ok=True)
+    image_output_dir = "{}_images_v1".format(path.split(os.path.sep)[-1].split(".")[0])
+    hm_output_dir = "{}_heatmaps_v1".format(path.split(os.path.sep)[-1].split(".")[0])
+    os.makedirs(image_output_dir, exist_ok=True)
+    os.makedirs(hm_output_dir, exist_ok=True)
     
     # Read the tfrecord file
     dataset = tf.data.TFRecordDataset(path)
+    records = list(dataset)  # Convert to list for parallel processing
 
+    # Initialize image counts with thread-safe counter
+    from multiprocessing import Manager
+    manager = Manager()
+    image_counts = manager.dict()
 
-    # Store info in lists
-    clicks, labels, image_paths, user_ids = [], [], [], []
-    image_counts = {}
+    # Process records in parallel
+    results = Parallel(n_jobs=-1)(
+        delayed(process_record)(
+            record, 
+            fdict, 
+            image_output_dir, 
+            hm_output_dir, 
+            image_counts
+        ) for record in tqdm(records, desc=f"Processing {path.split(os.path.sep)[-1]}")
+    )
 
-    # Iterate through records
-    for record in tqdm(dataset, desc="Processing record: {}".format(path.split(os.path.sep)[-1].split(".")[0])):
-        # Parse the record
-        import pdb;pdb.set_trace()
-        features = tf.io.parse_single_example(record, features=fdict)
-        
-        # Get feature dictionary
-        click_count = features["click_count"].numpy()
-        label = features["label"].numpy()
-        image = tf.io.decode_raw(features["image"], tf.float32)
-        image = tf.reshape(image, [256, 256, 3]).numpy()
-        heatmap = tf.io.decode_raw(features["heatmap"], tf.float32)
-        heatmap = tf.reshape(heatmap, [256, 256, 1]).numpy()
-        import pdb;pdb.set_trace()
-
-        if label not in image_counts:
-            image_counts[label] = 0
-        image_counts[label] += 1
-        image_name = "{}_{}.png".format(label, image_counts[label])
-
-        # Store data
-        clicks.append(heatmap)
-        labels.append(label)
-        image_paths.append(features["image_path"].bytes_list.value[0])
-        user_ids.append(features["user_id"].bytes_list.value[0])
-
-        # Create output file name and save
-        output_file = os.path.join(output_dir, image_name)
-        
-        # Save image
-        cv2.imwrite(output_file, image)
+    # Collect results
+    clicks = [r['click_count'] for r in results]
+    labels = [r['label'] for r in results]
+    image_paths = [r['image_path'] for r in results if r['image_path'] is not None]
+    user_ids = [r['user_id'] for r in results if r['user_id'] is not None]
