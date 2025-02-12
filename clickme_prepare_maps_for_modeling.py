@@ -102,6 +102,7 @@ if __name__ == "__main__":
         process_clickmap_files = utils.process_clickmap_files_parallel
     else:
         process_clickmap_files = utils.process_clickmap_files
+    import pdb;pdb.set_trace()
     clickmaps, clickmap_counts = process_clickmap_files(
         clickme_data=clickme_data,
         image_path=config["image_path"],
