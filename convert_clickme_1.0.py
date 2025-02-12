@@ -31,10 +31,13 @@ for path in paths:
         
         # Get feature dictionary
         features = example.features.feature
+        click_data = features["clicks"]
+        import pdb;pdb.set_trace()
+        continue 
+
         label = features["label"].int64_list.value[0]
         import pdb;pdb.set_trace()
         click_count = features["click_count"].int64_list.value[0]
-        click_data = features["clicks"].bytes_list.value[0]
         image = tf.io.decode_raw(features["image"].bytes_list.value[0], tf.float32)
         image = tf.reshape(image, [256, 256, 3]).numpy()
 
