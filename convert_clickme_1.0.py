@@ -26,11 +26,11 @@ for path in paths:
     os.makedirs(output_dir, exist_ok=True)
     
     # Read the tfrecord file
-    reader = tf.TFRecordReader()
-    _, serialized_example = reader.read(path)
+    # reader = tf.TFRecordReader()
+    # _, serialized_example = reader.read(path)
     # features = tf.parse_single_example(serialized_example, features=fdict)
 
-    # dataset = tf.data.TFRecordDataset(path)
+    dataset = tf.data.TFRecordDataset(path)
 
     # # Convert from a scalar string tensor (whose single string has
     # image = tf.decode_raw(features[keys['image']], image_type)
