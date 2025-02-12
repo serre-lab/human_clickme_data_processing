@@ -7,7 +7,7 @@ from joblib import Parallel, delayed
 
 # Create output directories for each tfrecord file
 paths = [
-    # "/media/data_cifs/clicktionary/clickme_experiment/tf_records/archive/clickme_test.tfrecords",
+    "/media/data_cifs/clicktionary/clickme_experiment/tf_records/archive/clickme_test.tfrecords",
     "/media/data_cifs/clicktionary/clickme_experiment/tf_records/archive/clickme_train.tfrecords",
     "/media/data_cifs/clicktionary/clickme_experiment/tf_records/archive/clickme_val.tfrecords",
 ]
@@ -58,10 +58,9 @@ for path in paths:
     os.makedirs(image_output_dir, exist_ok=True)
     os.makedirs(hm_output_dir, exist_ok=True)
     
-    # Read the tfrecord file using a context manager
-    with tf.data.TFRecordDataset(path).files() as files:
-        dataset = tf.data.TFRecordDataset(files)
-        records = list(dataset)  # Convert to list for parallel processing
+    # Read the tfrecord file
+    dataset = tf.data.TFRecordDataset(path)
+    records = list(dataset)  # Convert to list for parallel processing
 
     # Process records in parallel
     results = Parallel(n_jobs=-1)(
