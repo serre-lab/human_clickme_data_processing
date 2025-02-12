@@ -60,11 +60,11 @@ for path in paths:
     # Iterate through records
     for record in tqdm(dataset, desc="Processing record: {}".format(path.split(os.path.sep)[-1].split(".")[0])):
         # Parse the record
-        example = tf.train.Example()
-        example.ParseFromString(record.numpy(), features=fdict)
+        import pdb;pdb.set_trace()
+        features = tf.io.parse_single_example(record, features=fdict)
         
         # Get feature dictionary
-        features = example.features.feature
+        # features = example.features.feature
         click_data = features["clicks"]
         import pdb;pdb.set_trace()
 
