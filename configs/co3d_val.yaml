@@ -20,7 +20,7 @@ class_filter_file: False  # Filter classes based on co3d class list
 remove_string: False
 image_path: /media/data_cifs/projects/prj_video_imagenet/CO3D_ClickMe2  # Location of images
 metadata_file: False
-file_inclusion_filter: CO3D_ClickmeV2  # Patch — only include val co3d images
+file_inclusion_filter: CO3D_Clickme2  # Patch — only include val co3d images
 file_exclusion_filter: ILSVRC2012_val  # Exclude images that match this string
 mask_dir: co3d_masks  # Directory containing masks for each image
 mask_threshold: 0.17  # Max IOU threshold for foreground mask overlap
