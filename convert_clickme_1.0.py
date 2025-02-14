@@ -67,7 +67,7 @@ for path in paths:
     records = list(dataset)  # Convert to list for parallel processing
 
     # Process records in parallel
-    results = Parallel(n_jobs=0)(
+    results = Parallel(n_jobs=1)(
         delayed(process_record)(
             record, 
             fdict, 
