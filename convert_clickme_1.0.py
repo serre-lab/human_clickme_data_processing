@@ -22,6 +22,10 @@ fdict = {
 def process_record(record, fdict, image_output_dir, hm_output_dir, idx):
     """Process a single record from the dataset."""
     # Parse the record
+    import pdb; pdb.set_trace()
+    example = tf.train.Example()
+    example.ParseFromString(record.numpy())
+    print("Available keys:", example.features.feature.keys())  # This will show all available keys
     features = tf.io.parse_single_example(record, features=fdict)
     
     # Get feature dictionary
@@ -63,7 +67,7 @@ for path in paths:
     records = list(dataset)  # Convert to list for parallel processing
 
     # Process records in parallel
-    results = Parallel(n_jobs=-1)(
+    results = Parallel(n_jobs=0)(
         delayed(process_record)(
             record, 
             fdict, 
