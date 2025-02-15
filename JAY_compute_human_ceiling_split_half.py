@@ -118,6 +118,14 @@ def main(
         prepare_maps = utils.prepare_maps_parallel
     else:
         prepare_maps = utils.prepare_maps
+    
+    # Simplify subject filtering: do partial filtering here
+    filtered_clickmaps = {}
+    for k, v in clickmaps.items():
+        if len(v) >= min_subjects:
+            filtered_clickmaps[k] = v
+    clickmaps = filtered_clickmaps
+    
     final_clickmaps, all_clickmaps, categories, _ = prepare_maps(
         final_clickmaps=clickmaps,
         blur_size=blur_size,
