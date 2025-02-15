@@ -7,7 +7,7 @@ debug: False
 assets: assets
 preprocess_db_data: False
 blur_size: 21
-min_clicks: 10  # Minimum number of clicks for a map to be included
+min_clicks: 1  # Minimum number of clicks for a map to be included
 max_clicks: 75 # Maximum number of clicks for a map to be included
 min_subjects: 5  # Minimum number of subjects for an image to be included
 max_subjects: 20  # Maximum number of subjects for an image to be included
