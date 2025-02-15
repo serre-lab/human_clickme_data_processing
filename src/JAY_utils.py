@@ -575,7 +575,11 @@ def process_single_image(image_key, image_trials, image_shape, blur_size, blur_s
                         min_pixels, min_subjects, max_subjects, center_crop, metadata, blur_sigma_function,
                         kernel_type, duplicate_thresh, max_kernel_size):
     """Helper function to process a single image for parallel processing"""
-    
+
+    # Early exit if number of subjects is too low (won't recover)
+    if len(image_trials) < min_subjects:
+        return None
+
     # Precompute kernel
     if kernel_type == "gaussian":
         blur_kernel = gaussian_kernel(blur_size, blur_sigma)
@@ -616,23 +620,26 @@ def process_single_image(image_key, image_trials, image_shape, blur_size, blur_s
     # Filter processing
     valid_mask = (clickmaps > 0).sum((1, 2)) > min_pixels
     clickmaps = clickmaps[valid_mask]
+
+    # Early exit if still below min_subjects
     if len(clickmaps) < min_subjects:
         return None
 
-    # Efficient duplicate removal
+    # Efficient duplicate removal (ONLY ONCE, AFTER FILTERING)
     clickmaps_vec = clickmaps.reshape(len(clickmaps), -1)
     dm = cdist(clickmaps_vec, clickmaps_vec, metric="euclidean")
     keep_mask = np.ones(len(clickmaps), dtype=bool)
-    
+
     for i in range(len(dm)):
         if keep_mask[i]:
             keep_mask[np.where(dm[i] < duplicate_thresh)[0]] = False
             keep_mask[i] = True
+
     clickmaps = clickmaps[keep_mask]
 
-    return (image_key, clickmaps) if min_subjects <= len(clickmaps) <= max_subjects else None
-
-
+    # Now check max_subjects after duplicates are removed
+    num_subjects = len(clickmaps)
+    return (image_key, clickmaps) if min_subjects <= num_subjects <= max_subjects else None
 
 
 def prepare_maps_parallel(
