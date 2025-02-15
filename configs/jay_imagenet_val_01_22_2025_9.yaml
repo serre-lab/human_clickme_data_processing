@@ -1,16 +1,16 @@
-experiment_name: jay_imagenet_val_0.1
-clickme_data: clickme_datasets/val_imagenet_10_17_2024.npz
-processed_clickme_file: jay_imagenet_val_0.1_processed.npz
-processed_medians: jay_imagenet_val_0.1_medians.json
-example_image_output_dir: jay_imagenet_val_0.1_images
+experiment_name: jay_imagenet_val_01_22_2025
+clickme_data: clickme_datasets/jay_imagenet_val_combined_01_22_2025.npz
+processed_clickme_file: jay_imagenet_val_combined_01_22_2025_processed.npz
+processed_medians: jay_imagenet_val_combined_01_22_2025_medians.json
+example_image_output_dir: jay_imagenet_val_combined_01_22_2025_images
 debug: False
-assets: assets
+assets: jay_work_in_progress
 preprocess_db_data: True
 blur_size: 21
 min_clicks: 10  # Minimum number of clicks for a map to be included
 max_clicks: 75 # Maximum number of clicks for a map to be included
-min_subjects: 5  # Minimum number of subjects for an image to be included
-max_subjects: 20  # Maximum number of subjects for an image to be included
+min_subjects: 9  # Minimum number of subjects for an image to be included
+max_subjects: 9  # Maximum number of subjects for an image to be included
 null_iterations: 10
 percentile_thresh: 50  # For median splits
 filter_mobile: True

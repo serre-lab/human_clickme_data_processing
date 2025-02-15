@@ -1,0 +1,956 @@
+import re
+import os
+import sys
+import torch
+import yaml
+import numpy as np
+import pandas as pd
+from torch.nn import functional as F
+from scipy.stats import spearmanr
+from tqdm import tqdm
+from torchvision.transforms import functional as tvF
+from scipy.spatial.distance import cdist
+from glob import glob
+from train_subject_classifier import RNN
+from accelerate import Accelerator
+from joblib import Parallel, delayed
+
+
+import numpy as np
+from scipy import stats
+from scipy.spatial.distance import cdist
+
+try:
+    import cupy as cp
+    HAS_CUPY = True
+except ImportError:
+    HAS_CUPY = False
+
+
+def normalize_heatmap(heatmap):
+    """Normalize heatmap to sum to 1 while preserving zeros"""
+    total = heatmap.sum()
+    return heatmap / total if total != 0 else heatmap
+
+
+def get_cost_matrix(shape, device='cpu'):
+    """
+    Compute cost matrix for grid coordinates.
+    Vectorized implementation for speed.
+    """
+    h, w = shape
+    xp = cp if (device == 'gpu' and HAS_CUPY) else np
+    
+    y, x = xp.meshgrid(xp.arange(h), xp.arange(w), indexing='ij')
+    points = xp.stack([y.flatten(), x.flatten()], axis=1)
+    
+    # Compute pairwise distances using broadcasting
+    diff = points[:, None, :] - points[None, :, :]
+    costs = xp.sqrt(xp.sum(diff ** 2, axis=2))
+    
+    return costs
+
+
+def sinkhorn_knopp(cost_matrix, a, b, epsilon=1e-1, max_iters=100, tol=1e-6):
+    """
+    Fast Sinkhorn-Knopp algorithm for approximate optimal transport.
+    
+    Parameters:
+    -----------
+    cost_matrix : array
+        Matrix of transport costs
+    a, b : array
+        Source and target distributions
+    epsilon : float
+        Regularization parameter (smaller = more accurate but slower)
+    """
+    xp = cp if isinstance(cost_matrix, cp.ndarray) else np
+    
+    # Initialization
+    K = xp.exp(-cost_matrix / epsilon)
+    
+    # Initialize scaling vectors
+    u = xp.ones_like(a)
+    v = xp.ones_like(b)
+    
+    # Sinkhorn iterations
+    for _ in range(max_iters):
+        u_old = u.copy()
+        
+        # u update
+        u = a / (K @ v)
+        # v update
+        v = b / (K.T @ u)
+        
+        # Check convergence
+        err = xp.max(xp.abs(u - u_old))
+        if err < tol:
+            break
+    
+    # Compute transport plan
+    P = xp.diag(u) @ K @ xp.diag(v)
+    
+    # Compute total cost
+    cost = xp.sum(P * cost_matrix)
+    
+    return cost
+
+
+def fast_normalized_emd(heatmap1, heatmap2, epsilon=1e-1):
+    """
+    Compute normalized Earth Mover's Distance between two heatmaps.
+    Uses Sinkhorn algorithm for speed and GPU if available.
+    
+    Parameters:
+    -----------
+    heatmap1, heatmap2 : np.ndarray
+        Input heatmaps
+    epsilon : float
+        Regularization parameter for Sinkhorn
+        
+    Returns:
+    --------
+    float
+        Normalized EMD value
+    """
+    if heatmap1.shape != heatmap2.shape:
+        raise ValueError("Heatmaps must have same shape")
+    
+    # Use GPU if available
+    if HAS_CUPY:
+        heatmap1 = cp.array(heatmap1)
+        heatmap2 = cp.array(heatmap2)
+        device = 'gpu'
+    else:
+        device = 'cpu'
+    
+    # Normalize heatmaps
+    a = normalize_heatmap(heatmap1).flatten()
+    b = normalize_heatmap(heatmap2).flatten()
+    
+    # Get or compute cost matrix
+    cost_matrix = get_cost_matrix(heatmap1.shape, device)
+    
+    # Compute EMD using Sinkhorn
+    distance = sinkhorn_knopp(cost_matrix, a, b, epsilon=epsilon)
+    
+    # Move back to CPU if needed
+    if HAS_CUPY:
+        distance = cp.asnumpy(distance)
+    
+    return distance
+
+
+def benchmark_speed(shape=(64, 64), n_iterations=100):
+    """Benchmark the speed of the EMD computation"""
+    import time
+    
+    # Generate random heatmaps
+    heatmap1 = np.random.rand(*shape)
+    heatmap2 = np.random.rand(*shape)
+    
+    start = time.time()
+    for _ in range(n_iterations):
+        _ = fast_normalized_emd(heatmap1, heatmap2)
+    end = time.time()
+    
+    avg_time = (end - start) / n_iterations
+    print(f"Average time per computation: {avg_time*1000:.2f}ms")
+    return avg_time
+
+
+def compute_similarity(heatmap1, heatmap2, method='spatial_correlation', **kwargs):
+    """
+    Wrapper function to compute heatmap similarity using different methods.
+    
+    Parameters:
+    -----------
+    heatmap1, heatmap2 : np.ndarray
+        Input heatmaps
+    method : str
+        Similarity method to use
+    **kwargs : dict
+        Additional parameters for specific methods
+    
+    Returns:
+    --------
+    float
+        Similarity score
+    """
+    methods = {
+        'spatial_correlation': spatial_correlation_similarity,
+        'spearman': lambda x, y: stats.spearmanr(x.flatten(), y.flatten())[0],
+        'pearson': lambda x, y: stats.pearsonr(x.flatten(), y.flatten())[0]
+    }
+    
+    if method not in methods:
+        raise ValueError(f"Method {method} not supported")
+    
+    return methods[method](heatmap1, heatmap2, **kwargs)
+
+
+def load_masks(mask_dir, wc="*.pth"):
+    files = glob(os.path.join(mask_dir, wc))
+    assert len(files), "No masks found in {}".format(mask_dir)
+    masks = {}
+    for f in files:
+        loaded = torch.load(f)  # Akash added image/mask/category
+        # image = loaded[0]
+        mask = loaded[1]
+        cat = loaded[2]
+        try:
+            if isinstance(cat, list):
+                cat = cat[0]
+            masks[os.path.join(cat, os.path.basename(f).split(".")[0])] = mask
+        except:
+            import pdb; pdb.set_trace()
+    return masks
+
+
+def filter_classes(
+        clickmaps,
+        class_filter_file):
+
+    # Import category map from the specified file
+    category_map = np.load(
+        class_filter_file,
+        allow_pickle=True).item()
+    category_map_keys = np.asarray([k for k in category_map.keys()])
+
+    # Filter clickmaps based on the category map
+    filtered_clickmaps = {}
+    for image_path, maps in clickmaps.items():
+        category = image_path.split('/')[0]  # Assuming category is the first part of the path
+        if category in category_map_keys:  # If the category is in our filter list
+            filtered_clickmaps[image_path] = maps
+    return filtered_clickmaps
+
+
+def filter_participants(clickmaps, metadata_file="participant_model_metadata.npz", debug=False):
+    metadata = np.load(metadata_file)
+    max_x = metadata["max_x"]
+    max_y = metadata["max_y"]
+    click_div = int(metadata["click_div"])
+    n_hidden = int(metadata["n_hidden"])
+    input_dim = int(metadata["input_dim"])
+    n_classes = int(metadata["n_classes"])
+    accelerator = Accelerator()
+    device = accelerator.device
+
+    # Load the model
+    ckpts = glob(os.path.join("checkpoints", "*.pth"))
+    sorted_ckpts = sorted(ckpts, key=os.path.getmtime)[-1]
+    model = RNN(input_dim, n_hidden, n_classes)
+    model.load_state_dict(torch.load(sorted_ckpts))
+    model.eval()
+    model.to(device)
+
+    # Get the predictions
+    processed_clickmaps = {}
+    remove_count = 0
+    with torch.no_grad():
+        for image_path, maps in tqdm(clickmaps.items(), desc="Filtering participants", total=len(clickmaps)):
+            # Prepare the data
+            new_maps = []
+            for map in maps:
+                clicks = np.asarray(map) // click_div
+                x_enc = np.zeros((len(clicks), max_x))
+                y_enc = np.zeros((len(clicks), max_y))
+                x_enc[:, clicks[:, 0]] = 1
+                y_enc[:, clicks[:, 1]] = 1
+                click_enc = np.concatenate((x_enc, y_enc), 1)
+                click_enc = torch.from_numpy(click_enc).float().to(device)
+                pred = model(click_enc[None])
+                if debug:
+                    # Take the cheaters
+                    pred = pred.argmin(1).item()
+                else:
+                    pred = pred.argmax(1).item()
+                if pred:
+                    new_maps.append(map)
+                else:
+                    remove_count += 1
+            processed_clickmaps[image_path] = new_maps
+    print(f"Removed {remove_count} participant maps")
+
+    # Remove empty images
+    processed_clickmaps = {k: v for k, v in processed_clickmaps.items() if len(v)}
+    return processed_clickmaps
+
+
+def filter_for_foreground_masks(
+        final_clickmaps,
+        all_clickmaps,
+        categories,
+        masks,
+        mask_threshold,
+        quantize_threshold=0.5):
+    """
+    quantize_threshold: If <= 0, use mean. If > 0, use this probability threshold for binarization.
+    """
+    proc_final_clickmaps = {}
+    proc_all_clickmaps = []
+    proc_categories = []
+    proc_final_keep_index = []
+    # missing = []
+    for idx, k in enumerate(final_clickmaps.keys()):
+        mask_key = k.split(".")[0]  # Remove image extension
+        if mask_key in masks.keys():
+            mask = masks[mask_key].squeeze()
+            click_map = all_clickmaps[idx]
+            mean_click_map = click_map.mean(0)
+            if quantize_threshold <= 0:
+                clickmap_threshold = np.mean(click_map)
+            else:
+                mean_click_map = mean_click_map / mean_click_map.max()
+                clickmap_threshold = quantize_threshold
+            thresh_click_map = (mean_click_map > clickmap_threshold).astype(np.float32)
+            try:
+                iou = fast_ious(thresh_click_map, mask)
+                if iou < mask_threshold:
+                    proc_final_clickmaps[k] = final_clickmaps[k]
+                    # proc_all_clickmaps[k] = click_map
+                    proc_all_clickmaps.append(click_map)
+                    proc_categories.append(categories[idx])
+                    proc_final_keep_index.append(k)
+                else:
+                    pass
+                    # import pdb; pdb.set_trace()
+                    # from matplotlib import pyplot as plt;plt.subplot(121);plt.imshow(mean_click_map);plt.subplot(122);plt.imshow(mask[0]);plt.show()
+            except:
+                pass
+        else:
+            print(f"No mask found for {mask_key}")
+            # missing.append(mask_key)
+    return proc_final_clickmaps, proc_all_clickmaps, proc_categories, proc_final_keep_index
+
+
+def process_clickme_data(data_file, filter_mobile, catch_thresh=0.95):
+    if "csv" in data_file:
+        return pd.read_csv(data_file)
+    elif "npz" in data_file:
+        data = np.load(data_file, allow_pickle=True)
+        image_path = data["file_pointer"]
+        clickmap_x = data["clickmap_x"]
+        clickmap_y = data["clickmap_y"]
+        user_id = data["user_id"]
+        user_catch_trial = data["user_catch_trial"]
+        is_mobile = []
+        is_mobile_lens = []
+        # TODO: Figure out why there's empty entries in this
+        for x in data["is_mobile"]:
+            if len(x):
+                is_mobile.append(x[0])
+            else:
+                is_mobile.append(False)
+            is_mobile_lens.append(len(x))
+        is_mobile = np.asarray(is_mobile)
+
+        # Filter subjects by catch trials
+        catch_trials = user_catch_trial >= catch_thresh
+        if filter_mobile:
+            catch_trials = catch_trials & ~is_mobile
+        image_path = image_path[catch_trials]
+        clickmap_x = clickmap_x[catch_trials]
+        clickmap_y = clickmap_y[catch_trials]
+        user_id = user_id[catch_trials]
+        print("Trials filtered from {} to {}".format(len(user_catch_trial), catch_trials.sum()))
+
+        # Combine clickmap_x/y into tuples to match Jay's format
+        clicks = [list(zip(x, y)) for x, y in zip(clickmap_x, clickmap_y)]
+
+        # Create dataframe
+        df = pd.DataFrame({"image_path": image_path, "clicks": clicks, "user_id": user_id})
+
+        # Close npz
+        del data.f
+        data.close()  # avoid the "too many files are open" error
+        return df
+    else:
+        raise NotImplementedError("Cannot process {}".format(data_file))
+
+
+def get_config(argv):
+    if len(argv) == 2:
+        if "configs" + os.path.sep in argv[1]:
+            config_file = argv[1]
+        else:
+            config_file = os.path.join("configs", argv[1])
+    else:
+        raise ValueError("Usage: python clickme_prepare_maps_for_modeling.py <config_file>")
+    assert os.path.exists(config_file), "Cannot find config file: {}".format(config_file)
+    return config_file
+
+
+def process_config(config_file):
+    with open(config_file, 'r') as file:
+        config = yaml.safe_load(file)
+    return config
+
+
+def process_clickmap_files(
+        clickme_data,
+        min_clicks,
+        max_clicks,
+        image_path,
+        file_inclusion_filter=None,
+        file_exclusion_filter=None,
+        process_max="trim"):
+    clickmaps = {}
+    if file_inclusion_filter == "CO3D_ClickmeV2":
+        # Patch for val co3d
+        image_files = glob(os.path.join(image_path, "**", "*.png"))
+    for _, row in clickme_data.iterrows():
+        image_file_name = os.path.sep.join(row['image_path'].split(os.path.sep)[-2:])
+        if file_inclusion_filter == "CO3D_ClickmeV2":
+            # Patch for val co3d
+            if not np.any([image_file_name in x for x in image_files]):
+                continue
+        elif file_inclusion_filter and file_inclusion_filter not in image_file_name:
+            continue
+        if file_exclusion_filter and file_exclusion_filter in image_file_name:
+            continue
+        if image_file_name not in clickmaps.keys():
+            clickmaps[image_file_name] = [row["clicks"]]
+        else:
+            clickmaps[image_file_name].append(row["clicks"])
+
+    number_of_maps = []
+    proc_clickmaps = {}
+    n_empty_clickmap = 0
+    for image in clickmaps:
+        n_clickmaps = 0
+        for clickmap in clickmaps[image]:
+            if not len(clickmap):
+                n_empty_clickmap += 1
+                continue
+
+            if isinstance(clickmap, str):
+                clean_string = re.sub(r'[{}"]', '', clickmap)
+                tuple_strings = clean_string.split(', ')
+                data_list = tuple_strings[0].strip("()").split("),(")
+                if len(data_list) == 1:  # Remove empty clickmaps
+                    n_empty_clickmap += 1
+                    continue
+                tuples_list = [tuple(map(int, pair.split(','))) for pair in data_list]
+            else:
+                tuples_list = clickmap
+                if len(tuples_list) == 1:  # Remove empty clickmaps
+                    n_empty_clickmap += 1
+                    continue
+
+            if process_max == "exclude":
+                if len(tuples_list) <= min_clicks | len(tuples_list) > max_clicks:
+                    n_empty_clickmap += 1
+                    continue
+            elif process_max == "trim":
+                if len(tuples_list) <= min_clicks:
+                    n_empty_clickmap += 1
+                    continue
+
+                # Trim to the first max_clicks clicks
+                tuples_list = tuples_list[:max_clicks]
+            else:
+                raise NotImplementedError(process_max)
+
+            if image not in proc_clickmaps.keys():
+                proc_clickmaps[image] = []
+
+            n_clickmaps += 1
+            proc_clickmaps[image].append(tuples_list)
+        number_of_maps.append(n_clickmaps)
+    return proc_clickmaps, number_of_maps
+
+
+def process_clickmap_files_parallel(
+        clickme_data,
+        min_clicks,
+        max_clicks,
+        image_path,
+        file_inclusion_filter=None,
+        file_exclusion_filter=None,
+        process_max="trim",
+        n_jobs=-1):
+    """Parallelized version of process_clickmap_files using joblib"""
+    
+    def process_single_row(row):
+        """Helper function to process a single row"""
+        image_file_name = os.path.sep.join(row['image_path'].split(os.path.sep)[-2:])
+        
+        # Handle CO3D_ClickmeV2 special case
+        if file_inclusion_filter == "CO3D_ClickmeV2":
+            image_files = glob(os.path.join(image_path, "**", "*.png"))
+            if not np.any([image_file_name in x for x in image_files]):
+                return None
+        elif file_inclusion_filter and file_inclusion_filter not in image_file_name:
+            return None
+        if file_exclusion_filter and file_exclusion_filter in image_file_name:
+            return None
+
+        clickmap = row["clicks"]
+        if isinstance(clickmap, str):
+            clean_string = re.sub(r'[{}"]', '', clickmap)
+            tuple_strings = clean_string.split(', ')
+            data_list = tuple_strings[0].strip("()").split("),(")
+            if len(data_list) == 1:  # Remove empty clickmaps
+                return None
+            tuples_list = [tuple(map(int, pair.split(','))) for pair in data_list]
+        else:
+            tuples_list = clickmap
+            if len(tuples_list) == 1:  # Remove empty clickmaps
+                return None
+
+        if process_max == "exclude":
+            if len(tuples_list) <= min_clicks or len(tuples_list) > max_clicks:
+                return None
+        elif process_max == "trim":
+            if len(tuples_list) <= min_clicks:
+                return None
+            # Trim to the first max_clicks clicks
+            tuples_list = tuples_list[:max_clicks]
+        else:
+            raise NotImplementedError(process_max)
+
+        return (image_file_name, tuples_list)
+
+    # Process rows in parallel
+    results = Parallel(n_jobs=n_jobs)(
+        delayed(process_single_row)(row) 
+        for _, row in tqdm(clickme_data.iterrows(), total=len(clickme_data), desc="Processing clickmaps")
+    )
+
+    # Combine results
+    proc_clickmaps = {}
+    number_of_maps = []
+    
+    for result in results:
+        if result is not None:
+            image_file_name, tuples_list = result
+            if image_file_name not in proc_clickmaps:
+                proc_clickmaps[image_file_name] = []
+            proc_clickmaps[image_file_name].append(tuples_list)
+
+    # Count number of maps per image
+    for image in proc_clickmaps:
+        number_of_maps.append(len(proc_clickmaps[image]))
+
+    return proc_clickmaps, number_of_maps
+
+
+def circle_kernel(size, sigma=None):
+    """
+    Create a flat circular kernel where the values are the average of the total number of on pixels in the filter.
+
+    Args:
+        size (int): The diameter of the circle and the size of the kernel (size x size).
+        sigma (float, optional): Not used for flat kernel. Included for compatibility. Default is None.
+
+    Returns:
+        torch.Tensor: A 2D circular kernel normalized so that the sum of its elements is 1.
+    """
+    # Create a grid of (x,y) coordinates
+    y, x = torch.meshgrid(torch.arange(size), torch.arange(size), indexing='ij')
+    center = (size - 1) / 2
+    radius = (size - 1) / 2
+
+    # Create a mask for the circle
+    mask = (x - center) ** 2 + (y - center) ** 2 <= radius ** 2
+
+    # Initialize kernel with zeros and set ones inside the circle
+    kernel = torch.zeros((size, size), dtype=torch.float32)
+    kernel[mask] = 1.0
+
+    # Normalize the kernel so that the sum of all elements is 1
+    num_on_pixels = mask.sum()
+    if num_on_pixels > 0:
+        kernel = kernel / num_on_pixels
+
+    # Add batch and channel dimensions
+    kernel = kernel.unsqueeze(0).unsqueeze(0)
+
+    return kernel
+
+
+def process_single_image(image_key, image_trials, image_shape, blur_size, blur_sigma, 
+                        min_pixels, min_subjects, max_subjects, center_crop, metadata, blur_sigma_function,
+                        kernel_type, duplicate_thresh, max_kernel_size):
+    """Helper function to process a single image for parallel processing"""
+    
+    # Precompute kernel
+    if kernel_type == "gaussian":
+        blur_kernel = gaussian_kernel(blur_size, blur_sigma)
+    elif kernel_type == "circle":
+        blur_kernel = circle_kernel(blur_size, blur_sigma)
+    else:
+        raise NotImplementedError(kernel_type)
+
+    # Process metadata and create clickmaps
+    if metadata is not None and image_key in metadata:
+        native_size = metadata[image_key]
+        short_side = min(native_size)
+        scale = short_side / min(image_shape)
+        adj_blur_size = int(np.round(blur_size * scale))
+        adj_blur_size += (adj_blur_size % 2 == 0)  # Ensure odd size
+        adj_blur_size = min(adj_blur_size, max_kernel_size)
+        adj_blur_sigma = blur_sigma_function(adj_blur_size)
+
+        clickmaps = np.asarray([create_clickmap([trials], native_size[::-1]) for trials in image_trials])
+        clickmaps = torch.from_numpy(clickmaps).float().unsqueeze(1)
+
+        adj_blur_kernel = gaussian_kernel(adj_blur_size, adj_blur_sigma) if kernel_type == "gaussian" else circle_kernel(adj_blur_size, adj_blur_sigma)
+        clickmaps = convolve(clickmaps, adj_blur_kernel, double_conv=(kernel_type == "circle"))
+
+    else:
+        clickmaps = np.asarray([create_clickmap([trials], image_shape) for trials in image_trials])
+        clickmaps = torch.from_numpy(clickmaps).float().unsqueeze(1)
+        clickmaps = convolve(clickmaps, blur_kernel, double_conv=(kernel_type == "circle"))
+
+    if center_crop:
+        clickmaps = tvF.center_crop(tvF.resize(clickmaps, min(image_shape)), center_crop)
+
+    clickmaps = clickmaps.squeeze().numpy()
+
+    if clickmaps.ndim == 2:  # Single map
+        return None
+
+    # Filter processing
+    valid_mask = (clickmaps > 0).sum((1, 2)) > min_pixels
+    clickmaps = clickmaps[valid_mask]
+    if len(clickmaps) < min_subjects:
+        return None
+
+    # Efficient duplicate removal
+    clickmaps_vec = clickmaps.reshape(len(clickmaps), -1)
+    dm = cdist(clickmaps_vec, clickmaps_vec, metric="euclidean")
+    keep_mask = np.ones(len(clickmaps), dtype=bool)
+    
+    for i in range(len(dm)):
+        if keep_mask[i]:
+            keep_mask[np.where(dm[i] < duplicate_thresh)[0]] = False
+            keep_mask[i] = True
+    clickmaps = clickmaps[keep_mask]
+
+    return (image_key, clickmaps) if min_subjects <= len(clickmaps) <= max_subjects else None
+
+
+
+
+def prepare_maps_parallel(
+        final_clickmaps,
+        blur_size,
+        blur_sigma,
+        image_shape,
+        min_pixels,
+        min_subjects,
+        max_subjects,
+        center_crop,
+        metadata=None,
+        blur_sigma_function=None,
+        kernel_type="circle",
+        duplicate_thresh=0.01,
+        max_kernel_size=51,
+        n_jobs=-1):
+    """Parallelized version of prepare_maps using joblib"""
+    
+    assert blur_sigma_function is not None, "Blur sigma function not passed."
+
+    # Process images in parallel
+    results = Parallel(n_jobs=n_jobs)(
+        delayed(process_single_image)(
+            image_key, 
+            final_clickmaps[image_key],
+            image_shape,
+            blur_size,
+            blur_sigma,
+            min_pixels,
+            min_subjects,
+            max_subjects,
+            center_crop,
+            metadata,
+            blur_sigma_function,
+            kernel_type,
+            duplicate_thresh,
+            max_kernel_size
+        ) for image_key in tqdm(final_clickmaps, total=len(final_clickmaps), desc="Processing images")
+    )
+
+    # Process results
+    all_clickmaps = []
+    categories = []
+    keep_index = []
+    new_final_clickmaps = {}
+
+    for result in results:
+        if result is not None:
+            image_key, clickmaps = result
+            category = image_key.split("/")[0]
+            
+            all_clickmaps.append(clickmaps)
+            categories.append(category)
+            keep_index.append(image_key)
+            new_final_clickmaps[image_key] = final_clickmaps[image_key]
+
+    return new_final_clickmaps, all_clickmaps, categories, keep_index
+
+
+def compute_average_map(trial_indices, clickmaps, resample=False):
+    """
+    Compute the average map from selected trials.
+
+    Args:
+        trial_indices (list of int): Indices of the trials to be averaged.
+        clickmaps (np.ndarray): 3D array of clickmaps.
+        resample (bool): If True, resample trials with replacement. Default is False.
+
+    Returns:
+        np.ndarray: The average clickmap.
+    """
+    if resample:
+        trial_indices = np.random.choice(trial_indices, size=len(trial_indices), replace=True)
+    return clickmaps[trial_indices].mean(0)
+
+
+def compute_spearman_correlation(map1, map2):
+    """
+    Compute the Spearman correlation between two maps.
+
+    Args:
+        map1 (np.ndarray): The first map.
+        map2 (np.ndarray): The second map.
+
+    Returns:
+        float: The Spearman correlation coefficient, or NaN if computation is not possible.
+    """
+    filtered_map1 = map1.flatten()
+    filtered_map2 = map2.flatten()
+
+    if filtered_map1.size > 1 and filtered_map2.size > 1:
+        correlation, _ = spearmanr(filtered_map1, filtered_map2)
+        return correlation
+    else:
+        return float('nan')
+
+
+def fast_ious(v1, v2):
+    """
+    Compute the IoU between two images.
+
+    Args:
+        image_1 (np.ndarray): The first image.
+        image_2 (np.ndarray): The second image.
+
+    Returns:
+        float: The IoU between the two images.
+    """
+    # Compute intersection and union
+    intersection = np.logical_and(v1, v2).sum()
+    union = np.logical_or(v1, v2).sum()
+
+    # Compute IoU
+    iou = intersection / union if union != 0 else 0.0
+
+    return iou
+    
+
+def gaussian_kernel(size, sigma):
+    """
+    Create a Gaussian kernel.
+
+    Args:
+        size (int): Size of the kernel.
+        sigma (float): Standard deviation of the Gaussian distribution.
+
+    Returns:
+        torch.Tensor: A 2D Gaussian kernel with added batch and channel dimensions.
+    """
+    x_range = torch.arange(-(size-1)//2, (size-1)//2 + 1, 1)
+    y_range = torch.arange((size-1)//2, -(size-1)//2 - 1, -1)
+
+    xs, ys = torch.meshgrid(x_range, y_range, indexing='ij')
+    kernel = torch.exp(-(xs**2 + ys**2) / (2 * sigma**2)) / (2 * np.pi * sigma**2)
+    
+    kernel = kernel / kernel.sum()
+    kernel = kernel.unsqueeze(0).unsqueeze(0)
+    
+    return kernel
+
+
+def convolve(heatmap, kernel, double_conv=False):
+    """
+    Apply Gaussian blur to a heatmap.
+
+    Args:
+        heatmap (torch.Tensor): The input heatmap (3D or 4D tensor).
+        kernel (torch.Tensor): The Gaussian kernel.
+
+    Returns:
+        torch.Tensor: The blurred heatmap (3D tensor).
+    """
+    # heatmap = heatmap.unsqueeze(0) if heatmap.dim() == 3 else heatmap
+    blurred_heatmap = F.conv2d(heatmap, kernel, padding='same')
+    if double_conv:
+        blurred_heatmap = F.conv2d(blurred_heatmap, kernel, padding='same')
+    return blurred_heatmap  # [0]
+
+
+def integrate_surface(iou_scores, x, z, average_areas=True, normalize=False):
+    # Integrate along x axis (classifier thresholds)
+    if len(z) == 1:
+        return iou_scores.mean()
+
+    int_x = np.trapz(iou_scores, x, axis=1)
+    
+    if average_areas:
+        return int_x.mean()
+
+    # Integrate along z axis (label thresholds)
+    int_xz = np.trapz(int_x, z)
+
+    if normalize:
+        x_range = x[-1] - x[0]
+        z_range = z[-1] - z[0]
+        total_area = x_range * z_range
+        int_xz /= total_area
+
+    return int_xz
+
+
+def compute_RSA(map1, map2):
+    """
+    Compute the RSA between two maps.
+
+    Returns:    
+        float: The RSA between the two maps.
+    """
+    import pdb; pdb.set_trace()
+    return np.corrcoef(map1, map2)[0, 1]
+
+
+def compute_AUC(
+        pred_map,
+        target_map,
+        prediction_threshs=21,
+        target_threshold_min=0.25,
+        target_threshold_max=0.75,
+        target_threshs=9):
+    """
+    We will compute IOU between pred and target over multiple threshodls of the target map.
+
+    Args:
+        map1 (np.ndarray): The first map.
+        map2 (np.ndarray): The second map.  
+
+    Returns:
+        float: The AUC between the two maps.
+    """
+    # Make sure both maps are probability distributions
+    # if normalize:
+    #     map1 = map1 / map1.sum()
+    #     map2 = map2 / map2.sum()
+    inner_thresholds = np.linspace(0, 1, prediction_threshs)
+    target_thresholds = np.linspace(target_threshold_min, target_threshold_max, target_threshs)
+    # thresholds = [0.25, 0.5, 0.75, 1]
+    thresh_ious = []
+    for outer_t in target_thresholds:
+        thresh_target_map = (target_map >= outer_t).astype(int).ravel()
+        ious = []
+        for t in inner_thresholds:
+            thresh_pred_map = (pred_map >= t).astype(int).ravel()
+            iou = fast_ious(thresh_target_map, thresh_pred_map)
+            ious.append(iou)
+        thresh_ious.append(np.asarray(ious))
+    thresh_ious = np.stack(thresh_ious, 0)
+    return integrate_surface(thresh_ious, inner_thresholds, target_thresholds, normalize=True)
+
+
+def compute_crossentropy(map1, map2):
+    """
+    Compute the cross-entropy between two maps.
+
+    Args:
+        map1 (np.ndarray): The first map.
+        map2 (np.ndarray): The second map.  
+
+    Returns:
+        float: The cross-entropy between the two maps.
+    """
+    map1 = torch.from_numpy(map1).float().ravel()
+    map2 = torch.from_numpy(map2).float().ravel()
+    return F.cross_entropy(map1, map2).numpy()
+
+
+def create_clickmap(point_lists, image_shape, exponential_decay=False, tau=0.5):
+    """
+    Create a clickmap from click points.
+
+    Args:
+        click_points (list of tuples): List of (x, y) coordinates where clicks occurred.
+        image_shape (tuple): Shape of the image (height, width).
+        blur_kernel (torch.Tensor, optional): Gaussian kernel for blurring. Default is None.
+        tau (float, optional): Decay rate for exponential decay. Default is 0.5 but this needs to be tuned.
+
+    Returns:
+        np.ndarray: A 2D array representing the clickmap, blurred if kernel provided.
+    """
+    heatmap = np.zeros(image_shape, dtype=np.uint8)
+    for click_points in point_lists:
+        if exponential_decay:
+            for idx, point in enumerate(click_points):
+
+                if 0 <= point[1] < image_shape[0] and 0 <= point[0] < image_shape[1]:
+                    heatmap[point[1], point[0]] += np.exp(-idx / tau)
+        else:
+            for point in click_points:
+                if 0 <= point[1] < image_shape[0] and 0 <= point[0] < image_shape[1]:
+                    heatmap[point[1], point[0]] += 1
+    return heatmap
+
+
+def alt_gaussian_kernel(size=10, sigma=10):
+    """
+    Generates a 2D Gaussian kernel.
+
+    Parameters
+    ----------
+    size : int, optional
+        Kernel size, by default 10
+    sigma : int, optional
+        Kernel sigma, by default 10
+
+    Returns
+    -------
+    kernel : torch.Tensor
+        A Gaussian kernel.
+    """
+    x_range = torch.arange(-(size-1)//2, (size-1)//2 + 1, 1)
+    y_range = torch.arange((size-1)//2, -(size-1)//2 - 1, -1)
+
+    xs, ys = torch.meshgrid(x_range, y_range, indexing='ij')
+    kernel = torch.exp(-(xs**2 + ys**2) / (2 * sigma**2)) / (2 * np.pi * sigma**2)
+    
+    kernel = kernel / kernel.sum()
+    kernel = kernel.unsqueeze(0).unsqueeze(0)  # Add batch and channel dimensions
+    
+    return kernel
+
+def alt_gaussian_blur(heatmap, kernel):
+    """
+    Blurs a heatmap with a Gaussian kernel.
+
+    Parameters
+    ----------
+    heatmap : torch.Tensor
+        The heatmap to blur.
+    kernel : torch.Tensor
+        The Gaussian kernel.
+
+    Returns
+    -------
+    blurred_heatmap : torch.Tensor
+        The blurred heatmap.
+    """
+    # Ensure heatmap and kernel have the correct dimensions
+    heatmap = heatmap.unsqueeze(0) if heatmap.dim() == 3 else heatmap
+    blurred_heatmap = torch.nn.functional.conv2d(heatmap, kernel, padding='same')
+
+    return blurred_heatmap[0]
