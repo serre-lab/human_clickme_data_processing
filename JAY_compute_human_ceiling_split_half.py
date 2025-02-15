@@ -282,6 +282,7 @@ if __name__ == "__main__":
     ci_lower, ci_upper = stats.t.interval(0.95, len(all_correlations) - 1, loc=mean_human_correlation, scale=std_err)
     
     print(f"Mean human correlation full set: {mean_human_correlation}")
+    print(f"Number of images contributing to mean correlation: {len(all_correlations) - np.isnan(all_correlations).sum()}")
     print(f"Human correlation, 95% CI: [{ci_lower}, {ci_upper}]")
     print(f"Null correlations full set: {np.nanmean(null_correlations)}")
     np.savez(
