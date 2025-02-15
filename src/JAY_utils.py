@@ -575,6 +575,8 @@ def process_single_image(image_key, image_trials, image_shape, blur_size, blur_s
                         min_pixels, min_subjects, max_subjects, center_crop, metadata, blur_sigma_function,
                         kernel_type, duplicate_thresh, max_kernel_size):
     """Helper function to process a single image for parallel processing"""
+    
+    # Precompute kernel
     if kernel_type == "gaussian":
         blur_kernel = gaussian_kernel(blur_size, blur_sigma)
     elif kernel_type == "circle":
@@ -583,68 +585,55 @@ def process_single_image(image_key, image_trials, image_shape, blur_size, blur_s
         raise NotImplementedError(kernel_type)
 
     # Process metadata and create clickmaps
-    if metadata is not None:
-        if image_key not in metadata:
-            clickmaps = np.asarray([create_clickmap([trials], image_shape) for trials in image_trials])
-            clickmaps = torch.from_numpy(clickmaps).float().unsqueeze(1)
-            if kernel_type == "gaussian":
-                clickmaps = convolve(clickmaps, blur_kernel)
-            elif kernel_type == "circle":
-                clickmaps = convolve(clickmaps, blur_kernel, double_conv=True)
-        else:
-            native_size = metadata[image_key]
-            short_side = min(native_size)
-            scale = short_side / min(image_shape)
-            adj_blur_size = int(np.round(blur_size * scale))
-            if not adj_blur_size % 2:
-                adj_blur_size += 1
-            adj_blur_size = min(adj_blur_size, max_kernel_size)
-            adj_blur_sigma = blur_sigma_function(adj_blur_size)
-            clickmaps = np.asarray([create_clickmap([trials], native_size[::-1]) for trials in image_trials])
-            clickmaps = torch.from_numpy(clickmaps).float().unsqueeze(1)
-            if kernel_type == "gaussian":
-                adj_blur_kernel = gaussian_kernel(adj_blur_size, adj_blur_sigma)
-                clickmaps = convolve(clickmaps, adj_blur_kernel)
-            elif kernel_type == "circle":
-                adj_blur_kernel = circle_kernel(adj_blur_size, adj_blur_sigma)
-                clickmaps = convolve(clickmaps, adj_blur_kernel, double_conv=True)
+    if metadata is not None and image_key in metadata:
+        native_size = metadata[image_key]
+        short_side = min(native_size)
+        scale = short_side / min(image_shape)
+        adj_blur_size = int(np.round(blur_size * scale))
+        adj_blur_size += (adj_blur_size % 2 == 0)  # Ensure odd size
+        adj_blur_size = min(adj_blur_size, max_kernel_size)
+        adj_blur_sigma = blur_sigma_function(adj_blur_size)
+
+        clickmaps = np.asarray([create_clickmap([trials], native_size[::-1]) for trials in image_trials])
+        clickmaps = torch.from_numpy(clickmaps).float().unsqueeze(1)
+
+        adj_blur_kernel = gaussian_kernel(adj_blur_size, adj_blur_sigma) if kernel_type == "gaussian" else circle_kernel(adj_blur_size, adj_blur_sigma)
+        clickmaps = convolve(clickmaps, adj_blur_kernel, double_conv=(kernel_type == "circle"))
+
     else:
         clickmaps = np.asarray([create_clickmap([trials], image_shape) for trials in image_trials])
         clickmaps = torch.from_numpy(clickmaps).float().unsqueeze(1)
-        if kernel_type == "gaussian":
-            clickmaps = convolve(clickmaps, blur_kernel)
-        elif kernel_type == "circle":
-            clickmaps = convolve(clickmaps, blur_kernel, double_conv=True)
+        clickmaps = convolve(clickmaps, blur_kernel, double_conv=(kernel_type == "circle"))
 
     if center_crop:
-        clickmaps = tvF.resize(clickmaps, min(image_shape))
-        clickmaps = tvF.center_crop(clickmaps, center_crop)
+        clickmaps = tvF.center_crop(tvF.resize(clickmaps, min(image_shape)), center_crop)
+
     clickmaps = clickmaps.squeeze().numpy()
 
-    # Filter processing
-    if len(clickmaps.shape) == 2:  # Single map
+    if clickmaps.ndim == 2:  # Single map
         return None
 
-    # Filter 1: Remove empties
-    empty_check = (clickmaps > 0).sum((1, 2)) > min_pixels
-    clickmaps = clickmaps[empty_check]
+    # Filter processing
+    valid_mask = (clickmaps > 0).sum((1, 2)) > min_pixels
+    clickmaps = clickmaps[valid_mask]
     if len(clickmaps) < min_subjects:
         return None
 
-    # Filter 2: Remove duplicates
+    # Efficient duplicate removal
     clickmaps_vec = clickmaps.reshape(len(clickmaps), -1)
-    dm = cdist(clickmaps_vec, clickmaps_vec)
-    idx = np.tril_indices(len(dm), k=-1)
-    lt_dm = dm[idx]
-    if np.any(lt_dm < duplicate_thresh):
-        remove = np.unique(np.where((dm + np.eye(len(dm)) == 0)))
-        rng = np.arange(len(dm))
-        dup_idx = rng[~np.in1d(rng, remove)]
-        clickmaps = clickmaps[dup_idx]
+    dm = cdist(clickmaps_vec, clickmaps_vec, metric="euclidean")
+    keep_mask = np.ones(len(clickmaps), dtype=bool)
+    
+    for i in range(len(dm)):
+        if keep_mask[i]:
+            keep_mask[np.where(dm[i] < duplicate_thresh)[0]] = False
+            keep_mask[i] = True
+    clickmaps = clickmaps[keep_mask]
 
-    if len(clickmaps) >= min_subjects and len(clickmaps) <= max_subjects:
-        return (image_key, clickmaps)
-    return None
+    return (image_key, clickmaps) if min_subjects <= len(clickmaps) <= max_subjects else None
+
+
+
 
 def prepare_maps_parallel(
         final_clickmaps,
