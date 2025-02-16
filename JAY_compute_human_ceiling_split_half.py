@@ -163,61 +163,75 @@ def main(
             plt.subplot(4,5,20);plt.imshow(np.asarray(image_data)[16:-16, 16:-16]);plt.axis('off')
             plt.show()
 
-    # Compute scores through split-halfs
+    # Compute correlations using 3-map sampling
     all_correlations = []
+    n_iterations = 10_000  # Number of random samples per image
     for clickmaps in tqdm(all_clickmaps, desc="Processing ceiling", total=len(all_clickmaps)):
         n = len(clickmaps)
+        if n < 3:
+            continue  # Skip images with less than 3 maps
         rand_corrs = []
-        for _ in range(randomization_iters):
-            rand_perm = np.random.permutation(n)
-            fh = rand_perm[:(n // 2)]
-            sh = rand_perm[(n // 2):]
-            test_maps = clickmaps[fh].mean(0)
-            remaining_maps = clickmaps[sh].mean(0)
-            test_maps = (test_maps - test_maps.min()) / (test_maps.max() - test_maps.min())
-            remaining_maps = (remaining_maps - remaining_maps.min()) / (remaining_maps.max() - remaining_maps.min())
-            if metric.lower() == "crossentropy":
-                correlation = utils.compute_crossentropy(test_maps, remaining_maps)
-            elif metric.lower() == "auc":
-                correlation = utils.compute_AUC(test_maps, remaining_maps)
-            elif metric.lower() == "spearman":
-                correlation = utils.compute_spearman_correlation(test_maps, remaining_maps)
-            else:
-                raise ValueError(f"Invalid metric: {metric}")
-            rand_corrs.append(correlation)
-        all_correlations.append(np.mean(rand_corrs))
-    all_correlations = np.asarray(all_correlations)
+        for _ in range(n_iterations):
+            selected_maps = np.random.choice(n, 3, replace=True)
+            test_map = clickmaps[selected_maps[0]]  # Single map
+            ref_maps = clickmaps[selected_maps[1:]].mean(0)  # Mean of 2 maps
+            test_map = (test_map - test_map.min()) / (test_map.max() - test_map.min())
+            ref_maps = (ref_maps - ref_maps.min()) / (ref_maps.max() - ref_maps.min())
 
-    # Compute null scores
-    null_correlations = []
-    click_len = len(all_clickmaps)
-    for _ in tqdm(range(null_iterations), total=null_iterations, desc="Computing null scores"):
-        inner_correlations = []
-        for i in range(click_len):
-            selected_clickmaps = all_clickmaps[i]
-            tmp_rng = np.arange(click_len)
-            j = tmp_rng[~np.in1d(tmp_rng, i)]
-            j = j[np.random.permutation(len(j))][0]  # Select a random other image
-            other_clickmaps = all_clickmaps[j]
-            rand_perm_sel = np.random.permutation(len(selected_clickmaps))
-            rand_perm_other = np.random.permutation(len(other_clickmaps))
-            fh = rand_perm_sel[:(len(selected_clickmaps) // 2)]
-            sh = rand_perm_other[(len(other_clickmaps) // 2):]
-            test_maps = selected_clickmaps[fh].mean(0)
-            remaining_maps = other_clickmaps[sh].mean(0)
-            test_maps = (test_maps - test_maps.min()) / (test_maps.max() - test_maps.min())
-            remaining_maps = (remaining_maps - remaining_maps.min()) / (remaining_maps.max() - remaining_maps.min())
             if metric.lower() == "crossentropy":
-                correlation = utils.compute_crossentropy(test_maps, remaining_maps)
+                correlation = utils.compute_crossentropy(test_map, ref_maps)
             elif metric.lower() == "auc":
-                correlation = utils.compute_AUC(test_maps, remaining_maps)
+                correlation = utils.compute_AUC(test_map, ref_maps)
             elif metric.lower() == "spearman":
-                correlation = utils.compute_spearman_correlation(test_maps, remaining_maps)
+                correlation = utils.compute_spearman_correlation(test_map, ref_maps)
             else:
                 raise ValueError(f"Invalid metric: {metric}")
-            inner_correlations.append(correlation)
-        null_correlations.append(np.nanmean(inner_correlations))
-    null_correlations = np.asarray(null_correlations)
+            
+            rand_corrs.append(correlation)
+        
+        all_correlations.append(rand_corrs)  # Store full 10K distribution per image
+
+    # Compute the mean correlation across images for each of the 10K samples
+    all_correlations = np.array(all_correlations)  # Shape: (num_images, 10K)
+    all_correlations = np.nanmean(all_correlations, axis=0)  # Shape: (10K,)
+
+    # Compute null scores with matching 3-map sampling
+    null_correlations = []
+    for _ in tqdm(range(n_iterations), total=n_iterations, desc="Computing null scores"):
+        rand_corrs = []
+        for i in range(len(all_clickmaps)):
+            if len(all_clickmaps[i]) < 3:
+                continue  # Skip images with fewer than 3 maps
+
+            # Select a random different image
+            j = np.random.choice([idx for idx in range(len(all_clickmaps)) if idx != i])
+
+            # Randomly pick 3 maps: 1 from image i, 2 from image j
+            selected_i = np.random.choice(len(all_clickmaps[i]), 1, replace=True)[0]
+            selected_j = np.random.choice(len(all_clickmaps[j]), 2, replace=True)
+
+            test_map = all_clickmaps[i][selected_i]  # Single map from image i
+            ref_maps = all_clickmaps[j][selected_j].mean(0)  # Mean of 2 maps from image j
+
+            # Normalize maps
+            test_map = (test_map - test_map.min()) / (test_map.max() - test_map.min())
+            ref_maps = (ref_maps - ref_maps.min()) / (ref_maps.max() - ref_maps.min())
+
+            if metric.lower() == "crossentropy":
+                correlation = utils.compute_crossentropy(test_map, ref_maps)
+            elif metric.lower() == "auc":
+                correlation = utils.compute_AUC(test_map, ref_maps)
+            elif metric.lower() == "spearman":
+                correlation = utils.compute_spearman_correlation(test_map, ref_maps)
+            else:
+                raise ValueError(f"Invalid metric: {metric}")
+
+            rand_corrs.append(correlation)
+
+        null_correlations.append(np.nanmean(rand_corrs))
+    null_correlations = np.array(null_correlations)
+    
+    
     return final_clickmaps, all_correlations, null_correlations, all_clickmaps
 
 
@@ -274,17 +288,21 @@ if __name__ == "__main__":
         file_inclusion_filter=config["file_inclusion_filter"],
         file_exclusion_filter=config["file_exclusion_filter"])
     
-    # Compute mean and standard error
+    # Compute mean and 95% confidence interval
     mean_human_correlation = np.nanmean(all_correlations)
-    std_err = stats.sem(all_correlations, nan_policy='omit')
+    ci_lower, ci_upper = np.percentile(all_correlations, [2.5, 97.5])
 
-    # Compute 95% confidence interval
-    ci_lower, ci_upper = stats.t.interval(0.95, len(all_correlations) - 1, loc=mean_human_correlation, scale=std_err)
-    
+    # Compute mean and CI for null
+    mean_null_correlation = np.nanmean(null_correlations)
+    ci_null_lower, ci_null_upper = np.percentile(null_correlations, [2.5, 97.5])
+
     print(f"Mean human correlation full set: {mean_human_correlation}")
     print(f"Number of images contributing to mean correlation: {len(all_correlations) - np.isnan(all_correlations).sum()}")
     print(f"Human correlation, 95% CI: [{ci_lower}, {ci_upper}]")
-    print(f"Null correlations full set: {np.nanmean(null_correlations)}")
+    
+    print(f"Mean null correlation: {mean_null_correlation}")
+    print(f"Null correlation, 95% CI: [{ci_null_lower}, {ci_null_upper}]")
+
     np.savez(
         os.path.join(output_dir, "human_ceiling_split_half_{}.npz".format(config["experiment_name"])),
         final_clickmaps=final_clickmaps,
