@@ -165,7 +165,7 @@ def main(
 
     # Compute correlations using 3-map sampling
     all_correlations = []
-    n_iterations = 10_000  # Number of random samples per image
+    n_iterations = 1_000  # Number of random samples per image
     for clickmaps in tqdm(all_clickmaps, desc="Processing ceiling", total=len(all_clickmaps)):
         n = len(clickmaps)
         if n < 3:
