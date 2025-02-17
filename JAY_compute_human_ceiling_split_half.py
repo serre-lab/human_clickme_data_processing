@@ -297,7 +297,7 @@ if __name__ == "__main__":
     ci_null_lower, ci_null_upper = np.percentile(null_correlations, [2.5, 97.5])
 
     print(f"Mean human correlation full set: {mean_human_correlation}")
-    print(f"Number of images contributing to mean correlation: {len(all_correlations) - np.isnan(all_correlations).sum()}")
+    print(f"Number of iterations contributing to mean correlation: {len(all_correlations) - np.isnan(all_correlations).sum()}")
     print(f"Human correlation, 95% CI: [{ci_lower}, {ci_upper}]")
     
     print(f"Mean null correlation: {mean_null_correlation}")
