@@ -57,7 +57,7 @@ def null_distribution_single_pair(i_maps, j_maps, metric="spearman", iterations=
             raise ValueError("Invalid metric.")
     return np.mean(scores)
 
-def main(clickme_data, clickme_image_folder, metric="spearman", iterations=100, seed=0):
+def main(clickme_data, clickme_image_folder, min_clicks=10, max_clicks=50, metric="spearman", iterations=100, seed=0):
     """
     1) Filter to all images with exactly 10 subjects.
     2) Randomly select 10 of those images.
@@ -72,7 +72,9 @@ def main(clickme_data, clickme_image_folder, metric="spearman", iterations=100, 
     # Example:
     clickmaps_dict, _ = utils.process_clickmap_files(
         clickme_data=clickme_data,
-        image_path=clickme_image_folder
+        image_path=clickme_image_folder,
+        min_clicks=min_clicks,
+        max_clicks=max_clicks
     )
 
     # Filter to images with exactly 10 subjects
@@ -140,6 +142,8 @@ if __name__ == "__main__":
         clickme_data=config["clickme_data"],
         clickme_image_folder=config["image_path"],
         metric=config["metric"],
+        min_clicks=config["min_clicks"],
+        max_clicks=config["max_clicks"],
         iterations=100,
         seed=42
     )
