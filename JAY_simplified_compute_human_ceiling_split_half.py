@@ -70,7 +70,7 @@ def main(clickme_data, clickme_image_folder, min_clicks=10, max_clicks=50, metri
 
     # Load your data (or do any needed filtering/preprocessing here).
     # Example:
-    clickmaps_dict, _ = utils.process_clickmap_files(
+    clickmaps_dict, _ = utils.process_clickmap_files_parallel(
         clickme_data=clickme_data,
         image_path=clickme_image_folder,
         min_clicks=min_clicks,
