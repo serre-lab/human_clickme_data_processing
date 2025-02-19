@@ -135,9 +135,9 @@ if __name__ == "__main__":
     config_file = utils.get_config(sys.argv)
 
     main(
-        clickme_data=config["clickme_data"],
-        clickme_image_folder=config["image_path"],
-        metric=config["metric"],
+        clickme_data=config_file["clickme_data"],
+        clickme_image_folder=config_file["image_path"],
+        metric=config_file["metric"],
         iterations=100,
         seed=42
     )
