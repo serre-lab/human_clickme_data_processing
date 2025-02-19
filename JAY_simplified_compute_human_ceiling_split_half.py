@@ -138,8 +138,13 @@ if __name__ == "__main__":
 
     config = utils.process_config(config_file)
 
+    clickme_data = utils.process_clickme_data(
+        config["clickme_data"],
+        config["filter_mobile"]
+    )
+
     main(
-        clickme_data=config["clickme_data"],
+        clickme_data=clickme_data,
         clickme_image_folder=config["image_path"],
         metric=config["metric"],
         min_clicks=config["min_clicks"],
