@@ -86,12 +86,11 @@ def main():
     mean_results, stdev_results = [], []
     null_mean_results, null_stdev_results = [], []
     
-    for num_subs in tqdm(range(min_subjects, max_subjects), desc="Number of subjects", total=max_subjects-min_subjects):
+    for num_subs in tqdm(range(min_subjects, max_subjects+1), desc="Number of subjects", total=max_subjects-min_subjects):
         sel_clickmaps = sample_clickmaps(all_clickmaps, num_subs)
         # Correlation
         image_scores = []
         for enum, clickmap in enumerate(sel_clickmaps):
-            print(enum)
             # Loop through images and compute scores
             image_scores.append(single_image_noise_ceiling(clickmap))
         mean_results.append(np.mean(image_scores))  # Store average score accross images
@@ -102,7 +101,6 @@ def main():
         # Null scores
         null_scores = []
         for i, clickmap in enumerate(sel_clickmaps):
-            print(i)
             # Select a random different image
             j = np.random.choice([idx for idx in range(len(sel_clickmaps)) if idx != i])
             test_maps = sel_clickmaps[i]
