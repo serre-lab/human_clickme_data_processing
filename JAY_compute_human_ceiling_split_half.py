@@ -6,44 +6,57 @@ from matplotlib import pyplot as plt
 from tqdm import tqdm
 from joblib import Parallel, delayed
 import scipy.stats as stats
+import random
 
 
-def compute_inner_correlations(i, all_clickmaps, category_indices, metric):
-    category_index = category_indices[i]
-    inner_correlations = []
-    instance_correlations = {}
+def minmax_normalize(x):
+    """Simple min-max normalization to avoid division by zero."""
+    return (x - x.min()) / (x.max() - x.min() + 1e-7)
 
-    if i not in instance_correlations.keys():
-        instance_correlations[i] = []
+def single_image_noise_ceiling(image_clickmaps, metric="spearman", iterations=100):
+    """
+    Split-half reliability (noise ceiling) for a single image.
+    image_clickmaps: np.array of shape [X, H, W].
+    """
+    scores = []
+    n_subs = len(image_clickmaps)
+    for _ in range(iterations):
+        idx = np.random.permutation(n_subs)
+        fh = image_clickmaps[idx[: n_subs // 2]].mean(0)
+        sh = image_clickmaps[idx[n_subs // 2 :]].mean(0)
+        fh, sh = minmax_normalize(fh), minmax_normalize(sh)
+        if metric.lower() == "spearman":
+            scores.append(utils.compute_spearman_correlation(fh, sh))
+        elif metric.lower() == "auc":
+            scores.append(utils.compute_AUC(fh, sh))
+        elif metric.lower() == "crossentropy":
+            scores.append(utils.compute_crossentropy(fh, sh))
+        else:
+            raise ValueError("Invalid metric.")
+    return np.mean(scores)
 
-    # Reference map is the ith map
-    reference_map = all_clickmaps[i].mean(0)
-    reference_map = (reference_map - reference_map.min()) / (reference_map.max() - reference_map.min())
-
-    # Test map is a random subject from a different image
-    sub_vec = np.where(category_indices != category_index)[0]
-    rand_map = np.random.choice(sub_vec)
-    test_map = all_clickmaps[rand_map]
-    num_subs = len(test_map)
-    rand_sub = np.random.choice(num_subs)
-    test_map = test_map[rand_sub]
-    test_map = (test_map - test_map.min()) / (test_map.max() - test_map.min())
-
-    if metric.lower() == "crossentropy":
-        correlation = utils.compute_crossentropy(test_map, reference_map)
-    elif metric.lower() == "auc":
-        correlation = utils.compute_AUC(test_map, reference_map)
-    elif metric.lower() == "rsa":
-        correlation = utils.compute_RSA(test_map, reference_map)
-    elif metric.lower() == "spearman":
-        correlation = utils.compute_spearman_correlation(test_map, reference_map)
-    else:
-        raise ValueError(f"Invalid metric: {metric}")
-
-    inner_correlations.append(correlation)
-    instance_correlations[i].append(correlation)
-
-    return inner_correlations, instance_correlations
+def null_distribution_single_pair(i_maps, j_maps, metric="spearman", iterations=100):
+    """
+    Combine clickmaps from image i and j, then split-half for null distribution.
+    i_maps, j_maps: each [X, H, W].
+    """
+    combined = np.concatenate([i_maps, j_maps], axis=0)
+    scores = []
+    n_subs = len(combined)
+    for _ in range(iterations):
+        idx = np.random.permutation(n_subs)
+        fh = combined[idx[: n_subs // 2]].mean(0)
+        sh = combined[idx[n_subs // 2 :]].mean(0)
+        fh, sh = minmax_normalize(fh), minmax_normalize(sh)
+        if metric.lower() == "spearman":
+            scores.append(utils.compute_spearman_correlation(fh, sh))
+        elif metric.lower() == "auc":
+            scores.append(utils.compute_AUC(fh, sh))
+        elif metric.lower() == "crossentropy":
+            scores.append(utils.compute_crossentropy(fh, sh))
+        else:
+            raise ValueError("Invalid metric.")
+    return np.mean(scores)
 
 
 def main(
