@@ -43,7 +43,10 @@ def setup_model():
 def get_embedding(model, transform, image_path):
     """Get embedding for a single image."""
     try:
-        image = Image.open(image_path).convert('RGB')
+        if ".npy" in image_path:
+            image = np.load(image_path)
+        else:
+            image = Image.open(image_path).convert('RGB')
         image = transform(image).unsqueeze(0).to(DEVICE)
         with torch.no_grad():
             embedding = model(image).cpu().numpy()
@@ -59,7 +62,6 @@ def build_clickme_database(model, transform):
     
     # Process all ClickMe images
     for path in CLICKME_PATHS:
-        import pdb; pdb.set_trace()
         for img_file in tqdm(glob.glob(os.path.join(path, "*.npy")), desc=f"Processing {path}"):
             embedding = get_embedding(model, transform, img_file)
             if embedding is not None:
