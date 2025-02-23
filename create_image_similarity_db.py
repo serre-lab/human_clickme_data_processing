@@ -23,7 +23,7 @@ FAISS_INDEX_PATH = "clickme_faiss.index"
 REFERENCE_PATHS_CACHE = "clickme_reference_paths.npy"
 
 # Configuration
-FORCE_BUILD = False  # Set to True to force rebuild the database
+FORCE_BUILD = True  # Set to True to force rebuild the database
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 IMAGE_SIZE = 224
 
@@ -93,39 +93,71 @@ def process_batch(batch_paths, model, transform):
     embeddings, valid_paths = get_embedding(model, transform, batch_paths)
     return embeddings, valid_paths
 
-def build_clickme_database(model, transform):
-    """Build FAISS database from ClickMe images using parallel processing."""
+def build_clickme_database(model, transform, rebuild=False):
+    """Build FAISS database from ClickMe images using efficient batch processing.
+    
+    Args:
+        model: The DINO ViT model
+        transform: Image transformation pipeline
+        rebuild: If True, delete existing database before building
+    """
+    # Check if we should delete existing database
+    if rebuild:
+        if os.path.exists(FAISS_INDEX_PATH):
+            os.remove(FAISS_INDEX_PATH)
+        if os.path.exists(REFERENCE_PATHS_CACHE):
+            os.remove(REFERENCE_PATHS_CACHE)
+    
+    # Collect all image paths
     all_image_paths = []
     for path in CLICKME_PATHS:
         all_image_paths.extend(glob.glob(os.path.join(path, "*.npy")))
     
-    # Split into batches for parallel processing
-    batch_size = 128
-    num_jobs = 4  # Adjust based on your CPU cores
-    batches = [all_image_paths[i:i + batch_size] 
-              for i in range(0, len(all_image_paths), batch_size)]
-    
-    # Process batches in parallel
-    results = Parallel(n_jobs=num_jobs)(
-        delayed(process_batch)(batch, model, transform)
-        for batch in tqdm(batches, desc="Processing batches")
-    )
-    
-    # Combine results
-    all_embeddings = []
-    all_paths = []
-    for embeddings, paths in results:
-        if len(embeddings) > 0:
-            all_embeddings.extend(embeddings)
-            all_paths.extend(paths)
-    
-    # Create FAISS index
-    all_embeddings = np.array(all_embeddings).astype('float32')
-    dimension = all_embeddings.shape[1]
+    # Initialize FAISS index
+    dimension = 384  # ViT-Small DINO embedding dimension
     index = faiss.IndexFlatL2(dimension)
-    index.add(all_embeddings)
+    valid_paths = []
     
-    return index, all_paths
+    def load_single_image(img_path):
+        """Helper function to load and transform a single image."""
+        try:
+            image = Image.fromarray(np.load(img_path))
+            return transform(image), img_path
+        except Exception as e:
+            print(f"Error processing {img_path}: {e}")
+            return None, None
+
+    # Process in batches
+    batch_size = 128
+    for i in tqdm(range(0, len(all_image_paths), batch_size), desc="Processing images"):
+        batch_paths = all_image_paths[i:i + batch_size]
+        
+        # Parallel load and transform images on CPU
+        results = Parallel(n_jobs=-1, prefer="threads")(
+            delayed(load_single_image)(path) for path in batch_paths
+        )
+        
+        # Filter out None results and prepare batch
+        batch_images = []
+        batch_valid_paths = []
+        for img, path in results:
+            if img is not None:
+                batch_images.append(img)
+                batch_valid_paths.append(path)
+        
+        if not batch_images:
+            continue
+        
+        # Process batch on GPU
+        batch_tensor = torch.stack(batch_images).to(DEVICE)
+        with torch.no_grad():
+            batch_embeddings = model(batch_tensor).cpu().numpy().astype('float32')
+        
+        # Add to FAISS index immediately
+        index.add(batch_embeddings)
+        valid_paths.extend(batch_valid_paths)
+    
+    return index, valid_paths
 
 def find_similar_images(model, transform, index, reference_paths, query_paths):
     """Find similar images between query images and reference database."""
@@ -141,9 +173,9 @@ def find_similar_images(model, transform, index, reference_paths, query_paths):
     
     return similarity_dict
 
-def load_or_build_database(model, transform, force_build=False):
+def load_or_build_database(model, transform, force_rebuild=False):
     """Load existing database or build new one if necessary."""
-    if not force_build and os.path.exists(FAISS_INDEX_PATH) and os.path.exists(REFERENCE_PATHS_CACHE):
+    if not force_rebuild and os.path.exists(FAISS_INDEX_PATH) and os.path.exists(REFERENCE_PATHS_CACHE):
         print("Loading existing database...")
         index = faiss.read_index(FAISS_INDEX_PATH)
         reference_paths = np.load(REFERENCE_PATHS_CACHE, allow_pickle=True).tolist()
@@ -151,7 +183,7 @@ def load_or_build_database(model, transform, force_build=False):
         return index, reference_paths
     
     print("Building new database...")
-    index, reference_paths = build_clickme_database(model, transform)
+    index, reference_paths = build_clickme_database(model, transform, rebuild=force_rebuild)
     
     # Save the database
     print("Saving database...")
@@ -166,7 +198,7 @@ def main():
     model, transform = setup_model()
     
     # Load or build database
-    index, reference_paths = load_or_build_database(model, transform, force_build=FORCE_BUILD)
+    index, reference_paths = load_or_build_database(model, transform, force_rebuild=FORCE_BUILD)
     
     # Get ImageNet paths
     imagenet_paths = (
