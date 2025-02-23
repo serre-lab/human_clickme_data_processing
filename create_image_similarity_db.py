@@ -17,7 +17,12 @@ CLICKME_PATHS = [
 IMAGENET_TRAIN = "/media/data_cifs/projects/prj_video_imagenet/imagenet/ILSVRC/Data/CLS-LOC/train"
 IMAGENET_VAL = "/media/data_cifs/projects/prj_video_imagenet/imagenet/ILSVRC/Data/CLS-LOC/val2"
 
-# Model and transform configuration
+# Database cache paths
+FAISS_INDEX_PATH = "clickme_faiss.index"
+REFERENCE_PATHS_CACHE = "clickme_reference_paths.npy"
+
+# Configuration
+FORCE_BUILD = False  # Set to True to force rebuild the database
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 IMAGE_SIZE = 224
 
@@ -54,7 +59,8 @@ def build_clickme_database(model, transform):
     
     # Process all ClickMe images
     for path in CLICKME_PATHS:
-        for img_file in tqdm(glob.glob(os.path.join(path, "*.png")), desc=f"Processing {path}"):
+        for img_file in tqdm(glob.glob(os.path.join(path, "*.npy")), desc=f"Processing {path}"):
+            import pdb; pdb.set_trace()
             embedding = get_embedding(model, transform, img_file)
             if embedding is not None:
                 embeddings.append(embedding)
@@ -82,13 +88,32 @@ def find_similar_images(model, transform, index, reference_paths, query_paths):
     
     return similarity_dict
 
+def load_or_build_database(model, transform, force_build=False):
+    """Load existing database or build new one if necessary."""
+    if not force_build and os.path.exists(FAISS_INDEX_PATH) and os.path.exists(REFERENCE_PATHS_CACHE):
+        print("Loading existing database...")
+        index = faiss.read_index(FAISS_INDEX_PATH)
+        reference_paths = np.load(REFERENCE_PATHS_CACHE, allow_pickle=True).tolist()
+        print(f"Loaded database with {len(reference_paths)} images")
+        return index, reference_paths
+    
+    print("Building new database...")
+    index, reference_paths = build_clickme_database(model, transform)
+    
+    # Save the database
+    print("Saving database...")
+    faiss.write_index(index, FAISS_INDEX_PATH)
+    np.save(REFERENCE_PATHS_CACHE, reference_paths)
+    print(f"Saved database with {len(reference_paths)} images")
+    
+    return index, reference_paths
+
 def main():
     # Setup model
     model, transform = setup_model()
     
-    # Build database from ClickMe images
-    print("Building ClickMe database...")
-    index, reference_paths = build_clickme_database(model, transform)
+    # Load or build database
+    index, reference_paths = load_or_build_database(model, transform, force_build=FORCE_BUILD)
     
     # Get ImageNet paths
     imagenet_paths = (
