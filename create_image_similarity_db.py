@@ -10,9 +10,9 @@ from tqdm import tqdm
 
 # Path configurations
 CLICKME_PATHS = [
-    "/media/data_cifs/clicktionary/clickme_experiment/tf_records/archive/clickme_test_images_v1",
-    "/media/data_cifs/clicktionary/clickme_experiment/tf_records/archive/clickme_train_images_v1",
-    "/media/data_cifs/clicktionary/clickme_experiment/tf_records/archive/clickme_val_images_v1"
+    "clickme_test_images_v1",
+    "clickme_train_images_v1",
+    "clickme_val_images_v1"
 ]
 IMAGENET_TRAIN = "/media/data_cifs/projects/prj_video_imagenet/imagenet/ILSVRC/Data/CLS-LOC/train"
 IMAGENET_VAL = "/media/data_cifs/projects/prj_video_imagenet/imagenet/ILSVRC/Data/CLS-LOC/val2"
