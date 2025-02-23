@@ -1,4 +1,6 @@
 import os
+os.environ['MKL_THREADING_LAYER'] = 'GNU'
+
 import glob
 import numpy as np
 import torch
@@ -115,7 +117,10 @@ def build_clickme_database(model, transform, rebuild=False):
     
     # Initialize FAISS index
     dimension = 384  # ViT-Small DINO embedding dimension
+    # Create GPU index
+    res = faiss.StandardGpuResources()
     index = faiss.IndexFlatL2(dimension)
+    gpu_index = faiss.index_cpu_to_gpu(res, 0, index)
     valid_paths = []
     
     def load_single_image(img_path):
@@ -154,13 +159,18 @@ def build_clickme_database(model, transform, rebuild=False):
             batch_embeddings = model(batch_tensor).cpu().numpy().astype('float32')
         
         # Add to FAISS index immediately
-        index.add(batch_embeddings)
+        gpu_index.add(batch_embeddings)
         valid_paths.extend(batch_valid_paths)
     
+    # Convert back to CPU index for saving
+    index = faiss.index_gpu_to_cpu(gpu_index)
     return index, valid_paths
 
 def find_similar_images(model, transform, index, reference_paths, query_paths):
     """Find similar images between query images and reference database."""
+    # Convert to GPU index for searching
+    res = faiss.StandardGpuResources()
+    gpu_index = faiss.index_cpu_to_gpu(res, 0, index)
     similarity_dict = {}
     
     def load_single_image(img_path):
@@ -202,8 +212,7 @@ def find_similar_images(model, transform, index, reference_paths, query_paths):
             batch_embeddings = model(batch_tensor).cpu().numpy().astype('float32')
         
         # Batch search in FAISS
-        import pdb; pdb.set_trace()
-        D, I = index.search(batch_embeddings, 1)
+        D, I = gpu_index.search(batch_embeddings, 1)
         
         # Update similarity dictionary
         for query_path, idx in zip(batch_valid_paths, I):
