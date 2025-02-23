@@ -42,6 +42,7 @@ def setup_model():
 
 def get_embedding(model, transform, image_path):
     """Get embedding for a single image."""
+    import pdb; pdb.set_trace()
     try:
         if ".npy" in image_path:
             image = np.load(image_path)
