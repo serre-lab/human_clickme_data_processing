@@ -23,7 +23,7 @@ FAISS_INDEX_PATH = "clickme_faiss.index"
 REFERENCE_PATHS_CACHE = "clickme_reference_paths.npy"
 
 # Configuration
-FORCE_BUILD = True  # Set to True to force rebuild the database
+FORCE_BUILD = False  # Set to True to force rebuild the database
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 IMAGE_SIZE = 224
 
@@ -163,13 +163,51 @@ def find_similar_images(model, transform, index, reference_paths, query_paths):
     """Find similar images between query images and reference database."""
     similarity_dict = {}
     
-    for img_path in tqdm(query_paths, desc="Finding similar images"):
-        embedding = get_embedding(model, transform, [img_path])[0][0]
-        if embedding is not None:
-            # Search in the index
-            D, I = index.search(embedding.reshape(1, -1), 1)
-            similar_image = reference_paths[I[0][0]]
-            similarity_dict[img_path] = similar_image
+    def load_single_image(img_path):
+        """Helper function to load and transform a single image."""
+        try:
+            if ".npy" in img_path:
+                image = Image.fromarray(np.load(img_path))
+            else:
+                image = Image.open(img_path).convert('RGB')
+            return transform(image), img_path
+        except Exception as e:
+            print(f"Error processing {img_path}: {e}")
+            return None, None
+    
+    # Process in batches
+    batch_size = 128
+    for i in tqdm(range(0, len(query_paths), batch_size), desc="Finding similar images"):
+        batch_paths = query_paths[i:i + batch_size]
+        
+        # Parallel load and transform images on CPU
+        results = Parallel(n_jobs=-1, prefer="threads")(
+            delayed(load_single_image)(path) for path in batch_paths
+        )
+        
+        # Filter out None results and prepare batch
+        batch_images = []
+        batch_valid_paths = []
+        for img, path in results:
+            if img is not None:
+                batch_images.append(img)
+                batch_valid_paths.append(path)
+        
+        if not batch_images:
+            continue
+        
+        # Process batch on GPU
+        batch_tensor = torch.stack(batch_images).to(DEVICE)
+        with torch.no_grad():
+            batch_embeddings = model(batch_tensor).cpu().numpy().astype('float32')
+        
+        # Batch search in FAISS
+        import pdb; pdb.set_trace()
+        D, I = index.search(batch_embeddings, 1)
+        
+        # Update similarity dictionary
+        for query_path, idx in zip(batch_valid_paths, I):
+            similarity_dict[query_path] = reference_paths[idx[0]]
     
     return similarity_dict
 
