@@ -100,7 +100,7 @@ def build_clickme_database(model, transform):
         all_image_paths.extend(glob.glob(os.path.join(path, "*.npy")))
     
     # Split into batches for parallel processing
-    batch_size = 32
+    batch_size = 128
     num_jobs = 4  # Adjust based on your CPU cores
     batches = [all_image_paths[i:i + batch_size] 
               for i in range(0, len(all_image_paths), batch_size)]
