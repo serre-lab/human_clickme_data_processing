@@ -166,7 +166,7 @@ def build_clickme_database(model, transform, rebuild=False):
     index = faiss.index_gpu_to_cpu(gpu_index)
     return index, valid_paths
 
-def find_similar_images(model, transform, index, reference_paths, query_paths, batch_size=1024):
+def find_similar_images(model, transform, index, reference_paths, query_paths, batch_size=8192):
     """Find similar images between query images and reference database."""
     # Convert to GPU index for searching
     res = faiss.StandardGpuResources()
