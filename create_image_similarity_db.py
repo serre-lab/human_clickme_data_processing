@@ -62,6 +62,7 @@ def build_clickme_database(model, transform):
     
     # Process all ClickMe images
     for path in CLICKME_PATHS:
+        import pdb; pdb.set_trace()
         for img_file in tqdm(glob.glob(os.path.join(path, "*.npy")), desc=f"Processing {path}"):
             embedding = get_embedding(model, transform, img_file)
             if embedding is not None:
