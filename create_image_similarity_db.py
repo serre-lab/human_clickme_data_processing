@@ -7,6 +7,7 @@ import faiss
 from PIL import Image
 from torchvision import transforms
 from tqdm import tqdm
+from joblib import Parallel, delayed
 
 # Path configurations
 CLICKME_PATHS = [
@@ -40,50 +41,98 @@ def setup_model():
     ])
     return model, transform
 
-def get_embedding(model, transform, image_path):
-    """Get embedding for a single image."""
-    import pdb; pdb.set_trace()
-    try:
-        if ".npy" in image_path:
-            image = np.load(image_path)
-        else:
-            image = Image.open(image_path).convert('RGB')
-        image = transform(image).unsqueeze(0).to(DEVICE)
+def get_embedding(model, transform, image_paths, batch_size=32):
+    """Get embeddings for a batch of images using parallel loading."""
+    embeddings = []
+    valid_paths = []
+    
+    def load_single_image(img_path):
+        """Helper function to load and transform a single image."""
+        try:
+            if ".npy" in img_path:
+                image = Image.fromarray(np.load(img_path))
+            else:
+                image = Image.open(img_path).convert('RGB')
+            return transform(image), img_path
+        except Exception as e:
+            print(f"Error processing {img_path}: {e}")
+            return None, None
+
+    # Process images in batches
+    for i in range(0, len(image_paths), batch_size):
+        batch_paths = image_paths[i:i + batch_size]
+        
+        # Parallel load and transform images
+        results = Parallel(n_jobs=-1, prefer="threads")(
+            delayed(load_single_image)(path) for path in batch_paths
+        )
+        
+        # Filter out None results and separate images and paths
+        batch_images = []
+        batch_valid_paths = []
+        for img, path in results:
+            if img is not None:
+                batch_images.append(img)
+                batch_valid_paths.append(path)
+        
+        if not batch_images:
+            continue
+            
+        # Process batch on GPU
+        batch_tensor = torch.stack(batch_images).to(DEVICE)
         with torch.no_grad():
-            embedding = model(image).cpu().numpy()
-        return embedding.flatten()
-    except Exception as e:
-        print(f"Error processing {image_path}: {e}")
-        return None
+            batch_embeddings = model(batch_tensor).cpu().numpy()
+        
+        embeddings.extend(batch_embeddings)
+        valid_paths.extend(batch_valid_paths)
+    
+    return np.array(embeddings), valid_paths
+
+def process_batch(batch_paths, model, transform):
+    """Process a batch of images in parallel."""
+    embeddings, valid_paths = get_embedding(model, transform, batch_paths)
+    return embeddings, valid_paths
 
 def build_clickme_database(model, transform):
-    """Build FAISS database from ClickMe images."""
-    embeddings = []
-    image_paths = []
-    
-    # Process all ClickMe images
+    """Build FAISS database from ClickMe images using parallel processing."""
+    all_image_paths = []
     for path in CLICKME_PATHS:
-        import pdb; pdb.set_trace()
-        for img_file in tqdm(glob.glob(os.path.join(path, "*.npy")), desc=f"Processing {path}"):
-            embedding = get_embedding(model, transform, img_file)
-            if embedding is not None:
-                embeddings.append(embedding)
-                image_paths.append(img_file)
+        all_image_paths.extend(glob.glob(os.path.join(path, "*.npy")))
+    
+    # Split into batches for parallel processing
+    batch_size = 32
+    num_jobs = 4  # Adjust based on your CPU cores
+    batches = [all_image_paths[i:i + batch_size] 
+              for i in range(0, len(all_image_paths), batch_size)]
+    
+    # Process batches in parallel
+    results = Parallel(n_jobs=num_jobs)(
+        delayed(process_batch)(batch, model, transform)
+        for batch in tqdm(batches, desc="Processing batches")
+    )
+    
+    # Combine results
+    all_embeddings = []
+    all_paths = []
+    for embeddings, paths in results:
+        if len(embeddings) > 0:
+            all_embeddings.extend(embeddings)
+            all_paths.extend(paths)
     
     # Create FAISS index
-    embeddings = np.array(embeddings).astype('float32')
-    dimension = embeddings.shape[1]
+    all_embeddings = np.array(all_embeddings).astype('float32')
+    dimension = all_embeddings.shape[1]
     index = faiss.IndexFlatL2(dimension)
-    index.add(embeddings)
+    index.add(all_embeddings)
     
-    return index, image_paths
+    return index, all_paths
 
 def find_similar_images(model, transform, index, reference_paths, query_paths):
     """Find similar images between query images and reference database."""
     similarity_dict = {}
     
     for img_path in tqdm(query_paths, desc="Finding similar images"):
-        embedding = get_embedding(model, transform, img_path)
+        embedding = get_embedding(model, transform, [img_path])[0][0]
         if embedding is not None:
             # Search in the index
             D, I = index.search(embedding.reshape(1, -1), 1)
