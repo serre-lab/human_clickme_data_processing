@@ -166,7 +166,7 @@ def build_clickme_database(model, transform, rebuild=False):
     index = faiss.index_gpu_to_cpu(gpu_index)
     return index, valid_paths
 
-def find_similar_images(model, transform, index, reference_paths, query_paths):
+def find_similar_images(model, transform, index, reference_paths, query_paths, batch_size=1024):
     """Find similar images between query images and reference database."""
     # Convert to GPU index for searching
     res = faiss.StandardGpuResources()
@@ -186,7 +186,6 @@ def find_similar_images(model, transform, index, reference_paths, query_paths):
             return None, None
     
     # Process in batches
-    batch_size = 128
     for i in tqdm(range(0, len(query_paths), batch_size), desc="Finding similar images"):
         batch_paths = query_paths[i:i + batch_size]
         
@@ -212,7 +211,7 @@ def find_similar_images(model, transform, index, reference_paths, query_paths):
             batch_embeddings = model(batch_tensor).cpu().numpy().astype('float32')
         
         # Batch search in FAISS
-        D, I = gpu_index.search(batch_embeddings, 1)
+        D, I = gpu_index.search(batch_embeddings, 1)  # embeddings, nearest neighbor
         
         # Update similarity dictionary
         for query_path, idx in zip(batch_valid_paths, I):
@@ -254,7 +253,6 @@ def main():
     )
     
     # Find similar images
-    print("Finding similar images...")
     similarity_dict = find_similar_images(model, transform, index, reference_paths, imagenet_paths)
     
     # Save results
