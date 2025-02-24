@@ -122,7 +122,12 @@ def build_clickme_database(model, transform, rebuild=False):
         all_image_paths.extend(glob.glob(os.path.join(path, "*.npy")))
     
     # Initialize FAISS index
-    dimension = 384  # ViT-Small DINO embedding dimension
+    # Get the actual embedding dimension from a sample batch
+    sample_batch = torch.stack([transform(Image.fromarray(np.load(all_image_paths[0])))]).to(DEVICE)
+    with torch.no_grad():
+        sample_embedding = model(sample_batch)
+    dimension = sample_embedding.shape[1]  # Get actual embedding dimension
+    
     # Create GPU index
     res = faiss.StandardGpuResources()
     index = faiss.IndexFlatL2(dimension)
