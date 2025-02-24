@@ -33,6 +33,7 @@ def setup_model():
     """Setup the DINO ViT model and transform."""
     model = timm.create_model('vit_small_patch16_224.dino', pretrained=True)
     model.head = torch.nn.Identity()  # Remove classification head to get embeddings
+    import pdb; pdb.set_trace()
     model = model.to(DEVICE)
     model.eval()
     
