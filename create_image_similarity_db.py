@@ -36,12 +36,18 @@ def setup_model():
     model = model.to(DEVICE)
     model.eval()
     
-    transform = transforms.Compose([
+    c1_transform = transforms.Compose([
         transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
-    return model, transform
+    c2_transform = transforms.Compose([
+        transforms.CenterCrop((256, 256)),
+        transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
+    return model, c1_transform, c2_transform
 
 def get_embedding(model, transform, image_paths, batch_size=32):
     """Get embeddings for a batch of images using parallel loading."""
@@ -241,10 +247,10 @@ def load_or_build_database(model, transform, force_rebuild=False):
 
 def main():
     # Setup model
-    model, transform = setup_model()
+    model, c1_transform, c2_transform = setup_model()
     
     # Load or build database
-    index, reference_paths = load_or_build_database(model, transform, force_rebuild=FORCE_BUILD)
+    index, reference_paths = load_or_build_database(model, c1_transform, force_rebuild=FORCE_BUILD)
     
     # Get ImageNet paths
     imagenet_paths = (
@@ -253,7 +259,7 @@ def main():
     )
     
     # Find similar images
-    similarity_dict = find_similar_images(model, transform, index, reference_paths, imagenet_paths)
+    similarity_dict = find_similar_images(model, c2_transform, index, reference_paths, imagenet_paths)
     
     # Save results
     print("Saving results...")
