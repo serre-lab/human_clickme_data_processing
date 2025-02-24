@@ -105,7 +105,6 @@ def get_embedding(model, transform, image_paths, batch_size=32):
         batch_tensor = torch.stack(batch_images).to(DEVICE)
         with torch.no_grad():
             batch_embeddings = model(batch_tensor).cpu().numpy()
-        import pdb; pdb.set_trace()
         embeddings.extend(batch_embeddings)
         valid_paths.extend(batch_valid_paths)
     
@@ -138,6 +137,7 @@ def build_clickme_database(model, transform, rebuild=False):
     
     # Initialize FAISS index
     # Get the actual embedding dimension from a sample batch
+    import pdb; pdb.set_trace()
     sample_batch = torch.stack([transform(Image.fromarray(np.load(all_image_paths[0])))]).to(DEVICE)
     with torch.no_grad():
         sample_embedding = model(sample_batch)
