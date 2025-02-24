@@ -25,13 +25,13 @@ FAISS_INDEX_PATH = "clickme_faiss.index"
 REFERENCE_PATHS_CACHE = "clickme_reference_paths.npy"
 
 # Configuration
-FORCE_BUILD = False  # Set to True to force rebuild the database
+FORCE_BUILD = True  # Set to True to force rebuild the database
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-IMAGE_SIZE = 224
+IMAGE_SIZE = 518
 
 def setup_model():
     """Setup the DINO ViT model and transform."""
-    model = timm.create_model('vit_small_patch16_224.dino', pretrained=True)
+    model = timm.create_model('vit_large_patch14_dinov2.lvd142m', pretrained=True)
     model.head = torch.nn.Identity()  # Remove classification head to get embeddings
     model = model.to(DEVICE)
     model.eval()
@@ -172,7 +172,7 @@ def build_clickme_database(model, transform, rebuild=False):
     index = faiss.index_gpu_to_cpu(gpu_index)
     return index, valid_paths
 
-def find_similar_images(model, transform, index, reference_paths, query_paths, batch_size=2048):
+def find_similar_images(model, transform, index, reference_paths, query_paths, batch_size=128):
     """Find similar images between query images and reference database."""
     # Convert to GPU index for searching
     res = faiss.StandardGpuResources()
