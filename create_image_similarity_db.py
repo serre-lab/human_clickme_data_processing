@@ -32,8 +32,21 @@ IMAGE_SIZE = 224
 def setup_model():
     """Setup the DINO ViT model and transform."""
     model = timm.create_model('vit_small_patch16_224.dino', pretrained=True)
-    model.head = torch.nn.Identity()  # Remove classification head to get embeddings
-    import pdb; pdb.set_trace()
+    # Remove the head but keep the pre-pool features
+    model.head = torch.nn.Identity()  # Remove classification head
+    
+    # Create a modified forward method to get pre-pool features
+    original_forward = model.forward
+    def new_forward(x):
+        x = model.patch_embed(x)
+        cls_token = model.cls_token.expand(x.shape[0], -1, -1)
+        x = torch.cat((cls_token, x), dim=1)
+        x = model.pos_drop(x + model.pos_embed)
+        x = model.blocks(x)
+        x = model.norm(x)
+        return x  # Return all token features, shape: [batch_size, num_patches + 1, embed_dim]
+    
+    model.forward = new_forward
     model = model.to(DEVICE)
     model.eval()
     
@@ -92,7 +105,7 @@ def get_embedding(model, transform, image_paths, batch_size=32):
         batch_tensor = torch.stack(batch_images).to(DEVICE)
         with torch.no_grad():
             batch_embeddings = model(batch_tensor).cpu().numpy()
-        
+        import pdb; pdb.set_trace()
         embeddings.extend(batch_embeddings)
         valid_paths.extend(batch_valid_paths)
     
