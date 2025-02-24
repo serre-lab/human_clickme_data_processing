@@ -158,10 +158,10 @@ def build_clickme_database(model, transform, rebuild=False):
             return None, None
 
     # Process in smaller batches
-    batch_size = 8  # Reduced batch size
+    batch_size = 4  # Even smaller batch size
     accumulated_embeddings = []
     accumulated_paths = []
-    add_every = 256  # Add to index every N embeddings
+    add_every = 64  # Smaller accumulation size before adding to index
     
     for i in tqdm(range(0, len(all_image_paths), batch_size), desc="Processing images"):
         batch_paths = all_image_paths[i:i + batch_size]
@@ -187,6 +187,9 @@ def build_clickme_database(model, transform, rebuild=False):
         with torch.no_grad():
             batch_embeddings = model(batch_tensor).cpu().numpy().astype('float32')
         batch_embeddings = batch_embeddings.reshape(len(batch_embeddings), -1)
+        
+        # Clear GPU cache
+        torch.cuda.empty_cache()
 
         # Accumulate embeddings
         accumulated_embeddings.extend(batch_embeddings)
@@ -198,6 +201,8 @@ def build_clickme_database(model, transform, rebuild=False):
             valid_paths.extend(accumulated_paths)
             accumulated_embeddings = []
             accumulated_paths = []
+            # Clear GPU cache again after adding to index
+            torch.cuda.empty_cache()
     
     # Add any remaining embeddings
     if accumulated_embeddings:
