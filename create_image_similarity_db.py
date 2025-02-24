@@ -180,6 +180,7 @@ def build_clickme_database(model, transform, rebuild=False):
             continue
         
         # Process batch on GPU
+        import pdb; pdb.set_trace()
         batch_tensor = torch.stack(batch_images).to(DEVICE)
         with torch.no_grad():
             batch_embeddings = model(batch_tensor).cpu().numpy().astype('float32')
