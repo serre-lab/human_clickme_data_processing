@@ -158,7 +158,7 @@ def build_clickme_database(model, transform, rebuild=False):
             return None, None
 
     # Process in batches
-    batch_size = 128
+    batch_size = 32
     for i in tqdm(range(0, len(all_image_paths), batch_size), desc="Processing images"):
         batch_paths = all_image_paths[i:i + batch_size]
         
