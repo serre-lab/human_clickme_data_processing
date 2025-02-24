@@ -157,8 +157,12 @@ def build_clickme_database(model, transform, rebuild=False):
             print(f"Error processing {img_path}: {e}")
             return None, None
 
-    # Process in batches
-    batch_size = 32
+    # Process in smaller batches
+    batch_size = 8  # Reduced batch size
+    accumulated_embeddings = []
+    accumulated_paths = []
+    add_every = 256  # Add to index every N embeddings
+    
     for i in tqdm(range(0, len(all_image_paths), batch_size), desc="Processing images"):
         batch_paths = all_image_paths[i:i + batch_size]
         
@@ -184,9 +188,21 @@ def build_clickme_database(model, transform, rebuild=False):
             batch_embeddings = model(batch_tensor).cpu().numpy().astype('float32')
         batch_embeddings = batch_embeddings.reshape(len(batch_embeddings), -1)
 
-        # Add to FAISS index immediately
-        gpu_index.add(batch_embeddings)
-        valid_paths.extend(batch_valid_paths)
+        # Accumulate embeddings
+        accumulated_embeddings.extend(batch_embeddings)
+        accumulated_paths.extend(batch_valid_paths)
+        
+        # Add to index when we have enough embeddings
+        if len(accumulated_embeddings) >= add_every:
+            gpu_index.add(np.array(accumulated_embeddings))
+            valid_paths.extend(accumulated_paths)
+            accumulated_embeddings = []
+            accumulated_paths = []
+    
+    # Add any remaining embeddings
+    if accumulated_embeddings:
+        gpu_index.add(np.array(accumulated_embeddings))
+        valid_paths.extend(accumulated_paths)
     
     # Convert back to CPU index for saving
     index = faiss.index_gpu_to_cpu(gpu_index)
