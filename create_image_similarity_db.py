@@ -27,11 +27,11 @@ REFERENCE_PATHS_CACHE = "clickme_reference_paths.npy"
 # Configuration
 FORCE_BUILD = True  # Set to True to force rebuild the database
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-IMAGE_SIZE = 518
+IMAGE_SIZE = 224
 
 def setup_model():
     """Setup the DINO ViT model and transform."""
-    model = timm.create_model('vit_large_patch14_dinov2.lvd142m', pretrained=True)
+    model = timm.create_model('vit_small_patch16_224.dino', pretrained=True)
     model.head = torch.nn.Identity()  # Remove classification head to get embeddings
     model = model.to(DEVICE)
     model.eval()
