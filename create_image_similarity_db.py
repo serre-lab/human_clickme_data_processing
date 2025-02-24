@@ -137,11 +137,10 @@ def build_clickme_database(model, transform, rebuild=False):
     
     # Initialize FAISS index
     # Get the actual embedding dimension from a sample batch
-    import pdb; pdb.set_trace()
     sample_batch = torch.stack([transform(Image.fromarray(np.load(all_image_paths[0])))]).to(DEVICE)
     with torch.no_grad():
         sample_embedding = model(sample_batch)
-    dimension = sample_embedding.shape[1]  # Get actual embedding dimension
+    dimension = sample_embedding.shape[1] * sample_embedding.shape[2]  # Get actual embedding dimension
     
     # Create GPU index
     res = faiss.StandardGpuResources()
@@ -180,11 +179,11 @@ def build_clickme_database(model, transform, rebuild=False):
             continue
         
         # Process batch on GPU
-        import pdb; pdb.set_trace()
         batch_tensor = torch.stack(batch_images).to(DEVICE)
         with torch.no_grad():
             batch_embeddings = model(batch_tensor).cpu().numpy().astype('float32')
-        
+        batch_embeddings = batch_embeddings.reshape(len(batch_embeddings), -1)
+
         # Add to FAISS index immediately
         gpu_index.add(batch_embeddings)
         valid_paths.extend(batch_valid_paths)
@@ -236,7 +235,8 @@ def find_similar_images(model, transform, index, reference_paths, query_paths, b
         batch_tensor = torch.stack(batch_images).to(DEVICE)
         with torch.no_grad():
             batch_embeddings = model(batch_tensor).cpu().numpy().astype('float32')
-        
+        batch_embeddings = batch_embeddings.reshape(len(batch_embeddings), -1)
+
         # Batch search in FAISS
         D, I = gpu_index.search(batch_embeddings, 1)  # embeddings, nearest neighbor
         
