@@ -70,7 +70,7 @@ def prepare_dataset_for_sequence(data_path, click_div):
     return user_df, data
 
 
-def get_user_classifications(predictions, user_ids, threshold=0.0):
+def get_user_classifications(predictions, user_ids):
     """
     Determine if a user is good or bad based on their predictions.
     A user is considered bad if the ratio of their samples is larger than the threshold.
@@ -89,7 +89,7 @@ def main():
     parser.add_argument('--use-attention', action='store_true', default=True, help='Whether to use attention in the model')
     parser.add_argument('--batch-size', type=int, default=4, help='Batch size for inference')
     parser.add_argument('--seq-length', type=int, default=50, help='Sequence length for processing')
-    parser.add_argument('--threshold', type=float, default=0.0, help='Threshold for additional filtering (default: 0.0)')
+
 
     args = parser.parse_args()
 
@@ -145,11 +145,9 @@ def main():
     
     # Map user-level predictions back to original dataset
     # Classify users
-    print("Bad threshold: ", args.threshold)
     user_classifications = get_user_classifications(
         predictions,
-        user_df['user_id'],
-        threshold=args.threshold
+        user_df['user_id']
     )
     
     # Get indices of good players (label 1)
