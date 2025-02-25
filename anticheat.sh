@@ -7,12 +7,20 @@
 #     --checkpoint-path ./checkpoints/model_epoch_ckpt_19.pth \
 #     --evaluate-only
 
-python inference.py \
-    --model-path ./checkpoints/model_epoch_ckpt_19.pth \
-    --data-path ./clickme_datasets/val_combined_11_26_2024.npz \
-    --output-path ./clickme_datasets/output_filtered_data.npz \
-    --model-name gru \
-    --threshold 0.003
+# python inference.py \
+#     --model-path ./checkpoints/model_epoch_ckpt_19.pth \
+#     --data-path ./clickme_datasets/val_combined_11_26_2024.npz \
+#     --output-path ./clickme_datasets/output_filtered_data.npz \
+#     --model-name gru \
+#     --threshold 0.003
+
+python train_subject_classifier_sequence_v2.py \
+    --output ./logs/training_log.txt \
+    --epochs 20 \
+    --batch-size 1 \
+    --train-data-path ./clickme_datasets/train_SANDBOX_01_25_2025.npz \
+    --val-data-path ./clickme_datasets/val_SANDBOX_01_25_2025.npz \
+
 
 # Classification Summary:
 # Threshold for bad_ratio: 0.0
