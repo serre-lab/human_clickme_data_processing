@@ -215,32 +215,50 @@ if __name__ == "__main__":
     with open(os.path.join(output_dir, config["processed_medians"]), 'w') as f:
         f.write(medians_json)
 
-    img_heatmaps = {}
-    for i, img_name in enumerate(final_keep_index):
-        if not os.path.exists(os.path.join(config["image_path"], img_name)):
-            print(os.path.join(config["image_path"], img_name))
-            continue
-        if img_name not in final_clickmaps.keys():
-            continue
-        hmp = all_clickmaps[i]
-        img = Image.open(os.path.join(config["image_path"], img_name))
-        if metadata:
-            click_match = [k_ for k_ in final_clickmaps.keys() if img_name in k_]
-            assert len(click_match) == 1, "Clickmap not found"
-            metadata_size = metadata[click_match[0]]
-            img = img.resize(metadata_size)
-
-        img_heatmaps[img_name] = {"image":img, "heatmap":hmp}
-    print(len(img_heatmaps))
-
-    # Patch: Sometimes img_heatmaps is too large
-    if len(img_heatmaps) > 10000:
-        os.makedirs(os.path.join(output_dir, config["experiment_name"]), exist_ok=True)
-        for hn, hm in img_heatmaps.keys():
-            np.save(os.path.join(output_dir, config["experiment_name"], "{}.npy".format(hn)), 
-                    hm
-                )
-    else:
-        np.savez(os.path.join(output_dir,  config["processed_clickme_file"]), 
-            **img_heatmaps
-        )
+    # Efficient batch processing and saving for large datasets
+    print(f"Processing {len(final_keep_index)} images in batches...")
+    batch_size = 1000  # Adjust based on available RAM
+    os.makedirs(os.path.join(output_dir, config["experiment_name"]), exist_ok=True)
+    
+    for i in range(0, len(final_keep_index), batch_size):
+        batch_end = min(i + batch_size, len(final_keep_index))
+        print(f"Processing batch {i//batch_size + 1}/{(len(final_keep_index) + batch_size - 1)//batch_size}")
+        
+        batch_heatmaps = {}
+        for j in range(i, batch_end):
+            img_name = final_keep_index[j]
+            if not os.path.exists(os.path.join(config["image_path"], img_name)):
+                print(f"Missing: {os.path.join(config['image_path'], img_name)}")
+                continue
+            if img_name not in final_clickmaps.keys():
+                continue
+                
+            hmp = all_clickmaps[j]
+            # Save individual heatmaps directly without loading all images into memory
+            np.save(
+                os.path.join(output_dir, config["experiment_name"], f"{img_name.replace('/', '_')}.npy"), 
+                hmp
+            )
+            
+            # Only process images for visualization if specifically requested
+            if config["display_image_keys"] and img_name in config["display_image_keys"]:
+                img = Image.open(os.path.join(config["image_path"], img_name))
+                if metadata:
+                    click_match = [k_ for k_ in final_clickmaps.keys() if img_name in k_]
+                    if click_match:
+                        metadata_size = metadata[click_match[0]]
+                        img = img.resize(metadata_size)
+                
+                # Save visualization for sample images
+                f = plt.figure()
+                plt.subplot(1, 2, 1)
+                plt.imshow(np.asarray(img))
+                plt.axis("off")
+                plt.subplot(1, 2, 2)
+                plt.imshow(hmp.mean(0))
+                plt.axis("off")
+                plt.savefig(os.path.join(image_output_dir, img_name.replace('/', '_')))
+                plt.close()
+        
+        # Free memory
+        del batch_heatmaps
