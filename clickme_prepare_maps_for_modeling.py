@@ -2,6 +2,7 @@ import os, sys
 import numpy as np
 from PIL import Image
 import json
+import pandas as pd
 from matplotlib import pyplot as plt
 from src import utils
 
@@ -113,10 +114,15 @@ if __name__ == "__main__":
     def process_chunk(chunk_start, chunk_end):
         chunk_data = {k: clickme_data[k] for k in list(clickme_data.keys())[chunk_start:chunk_end]}
         
+        # Convert the dictionary to a DataFrame since process_clickmap_files expects a DataFrame
+        # Create a DataFrame with image keys and their corresponding data
+        chunk_df = pd.DataFrame([(k, v) for k, v in chunk_data.items()], 
+                               columns=['image_name', 'clicks'])
+        
         # Use serial processing for each chunk to avoid joblib overhead
         process_clickmap_files_func = utils.process_clickmap_files
         chunk_clickmaps, chunk_clickmap_counts = process_clickmap_files_func(
-            clickme_data=chunk_data,
+            clickme_data=chunk_df,  # Pass DataFrame instead of dictionary
             image_path=config["image_path"],
             file_inclusion_filter=config["file_inclusion_filter"],
             file_exclusion_filter=config["file_exclusion_filter"],
