@@ -1,5 +1,5 @@
 experiment_name: jay_imagenet_val_02_19_2025
-clickme_data: clickme_datasets/jay_imagenet_val_combined_02_19_2025.npz
+clickme_data: clickme_datasets/val_combined_02_19_2025.npz
 processed_clickme_file: jay_imagenet_val_combined_02_19_2025_processed.npz
 processed_medians: jay_imagenet_val_combined_02_19_2025_medians.json
 example_image_output_dir: jay_imagenet_val_combined_02_19_2025_images
