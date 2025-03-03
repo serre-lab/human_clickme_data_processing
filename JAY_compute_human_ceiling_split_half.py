@@ -37,26 +37,48 @@ def single_image_noise_ceiling(image_clickmaps, metric="spearman", iterations=10
 
 def null_distribution_single_pair(i_maps, j_maps, metric="spearman", iterations=100):
     """
-    Combine clickmaps from image i and j, then split-half for null distribution.
-    i_maps, j_maps: each [X, H, W].
+    Perform a null test by computing split-half correlations without mixing images.
+    For each iteration, randomly split the clickmaps for image i and image j separately,
+    then compute the metric between the average of a random half from image i and the average of a random half from image j.
+    This ensures that the first half always comes from the first image and the second half always from the second image.
+    
+    Args:
+        i_maps (np.array): Clickmaps for image i, shape [N, H, W].
+        j_maps (np.array): Clickmaps for image j, shape [M, H, W].
+        metric (str): Metric to compute ("spearman", "auc", or "crossentropy").
+        iterations (int): Number of random split iterations for bootstrapping.
+    
+    Returns:
+        float: The mean metric score over all iterations.
     """
-    combined = np.concatenate([i_maps, j_maps], axis=0)
     scores = []
-    n_subs = len(combined)
+    n_i = len(i_maps)
+    n_j = len(j_maps)
+    half_i = n_i // 2
+    half_j = n_j // 2
+
     for _ in range(iterations):
-        idx = np.random.permutation(n_subs)
-        fh = combined[idx[: n_subs // 2]].mean(0)
-        sh = combined[idx[n_subs // 2 :]].mean(0)
-        fh, sh = minmax_normalize(fh), minmax_normalize(sh)
+        # Randomly permute the indices within each image's clickmaps.
+        perm_i = np.random.permutation(n_i)
+        perm_j = np.random.permutation(n_j)
+        # For image i, select a random half and compute its average.
+        avg_i = i_maps[perm_i[:half_i]].mean(0)
+        # For image j, select a random half and compute its average.
+        avg_j = j_maps[perm_j[:half_j]].mean(0)
+        # Normalize the averages.
+        avg_i = minmax_normalize(avg_i)
+        avg_j = minmax_normalize(avg_j)
+        # Compute the chosen metric.
         if metric.lower() == "spearman":
-            scores.append(utils.compute_spearman_correlation(fh, sh))
+            scores.append(utils.compute_spearman_correlation(avg_i, avg_j))
         elif metric.lower() == "auc":
-            scores.append(utils.compute_AUC(fh, sh))
+            scores.append(utils.compute_AUC(avg_i, avg_j))
         elif metric.lower() == "crossentropy":
-            scores.append(utils.compute_crossentropy(fh, sh))
+            scores.append(utils.compute_crossentropy(avg_i, avg_j))
         else:
             raise ValueError("Invalid metric.")
     return np.mean(scores)
+
 
 def sample_clickmaps(clickmaps, num_subs):
     """Randomly sample a subset of subjects from each image's clickmaps.
@@ -195,6 +217,7 @@ def main(
 
     # Compute correlations using bootstrapping
     min_subjects, max_subjects = 3, 10
+
     mean_results, stdev_results = [], []
     null_mean_results, null_stdev_results = [], []
     
@@ -203,6 +226,50 @@ def main(
         # Correlation
         image_scores = []
         for enum, clickmap in enumerate(sel_clickmaps):
+            
+            
+            
+            
+            # # DEBUG VISUALIZE
+            # clickme_image_folder = '/Users/jaygopal/Downloads/val/'
+            # synset = categories[enum]
+            # matching_keys = [k for k in final_clickmaps.keys() if synset in k]
+            # if len(matching_keys) != 1:
+            #     continue  # Skip this clickmap if there isn't exactly one matching image
+            # image_filename = matching_keys[0]
+            # image_path = os.path.join(clickme_image_folder, image_filename)
+            # base_image = Image.open(image_path).convert('RGB')
+            # w, h = base_image.size
+            # scale = 256 / min(w, h)
+            # new_w, new_h = int(w * scale), int(h * scale)
+            # base_image = base_image.resize((new_w, new_h), Image.BICUBIC)
+            # left = (new_w - 256) // 2
+            # upper = (new_h - 256) // 2
+            # base_image = base_image.crop((left, upper, left + 256, upper + 256))
+            
+            # # Compute the average heatmap for the first half and second half
+            # first_half = np.mean(clickmap[:(num_subs//2)], axis=0)
+            # second_half = np.mean(clickmap[(num_subs//2):], axis=0)
+
+            # # Visualize the overlays: base image with each half overlaid with a transparent viridis colormap.
+            # fig, axs = plt.subplots(1, 2, figsize=(10, 5))
+            # axs[0].imshow(base_image)
+            # axs[0].imshow(first_half, cmap='viridis', alpha=0.5)
+            # axs[0].set_title("First Half")
+            # axs[0].axis('off')
+
+            # axs[1].imshow(base_image)
+            # axs[1].imshow(second_half, cmap='viridis', alpha=0.5)
+            # axs[1].set_title("Second Half")
+            # axs[1].axis('off')
+
+            # plt.show()
+
+
+
+
+
+            
             # Loop through images and compute scores
             image_scores.append(single_image_noise_ceiling(clickmap))
         mean_results.append(np.mean(image_scores))  # Store average score accross images
@@ -217,13 +284,87 @@ def main(
             j = np.random.choice([idx for idx in range(len(sel_clickmaps)) if idx != i])
             test_maps = sel_clickmaps[i]
             ref_maps = sel_clickmaps[j]
+
+
+
+
+
+            # # DEBUG VISUALIZE
+            # # For test_maps:
+            # clickme_image_folder = '/Users/jaygopal/Downloads/val/'
+            # synset_test = categories[i]
+            # matching_keys_test = [k for k in final_clickmaps.keys() if synset_test in k]
+            # if len(matching_keys_test) != 1:
+            #     continue  # Skip if unique image not found for test_maps
+            # image_filename_test = matching_keys_test[0]
+            # image_path_test = os.path.join(clickme_image_folder, image_filename_test)
+            # base_image_test = Image.open(image_path_test).convert('RGB')
+            # w, h = base_image_test.size
+            # scale = 256 / min(w, h)
+            # new_w, new_h = int(w * scale), int(h * scale)
+            # base_image_test = base_image_test.resize((new_w, new_h), Image.BICUBIC)
+            # left = (new_w - 256) // 2
+            # upper = (new_h - 256) // 2
+            # base_image_test = base_image_test.crop((left, upper, left + 256, upper + 256))
+
+            # # For ref_maps:
+            # synset_ref = categories[j]
+            # matching_keys_ref = [k for k in final_clickmaps.keys() if synset_ref in k]
+            # if len(matching_keys_ref) != 1:
+            #     continue  # Skip if unique image not found for ref_maps
+            # image_filename_ref = matching_keys_ref[0]
+            # image_path_ref = os.path.join(clickme_image_folder, image_filename_ref)
+            # base_image_ref = Image.open(image_path_ref).convert('RGB')
+            # w, h = base_image_ref.size
+            # scale = 256 / min(w, h)
+            # new_w, new_h = int(w * scale), int(h * scale)
+            # base_image_ref = base_image_ref.resize((new_w, new_h), Image.BICUBIC)
+            # left = (new_w - 256) // 2
+            # upper = (new_h - 256) // 2
+            # base_image_ref = base_image_ref.crop((left, upper, left + 256, upper + 256))
+
+            # # Compute half averages for each image
+            # first_half_test = np.mean(test_maps[:(num_subs//2)], axis=0)
+            # second_half_test = np.mean(test_maps[(num_subs//2):], axis=0)
+            # first_half_ref = np.mean(ref_maps[:(num_subs//2)], axis=0)
+            # second_half_ref = np.mean(ref_maps[(num_subs//2):], axis=0)
+
+            # # Visualize both images in a 2x2 grid
+            # fig, axs = plt.subplots(2, 2, figsize=(10, 10))
+            # axs[0, 0].imshow(base_image_test)
+            # axs[0, 0].imshow(first_half_test, cmap='viridis', alpha=0.5)
+            # axs[0, 0].set_title("Test - First Half")
+            # axs[0, 0].axis('off')
+
+            # axs[0, 1].imshow(base_image_test)
+            # axs[0, 1].imshow(second_half_test, cmap='viridis', alpha=0.5)
+            # axs[0, 1].set_title("Test - Second Half")
+            # axs[0, 1].axis('off')
+
+            # axs[1, 0].imshow(base_image_ref)
+            # axs[1, 0].imshow(first_half_ref, cmap='viridis', alpha=0.5)
+            # axs[1, 0].set_title("Ref - First Half")
+            # axs[1, 0].axis('off')
+
+            # axs[1, 1].imshow(base_image_ref)
+            # axs[1, 1].imshow(second_half_ref, cmap='viridis', alpha=0.5)
+            # axs[1, 1].set_title("Ref - Second Half")
+            # axs[1, 1].axis('off')
+
+            # plt.show()
+
+
+
+
+
             null_scores.append(null_distribution_single_pair(test_maps, ref_maps))
         null_mean_results.append(np.mean(null_scores))  # Store average score accross images
         print(f'avg null corr at {num_subs} subjects is {np.mean(null_scores)}')
         null_stdev_results.append(np.std(null_scores))  # Changed from np.mean to np.std
         print(f'std null at {num_subs} subjects is {np.std(null_scores)}')
     
-    return final_clickmaps, mean_results, null_mean_results, all_clickmaps
+    return final_clickmaps, mean_results, stdev_results, null_mean_results, null_stdev_results, all_clickmaps
+
 
 
 if __name__ == "__main__":
@@ -255,7 +396,7 @@ if __name__ == "__main__":
         config["filter_mobile"])
 
     # Process data
-    final_clickmaps, all_correlations, null_correlations, all_clickmaps = main(
+    final_clickmaps, mean_results, stdev_results, null_mean_results, null_stdev_results, all_clickmaps = main(
         clickme_data=clickme_data,
         blur_sigma=blur_sigma,
         min_pixels=min_pixels,
@@ -279,17 +420,8 @@ if __name__ == "__main__":
         file_inclusion_filter=config["file_inclusion_filter"],
         file_exclusion_filter=config["file_exclusion_filter"])
     
-    # Compute mean and 95% confidence interval
-    mean_human_correlation = np.nanmean(all_correlations)
-    ci_lower, ci_upper = np.percentile(all_correlations, [2.5, 97.5])
-
-    # Compute mean and CI for null
-    mean_null_correlation = np.nanmean(null_correlations)
-    ci_null_lower, ci_null_upper = np.percentile(null_correlations, [2.5, 97.5])
-
-    print(f"Mean human correlation full set: {mean_human_correlation}")
-    print(f"Number of iterations contributing to mean correlation: {len(all_correlations) - np.isnan(all_correlations).sum()}")
-    print(f"Human correlation, 95% CI: [{ci_lower}, {ci_upper}]")
+    print('all correlations', mean_results)
+    print('st dev results', stdev_results)
+    print('null correlations', null_mean_results)
+    print('null st dev results', null_stdev_results)
     
-    print(f"Mean null correlation: {mean_null_correlation}")
-    print(f"Null correlation, 95% CI: [{ci_null_lower}, {ci_null_upper}]")

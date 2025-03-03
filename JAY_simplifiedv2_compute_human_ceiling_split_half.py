@@ -38,26 +38,49 @@ def single_image_noise_ceiling(image_clickmaps, metric="spearman", iterations=10
 
 def null_distribution_single_pair(i_maps, j_maps, metric="spearman", iterations=100):
     """
-    Combine clickmaps from image i and j, then split-half for null distribution.
-    i_maps, j_maps: each [X, H, W].
+    Perform a null test by computing split-half correlations without mixing images.
+    For each iteration, randomly split the clickmaps for image i and image j separately,
+    then compute the metric between the average of a random half from image i and the average of a random half from image j.
+    This ensures that the first half always comes from the first image and the second half always from the second image.
+    
+    Args:
+        i_maps (np.array): Clickmaps for image i, shape [N, H, W].
+        j_maps (np.array): Clickmaps for image j, shape [M, H, W].
+        metric (str): Metric to compute ("spearman", "auc", or "crossentropy").
+        iterations (int): Number of random split iterations for bootstrapping.
+    
+    Returns:
+        float: The mean metric score over all iterations.
     """
-    combined = np.concatenate([i_maps, j_maps], axis=0)
     scores = []
-    n_subs = len(combined)
+    n_i = len(i_maps)
+    n_j = len(j_maps)
+    half_i = n_i // 2
+    half_j = n_j // 2
+
     for _ in range(iterations):
-        idx = np.random.permutation(n_subs)
-        fh = combined[idx[: n_subs // 2]].mean(0)
-        sh = combined[idx[n_subs // 2 :]].mean(0)
-        fh, sh = minmax_normalize(fh), minmax_normalize(sh)
+        # Randomly permute the indices within each image's clickmaps.
+        perm_i = np.random.permutation(n_i)
+        perm_j = np.random.permutation(n_j)
+        # For image i, select a random half and compute its average.
+        avg_i = i_maps[perm_i[:half_i]].mean(0)
+        # For image j, select a random half and compute its average.
+        avg_j = j_maps[perm_j[:half_j]].mean(0)
+        # Normalize the averages.
+        avg_i = minmax_normalize(avg_i)
+        avg_j = minmax_normalize(avg_j)
+        # Compute the chosen metric.
         if metric.lower() == "spearman":
-            scores.append(utils.compute_spearman_correlation(fh, sh))
+            scores.append(utils.compute_spearman_correlation(avg_i, avg_j))
         elif metric.lower() == "auc":
-            scores.append(utils.compute_AUC(fh, sh))
+            scores.append(utils.compute_AUC(avg_i, avg_j))
         elif metric.lower() == "crossentropy":
-            scores.append(utils.compute_crossentropy(fh, sh))
+            scores.append(utils.compute_crossentropy(avg_i, avg_j))
         else:
             raise ValueError("Invalid metric.")
     return np.mean(scores)
+
+
 
 def sample_clickmaps(clickmaps, num_subs):
     """Randomly sample a subset of subjects from each image's clickmaps.
