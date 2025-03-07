@@ -132,6 +132,7 @@ def filter_for_foreground_masks(
                 clickmap_threshold = quantize_threshold
             thresh_click_map = (mean_click_map > clickmap_threshold).astype(np.float32)
             try:
+                mask = tvF.center_crop(mask, thresh_click_map.shape[1:])
                 iou = fast_ious(thresh_click_map, mask)
                 if iou < mask_threshold:
                     proc_final_clickmaps[k] = final_clickmaps[k]
@@ -329,6 +330,7 @@ def prepare_maps(
         image_shape,
         min_pixels,
         min_subjects,
+        max_subjects,
         center_crop,
         metadata=None,
         blur_sigma_function=None,
@@ -355,8 +357,6 @@ def prepare_maps(
         if category not in category_correlations.keys():
             category_correlations[category] = []
         image_trials = final_clickmaps[image_key]
-        # clickmaps = np.asarray([create_clickmap([trials], image_shape) for trials in image_trials])
-        # clickmaps = torch.from_numpy(clickmaps).float().unsqueeze(1)
         if metadata is not None:
             if image_key not in metadata:
                 print(f"Image key {image_key} not in metadata")
@@ -398,7 +398,7 @@ def prepare_maps(
             else:
                 raise NotImplementedError(kernel_type)
         if center_crop:
-            clickmaps = tvF.resize(clickmaps, min(center_crop))
+            clickmaps = tvF.resize(clickmaps, min(image_shape))
             clickmaps = tvF.center_crop(clickmaps, center_crop)
         clickmaps = clickmaps.squeeze()
         clickmaps = clickmaps.numpy()
@@ -407,7 +407,7 @@ def prepare_maps(
         if len(clickmaps.shape) == 2:
             # Single map
             continue
-
+        
         empty_check = (clickmaps > 0).sum((1, 2)) > min_pixels
         clickmaps = clickmaps[empty_check]
         if len(clickmaps) < min_subjects:
@@ -423,8 +423,9 @@ def prepare_maps(
             rng = np.arange(len(dm))
             dup_idx = rng[~np.in1d(rng, remove)]
             clickmaps = clickmaps[dup_idx]
-
         if len(clickmaps) >= min_subjects:
+            if max_subjects>0 and len(clickmaps) > max_subjects:
+                clickmaps = clickmaps[:max_subjects]
             # Store
             all_clickmaps.append(clickmaps)
             categories.append(category)
@@ -636,7 +637,6 @@ def create_clickmap(point_lists, image_shape, exponential_decay=False, tau=0.5):
     for click_points in point_lists:
         if exponential_decay:
             for idx, point in enumerate(click_points):
-
                 if 0 <= point[1] < image_shape[0] and 0 <= point[0] < image_shape[1]:
                     heatmap[point[1], point[0]] += np.exp(-idx / tau)
         else:
@@ -694,3 +694,16 @@ def alt_gaussian_blur(heatmap, kernel):
     blurred_heatmap = torch.nn.functional.conv2d(heatmap, kernel, padding='same')
 
     return blurred_heatmap[0]
+
+def merge_clickme_data(file_1, file_2):
+    data_1 = np.load(file_1, allow_pickle=True)
+    data_2 = np.load(file_2, allow_pickle=True)
+    merged_file = {}
+    for k in data_1.keys():
+        v_1 = data_1[k]
+        v_2 = data_2[k]
+        v_m = np.concatenate((v_1, v_2))
+        print(v_1.shape, v_2.shape, v_m.shape)
+        merged_file[k] = v_m
+
+    return merged_file

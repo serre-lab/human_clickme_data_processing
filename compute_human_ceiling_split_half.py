@@ -56,6 +56,7 @@ def main(
         center_crop=[224, 224],
         min_pixels=30,
         min_subjects=10,
+        max_subjects=-1,
         min_clicks=10,
         max_clicks=50,
         randomization_iters=10,
@@ -114,10 +115,11 @@ def main(
         image_shape=image_shape,
         min_pixels=min_pixels,
         min_subjects=min_subjects,
+        max_subjects=max_subjects,
         metadata=metadata,
         blur_sigma_function=blur_sigma_function,
         center_crop=center_crop)
-        
+
     # Filter for foreground mask overlap if requested  
     if mask_dir:
         masks = utils.load_masks(mask_dir)
@@ -241,6 +243,7 @@ if __name__ == "__main__":
         image_shape=config["image_shape"],
         center_crop=config["center_crop"],
         min_subjects=config["min_subjects"],
+        max_subjects=config["max_subjects"],
         min_clicks=config["min_clicks"],
         max_clicks=config["max_clicks"],
         metadata=metadata,

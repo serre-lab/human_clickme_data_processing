@@ -106,7 +106,7 @@ if __name__ == "__main__":
         file_exclusion_filter=config["file_exclusion_filter"],
         min_clicks=config["min_clicks"],
         max_clicks=config["max_clicks"])
-
+    
     # Prepare maps
     if config["debug"]:
         new_clickmaps = {}
@@ -126,7 +126,6 @@ if __name__ == "__main__":
     # Filter participants if requested
     if config["participant_filter"]:
         clickmaps = utils.filter_participants(clickmaps)
-    print(len(clickmaps))
     # Prepare maps
     final_clickmaps, all_clickmaps, categories, final_keep_index = utils.prepare_maps(
         final_clickmaps=clickmaps,
@@ -135,6 +134,7 @@ if __name__ == "__main__":
         image_shape=config["image_shape"],
         min_pixels=min_pixels,
         min_subjects=config["min_subjects"],
+        max_subjects=config["max_subjects"],
         metadata=metadata,
         blur_sigma_function=blur_sigma_function,
         center_crop=False)
@@ -225,7 +225,6 @@ if __name__ == "__main__":
     print(len(img_heatmaps))
 
     # Patch: Sometimes img_heatmaps is too large
-    import pdb;pdb.set_trace()
     if len(img_heatmaps) > 10000:
         os.makedirs(os.path.join(output_dir, config["experiment_name"]), exist_ok=True)
         for hn, hm in img_heatmaps.keys():

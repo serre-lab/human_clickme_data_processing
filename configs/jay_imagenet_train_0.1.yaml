@@ -1,25 +1,25 @@
-experiment_name: jay_imagenet_train_0.1
-clickme_data: clickme_datasets/train_imagenet_10_17_2024.npz
+experiment_name: imagenet_train_0.1
+clickme_data: clickme_datasets/merged_train_imagenet_11_13_2024.npz
 processed_clickme_file: jay_imagenet_train_0.1_processed.npz
 processed_medians: jay_imagenet_train_0.1_medians.json
 example_image_output_dir: jay_imagenet_train_0.1_images
 debug: False
-assets: assets
+assets: "assets"
 preprocess_db_data: True
 blur_size: 21
 min_clicks: 10  # Minimum number of clicks for a map to be included
 max_clicks: 75 # Maximum number of clicks for a map to be included
-min_subjects: 3  # Minimum number of subjects for an image to be included
+min_subjects: 5  # Minimum number of subjects for an image to be included
 null_iterations: 10
 percentile_thresh: 50  # For median splits
 filter_mobile: True
 metric: spearman  # AUC, crossentropy, spearman, RSA
 image_shape: [256, 256]
-center_crop: [256, 256]
+center_crop: [224, 224]
 class_filter_file: False  # Filter classes based on co3d class list
-remove_string: imagenet/train/
-image_path: /media/data_cifs/projects/prj_video_imagenet/imagenet/ILSVRC/Data/CLS-LOC/train
-metadata_file: image_metadata/jay_imagenet_train_0.1_dimensions.npy  # Per image sizes
+remove_string: "imagenet/train/"
+image_path: /oscar/data/tserre/data/ImageNet/ILSVRC/Data/CLS-LOC/train
+metadata_file: "image_metadata/imagenet_train_0.1_dimensions.npy"  # Per image sizes
 file_inclusion_filter: False  # Only include images that match this string
 file_exclusion_filter: False  # Exclude images that match this string
 mask_dir: False  # Directory containing masks for each image

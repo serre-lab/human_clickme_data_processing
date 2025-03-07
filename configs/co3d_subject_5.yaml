@@ -1,7 +1,7 @@
-experiment_name: co3d_val
+experiment_name: co3d_subject_5
 clickme_data: clickme_datasets/prj_clickmev2_dump_co3d_10_10_2024.npz
-processed_clickme_file: co3d_val_processed.npz
-processed_medians: co3d_val_medians.json
+processed_clickme_file: co3d_val_processed_subject_5.npz
+processed_medians: co3d_val_medians_subject_5.json
 example_image_output_dir: co3d_val_images
 debug: False
 assets: assets
@@ -10,7 +10,7 @@ blur_size: 21
 min_clicks: 10  # Minimum number of clicks for a map to be included
 max_clicks: 75 # Maximum number of clicks for a map to be included
 min_subjects: 5  # Minimum number of subjects for an image to be included
-max_subjects: -1
+max_subjects: 5
 null_iterations: 10  # For human-to-human ceiling
 percentile_thresh: 50  # For median splits
 filter_mobile: False

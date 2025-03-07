@@ -248,6 +248,35 @@ def main():
                     checkpoint_filename = os.path.join(ckpts, f'model_epoch_{epoch+1}.pth')
                     torch.save(accelerator.unwrap_model(model).state_dict(), checkpoint_filename)
                     best_loss = loss
+
+        """
+        Code for validation loop that needs to work to run:
+        if accelerator.is_main_process:
+            val_progress = tqdm(
+                total=steps_per_epoch, 
+                desc=f"Validation Epoch {epoch+1}/{epochs}"
+            )
+        val_losses = []
+        with torch.no_grad():
+            for label, click_enc in val_loader:
+                pred = model(click_enc)
+                loss = F.cross_entropy(pred, label)
+                loss = loss.item()
+                val_losses.append(loss)
+
+                if accelerator.is_main_process:
+                    val_progress.update()
+            val_loss = np.mean(val_losses)
+            val_progress.set_postfix({"Val loss": f"{val_loss:.4f}"})
+            val_progress.update()
+            if accelerator.is_main_process:
+                if val_loss < best_loss:  # Note: Remove the saving logic in the training loop.
+                    checkpoint_filename = os.path.join(ckpts, f'model_epoch_{epoch+1}.pth')
+                    torch.save(accelerator.unwrap_model(model).state_dict(), checkpoint_filename)
+                    best_loss = val_loss
+        """
+
+
         accelerator.wait_for_everyone()
 
 if __name__ == "__main__":
