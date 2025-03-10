@@ -1,14 +1,16 @@
-# python get_file_info_from_dump.py jay_imagenet_train_0.1.yaml
+
+python get_file_info_from_dump.py jay_imagenet_val_0.1.yaml
+python get_file_info_from_dump.py jay_imagenet_train_0.1.yaml
+
 python clickme_prepare_maps_for_modeling.py jay_imagenet_val_0.1.yaml
 python clickme_prepare_maps_for_modeling.py jay_imagenet_for_co3d_val_0.1.yaml
-python clickme_prepare_maps_for_modeling.py co3d_val.yaml
+# python clickme_prepare_maps_for_modeling.py co3d_val.yaml
 
-python compute_human_ceiling_split_half.py jay_imagenet_train_0.1.yaml
 python compute_human_ceiling_split_half.py jay_imagenet_val_0.1.yaml
 python compute_human_ceiling_split_half.py jay_imagenet_for_co3d_val_0.1.yaml
-python compute_human_ceiling_split_half.py co3d_val.yaml
+# python compute_human_ceiling_split_half.py co3d_val.yaml
 python clickme_prepare_maps_for_modeling.py jay_imagenet_train_0.1.yaml
-
+python compute_human_ceiling_split_half.py jay_imagenet_train_0.1.yaml
 
 # python compute_human_ceiling_hold_one_out.py jay_imagenet_train_0.1.yaml
 # python compute_human_ceiling_hold_one_out.py jay_imagenet_val_0.1.yaml

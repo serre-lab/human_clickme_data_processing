@@ -1,0 +1,30 @@
+experiment_name: jay_imagenet_train_01_22_2025
+clickme_data: clickme_datasets/jay_imagenet_train_combined_01_22_2025.npz
+processed_clickme_file: jay_imagenet_train_combined_01_22_2025_processed.npz
+processed_medians: jay_imagenet_train_combined_01_22_2025_medians.json
+example_image_output_dir: jay_imagenet_train_combined_01_22_2025_images
+debug: False
+assets: jay_work_in_progress
+preprocess_db_data: True
+blur_size: 21
+min_clicks: 10  # Minimum number of clicks for a map to be included
+max_clicks: 75 # Maximum number of clicks for a map to be included
+min_subjects: 14  # Minimum number of subjects for an image to be included
+max_subjects: 14  # Maximum number of subjects for an image to be included
+null_iterations: 10
+percentile_thresh: 50  # For median splits
+filter_mobile: True
+metric: spearman  # AUC, crossentropy, spearman, RSA
+image_shape: [256, 256]
+center_crop: [256, 256]
+class_filter_file: False  # Filter classes based on co3d class list
+remove_string: imagenet/train/
+image_path: /media/data_cifs/projects/prj_video_imagenet/imagenet/ILSVRC/Data/CLS-LOC/train
+metadata_file: image_metadata/jay_imagenet_train_0.1_dimensions.npy  # Per image sizes
+file_inclusion_filter: False  # Only include images that match this string
+file_exclusion_filter: False  # Exclude images that match this string
+mask_dir: False  # Directory containing masks for each image
+mask_threshold: 1  # Max IOU threshold for foreground mask overlap
+participant_filter: False
+display_image_keys: auto   # If "auto", will display the top-10 clicked
+parallel_prepare_maps: True

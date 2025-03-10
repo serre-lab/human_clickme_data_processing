@@ -1,0 +1,31 @@
+experiment_name: co3d_train
+clickme_data: clickme_datasets/prj_clickmev2_dump_co3d_10_10_2024.npz
+processed_clickme_file: co3d_train_processed.npz
+processed_medians: co3d_train_medians.json
+example_image_output_dir: co3d_train_images
+debug: False
+assets: assets
+preprocess_db_data: False
+blur_size: 21
+min_clicks: 1  # Minimum number of clicks for a map to be included
+max_clicks: 75 # Maximum number of clicks for a map to be included
+min_subjects: 5  # Minimum number of subjects for an image to be included
+max_subjects: 20  # Maximum number of subjects for an image to be included
+null_iterations: 10  # For human-to-human ceiling
+percentile_thresh: 50  # For median splits
+filter_mobile: True
+metric: spearman  # AUC, crossentropy, spearman, RSA
+image_shape: [256, 256]
+center_crop: [256, 256]
+class_filter_file: False  # Filter classes based on co3d class list
+remove_string: False
+image_path: /media/data_cifs/projects/prj_video_imagenet/CO3D_ClickMe2  # Location of images
+metadata_file: False
+file_inclusion_filter: CO3D_ClickMe_Training2  # Patch — only include train co3d images
+file_exclusion_filter: ILSVRC2012  # Exclude images that match this string
+mask_dir: co3d_masks  # Directory containing masks for each image
+mask_threshold: 0.17  # Max IOU threshold for foreground mask overlap
+participant_filter: False
+display_image_keys: auto   # If "auto", will display the top-10 clicked
+parallel_prepare_maps: True
+

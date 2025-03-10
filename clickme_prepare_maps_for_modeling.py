@@ -100,6 +100,7 @@ if __name__ == "__main__":
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(os.path.join(output_dir, config["experiment_name"]), exist_ok=True)
 
+
     # Process data in chunks to avoid memory issues
     # Instead of loading all 5.3M+ images at once, process in manageable batches
     print(f"Processing clickme data in chunks...")
@@ -199,6 +200,7 @@ if __name__ == "__main__":
     medians.update(get_medians(all_final_clickmaps, 'category', thresh=percentile_thresh))
     medians.update(get_medians(all_final_clickmaps, 'all', thresh=percentile_thresh))
     medians_json = json.dumps(medians, indent=4)
+
 
     # Save medians
     with open(os.path.join(output_dir, config["processed_medians"]), 'w') as f:
