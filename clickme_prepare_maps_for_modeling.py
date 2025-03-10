@@ -2,6 +2,7 @@ import os, sys
 import numpy as np
 from PIL import Image
 import json
+import pandas as pd
 from matplotlib import pyplot as plt
 from src import utils
 
@@ -97,149 +98,144 @@ if __name__ == "__main__":
     # Start processing
     os.makedirs(image_output_dir, exist_ok=True)
     os.makedirs(output_dir, exist_ok=True)
+    os.makedirs(os.path.join(output_dir, config["experiment_name"]), exist_ok=True)
 
-    if config["parallel_prepare_maps"]:
-        process_clickmap_files = utils.process_clickmap_files_parallel
-    else:
-        process_clickmap_files = utils.process_clickmap_files
-    clickmaps, clickmap_counts = process_clickmap_files(
-        clickme_data=clickme_data,
-        image_path=config["image_path"],
-        file_inclusion_filter=config["file_inclusion_filter"],
-        file_exclusion_filter=config["file_exclusion_filter"],
-        min_clicks=config["min_clicks"],
-        max_clicks=config["max_clicks"])
 
-    # Prepare maps
-    if config["debug"]:
-        new_clickmaps = {}
-        for k in config["display_image_keys"]:
-            click_match = [k_ for k_ in clickmaps.keys() if k in k_]
-            assert len(click_match) == 1, "Clickmap not found"
-            new_clickmaps[click_match[0]] = clickmaps[click_match[0]]
-        clickmaps = new_clickmaps
-        # clickmaps = {k: v for idx, (k, v) in enumerate(clickmaps.items()) if idx < 1000}
+    # Process data in chunks to avoid memory issues
+    # Instead of loading all 5.3M+ images at once, process in manageable batches
+    print(f"Processing clickme data in chunks...")
+    
+    # Determine whether to use parallel processing
+    # For very large datasets, sometimes serial processing with efficient chunking is faster
+    # due to reduced overhead and better memory management
+    chunk_size = 10000  # Adjust based on available memory
+    total_images = len(clickme_data)
+    
+    # Create a function to process chunks of data
+    def process_chunk(chunk_start, chunk_end):
+        chunk_data = {k: clickme_data[k] for k in list(clickme_data.keys())[chunk_start:chunk_end]}
+        
+        # Convert the dictionary to a DataFrame with the correct column name 'image_path'
+        # instead of 'image_name' to match what process_clickmap_files expects
+        chunk_df = pd.DataFrame([(k, v) for k, v in chunk_data.items()], 
+                               columns=['image_path', 'clicks'])
+        
+        # Use serial processing for each chunk to avoid joblib overhead
+        process_clickmap_files_func = utils.process_clickmap_files
+        chunk_clickmaps, chunk_clickmap_counts = process_clickmap_files_func(
+            clickme_data=chunk_df,  # Pass DataFrame instead of dictionary
+            image_path=config["image_path"],
+            file_inclusion_filter=config["file_inclusion_filter"],
+            file_exclusion_filter=config["file_exclusion_filter"],
+            min_clicks=config["min_clicks"],
+            max_clicks=config["max_clicks"])
+            
+        # Apply all filters to the chunk
+        if config["class_filter_file"]:
+            chunk_clickmaps = utils.filter_classes(
+                clickmaps=chunk_clickmaps,
+                class_filter_file=config["class_filter_file"])
 
-    # Filter classes if requested
-    if config["class_filter_file"]:
-        clickmaps = utils.filter_classes(
-            clickmaps=clickmaps,
-            class_filter_file=config["class_filter_file"])
-
-    # Filter participants if requested
-    if config["participant_filter"]:
-        clickmaps = utils.filter_participants(clickmaps)
-    print(len(clickmaps))
-    # Prepare maps
-    if config["parallel_prepare_maps"]:
-        prepare_maps = utils.prepare_maps_parallel
-    else:
-        prepare_maps = utils.prepare_maps
-    final_clickmaps, all_clickmaps, categories, final_keep_index = prepare_maps(
-        final_clickmaps=clickmaps,
-        blur_size=blur_size,
-        blur_sigma=blur_sigma,
-        image_shape=config["image_shape"],
-        min_pixels=min_pixels,
-        min_subjects=config["min_subjects"],
-        metadata=metadata,
-        blur_sigma_function=blur_sigma_function,
-        center_crop=False)
-    print(len(final_clickmaps), len(all_clickmaps))
-
-    # Filter for foreground mask overlap if requested
-    if config["mask_dir"]:
-        masks = utils.load_masks(config["mask_dir"])
-        final_clickmaps, all_clickmaps, categories, final_keep_index = utils.filter_for_foreground_masks(
-            final_clickmaps=final_clickmaps,
-            all_clickmaps=all_clickmaps,
-            categories=categories,
-            masks=masks,
-            mask_threshold=config["mask_threshold"])
-    # Visualize if requested
-    sz_dict = {k: len(v) for k, v in final_clickmaps.items()}
-    arg = np.argsort(list(sz_dict.values()))
-    tops = np.asarray(list(sz_dict.keys()))[arg[-10:]]
-    if config["display_image_keys"]:
-        if config["display_image_keys"] == "auto":
-            config["display_image_keys"] = tops
-        # Load images
-        img_heatmaps = {}
-        fck = np.asarray([k for k in final_clickmaps.keys()])
-        for image_file in config["display_image_keys"]:
-            image_path = os.path.join(config["image_path"], image_file)
-            image = Image.open(image_path)
-            if metadata:
-                click_match = [k_ for k_ in final_clickmaps.keys() if image_file in k_]
-                assert len(click_match) == 1, "Clickmap not found"
-                metadata_size = metadata[click_match[0]]
-                image = image.resize(metadata_size)
-            image_name = "_".join(image_path.split('/')[-2:])
-            check = fck == image_file
-            if check.any():
-                find_key = np.where(check)[0][0]
-                img_heatmaps[image_file] = {
-                    "image": image,
-                    "heatmap": all_clickmaps[find_key]
-                }
-            else:
-                print("Image {} not found in final clickmaps".format(image_file))
-
-        # And plot
-        for k in img_heatmaps.keys():
-            f = plt.figure()
-            plt.subplot(1, 2, 1)
-            plt.imshow(np.asarray(img_heatmaps[k]["image"]))
-            plt.axis("off")
-            plt.subplot(1, 2, 2)
-            plt.imshow(img_heatmaps[k]["heatmap"].mean(0))
-            plt.axis("off")
-            plt.savefig(os.path.join(image_output_dir, k.split(os.path.sep)[-1]))
-            if config["debug"]:
-                plt.show()
-            plt.close()
-
-    # Get median number of clicks
+        if config["participant_filter"]:
+            chunk_clickmaps = utils.filter_participants(chunk_clickmaps)
+        
+        # Process maps for this chunk
+        prepare_maps_func = utils.prepare_maps  # Use serial version for each chunk
+        chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = prepare_maps_func(
+            final_clickmaps=chunk_clickmaps,
+            blur_size=blur_size,
+            blur_sigma=blur_sigma,
+            image_shape=config["image_shape"],
+            min_pixels=min_pixels,
+            min_subjects=config["min_subjects"],
+            metadata=metadata,
+            blur_sigma_function=blur_sigma_function,
+            center_crop=False)
+            
+        # Apply mask filtering if needed
+        if config["mask_dir"]:
+            masks = utils.load_masks(config["mask_dir"])
+            chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = utils.filter_for_foreground_masks(
+                final_clickmaps=chunk_final_clickmaps,
+                all_clickmaps=chunk_all_clickmaps,
+                categories=chunk_categories,
+                masks=masks,
+                mask_threshold=config["mask_threshold"])
+        
+        # Process and save directly instead of accumulating
+        for j, img_name in enumerate(chunk_final_keep_index):
+            if not os.path.exists(os.path.join(config["image_path"], img_name)):
+                continue
+                
+            hmp = chunk_all_clickmaps[j]
+            # Save directly to disk - don't accumulate in memory
+            np.save(
+                os.path.join(output_dir, config["experiment_name"], f"{img_name.replace('/', '_')}.npy"), 
+                hmp
+            )
+        
+        return chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index
+    
+    # Process all data in chunks
+    all_final_clickmaps = {}
+    all_final_keep_index = []
+    
+    # Use a simple progress tracking system
+    for chunk_start in range(0, total_images, chunk_size):
+        chunk_end = min(chunk_start + chunk_size, total_images)
+        print(f"Processing chunk {chunk_start//chunk_size + 1}/{(total_images + chunk_size - 1)//chunk_size} ({chunk_start}-{chunk_end})")
+        
+        chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = process_chunk(chunk_start, chunk_end)
+        
+        # Merge results (keeping minimal data in memory)
+        all_final_clickmaps.update(chunk_final_clickmaps)
+        all_final_keep_index.extend(chunk_final_keep_index)
+        
+        # Free memory
+        del chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories
+        
+    # Get median number of clicks from the combined results
     percentile_thresh = config["percentile_thresh"]
-    medians = get_medians(final_clickmaps, 'image', thresh=percentile_thresh)
-    medians.update(get_medians(final_clickmaps, 'category', thresh=percentile_thresh))
-    medians.update(get_medians(final_clickmaps, 'all', thresh=percentile_thresh))
+    medians = get_medians(all_final_clickmaps, 'image', thresh=percentile_thresh)
+    medians.update(get_medians(all_final_clickmaps, 'category', thresh=percentile_thresh))
+    medians.update(get_medians(all_final_clickmaps, 'all', thresh=percentile_thresh))
     medians_json = json.dumps(medians, indent=4)
 
-    # Save data
-    # final_data = {k: v for k, v in zip(final_keep_index, all_clickmaps)}
-    # np.save(
-    #     os.path.join(output_dir, config["processed_clickme_file"]),
-    #     final_data)
+
+    # Save medians
     with open(os.path.join(output_dir, config["processed_medians"]), 'w') as f:
         f.write(medians_json)
-
-    img_heatmaps = {}
-    for i, img_name in enumerate(final_keep_index):
-        if not os.path.exists(os.path.join(config["image_path"], img_name)):
-            print(os.path.join(config["image_path"], img_name))
-            continue
-        if img_name not in final_clickmaps.keys():
-            continue
-        hmp = all_clickmaps[i]
-        img = Image.open(os.path.join(config["image_path"], img_name))
-        if metadata:
-            click_match = [k_ for k_ in final_clickmaps.keys() if img_name in k_]
-            assert len(click_match) == 1, "Clickmap not found"
-            metadata_size = metadata[click_match[0]]
-            img = img.resize(metadata_size)
-
-        img_heatmaps[img_name] = {"image":img, "heatmap":hmp}
-    print(len(img_heatmaps))
-
-    # Patch: Sometimes img_heatmaps is too large
-    if len(img_heatmaps) > 10000:
-        os.makedirs(os.path.join(output_dir, config["experiment_name"]), exist_ok=True)
-        for hn, hm in img_heatmaps.keys():
-            np.save(os.path.join(output_dir, config["experiment_name"], "{}.npy".format(hn)), 
-                    hm
-                )
-    else:
-        np.savez(os.path.join(output_dir,  config["processed_clickme_file"]), 
-            **img_heatmaps
-        )
+    
+    # Process visualization for display images if needed
+    if config["display_image_keys"]:
+        if config["display_image_keys"] == "auto":
+            sz_dict = {k: len(v) for k, v in all_final_clickmaps.items()}
+            arg = np.argsort(list(sz_dict.values()))
+            config["display_image_keys"] = np.asarray(list(sz_dict.keys()))[arg[-10:]]
+            
+        print("Generating visualizations for display images...")
+        for img_name in config["display_image_keys"]:
+            # Find the corresponding heatmap
+            heatmap_path = os.path.join(output_dir, config["experiment_name"], f"{img_name.replace('/', '_')}.npy")
+            if not os.path.exists(heatmap_path):
+                print(f"Heatmap not found for {img_name}")
+                continue
+                
+            hmp = np.load(heatmap_path)
+            img = Image.open(os.path.join(config["image_path"], img_name))
+            if metadata:
+                click_match = [k_ for k_ in all_final_clickmaps.keys() if img_name in k_]
+                if click_match:
+                    metadata_size = metadata[click_match[0]]
+                    img = img.resize(metadata_size)
+            
+            # Save visualization
+            f = plt.figure()
+            plt.subplot(1, 2, 1)
+            plt.imshow(np.asarray(img))
+            plt.axis("off")
+            plt.subplot(1, 2, 2)
+            plt.imshow(hmp.mean(0))
+            plt.axis("off")
+            plt.savefig(os.path.join(image_output_dir, img_name.replace('/', '_')))
+            plt.close()

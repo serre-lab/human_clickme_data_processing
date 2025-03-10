@@ -16,7 +16,7 @@ percentile_thresh: 50  # For median splits
 filter_mobile: True
 metric: spearman  # AUC, crossentropy, spearman, RSA
 image_shape: [256, 256]
-center_crop: [256, 256]
+center_crop: [224, 224]
 class_filter_file: False  # Filter classes based on co3d class list
 remove_string: False
 image_path: /media/data_cifs/projects/prj_video_imagenet/CO3D_ClickMe2  # Location of images
