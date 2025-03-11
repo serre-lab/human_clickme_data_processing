@@ -204,8 +204,7 @@ if __name__ == "__main__":
             
             # Create a DataFrame that process_clickmap_files can work with
             chunk_data = {k: clickme_data[k] for k in list(clickme_data.keys())[chunk_start:chunk_end]}        
-            import pdb; pdb.set_trace()
-            print(f"│  ├─ Debug: Initial chunk has {len(chunk_data)} images")
+            print(f"│  ├─ Debug: Initial chunk has {len(chunk_data["image_path"])} images")
 
             # Process chunk data
             print(f"│  ├─ Processing clickmap files...")
