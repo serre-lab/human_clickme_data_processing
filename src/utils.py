@@ -400,7 +400,6 @@ def process_clickmap_files(
     if file_inclusion_filter == "CO3D_ClickmeV2":
         # Patch for val co3d
         image_files = glob(os.path.join(image_path, "**", "*.png"))
-    import pdb; pdb.set_trace()
     for clicks, image_path, user_id in zip(
             clickme_data["clicks"].values,
             clickme_data["image_path"].values,
