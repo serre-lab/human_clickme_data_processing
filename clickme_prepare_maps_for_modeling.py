@@ -111,90 +111,6 @@ if __name__ == "__main__":
     chunk_size = 10000  # Adjust based on available memory
     total_images = len(clickme_data)
     
-    # Create a function to process chunks of data
-    def process_chunk(chunk_start, chunk_end):
-        chunk_data = {k: clickme_data[k] for k in list(clickme_data.keys())[chunk_start:chunk_end]}
-        
-        # Create a DataFrame that process_clickmap_files can work with
-        # The function expects 'image_path' to be a column, not an index
-        image_paths = list(chunk_data.keys())
-        clicks_data = list(chunk_data.values())
-        
-        # Create a DataFrame with explicit 'image_path' column
-        chunk_df = pd.DataFrame({
-            'image_path': image_paths,
-            'clicks': clicks_data
-        })
-        
-        # Use serial processing for each chunk to avoid joblib overhead
-        process_clickmap_files_func = utils.process_clickmap_files
-        chunk_clickmaps, chunk_clickmap_counts = process_clickmap_files_func(
-            clickme_data=chunk_df,  # Pass DataFrame instead of dictionary
-            image_path=config["image_path"],
-            file_inclusion_filter=config["file_inclusion_filter"],
-            file_exclusion_filter=config["file_exclusion_filter"],
-            min_clicks=config["min_clicks"],
-            max_clicks=config["max_clicks"])
-            
-        # Apply all filters to the chunk
-        if config["class_filter_file"]:
-            chunk_clickmaps = utils.filter_classes(
-                clickmaps=chunk_clickmaps,
-                class_filter_file=config["class_filter_file"])
-
-        if config["participant_filter"]:
-            chunk_clickmaps = utils.filter_participants(chunk_clickmaps)
-        
-        # Process maps for this chunk
-        # We'll always use prepare_maps_parallel, but control the parallelism with n_jobs
-        use_parallel = config.get("parallel_prepare_maps", True)
-        
-        # The prepare_maps_parallel function accepts an n_jobs parameter
-        # n_jobs=-1 means use all available CPU cores
-        # n_jobs=1 means run serially (no parallelism)
-        if use_parallel:
-            n_jobs = -1  # Use all available cores
-            print("Using parallel processing for map preparation (n_jobs=-1)...")
-        else:
-            n_jobs = 1  # Run serially (still using the parallel function, but with no parallelism)
-            print("Using serial processing for map preparation (n_jobs=1)...")
-            
-        chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = utils.prepare_maps_parallel(
-            final_clickmaps=chunk_clickmaps,
-            blur_size=blur_size,
-            blur_sigma=blur_sigma,
-            image_shape=config["image_shape"],
-            min_pixels=min_pixels,
-            min_subjects=config["min_subjects"],
-            metadata=metadata,
-            blur_sigma_function=blur_sigma_function,
-            center_crop=False,
-            n_jobs=n_jobs)  # Set n_jobs based on parallel_prepare_maps config
-            
-        # Apply mask filtering if needed
-        if config["mask_dir"]:
-            masks = utils.load_masks(config["mask_dir"])
-            chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = utils.filter_for_foreground_masks(
-                final_clickmaps=chunk_final_clickmaps,
-                all_clickmaps=chunk_all_clickmaps,
-                categories=chunk_categories,
-                masks=masks,
-                mask_threshold=config["mask_threshold"])
-        
-        # Process and save directly instead of accumulating
-        for j, img_name in enumerate(chunk_final_keep_index):
-            if not os.path.exists(os.path.join(config["image_path"], img_name)):
-                continue
-                
-            hmp = chunk_all_clickmaps[j]
-            # Save directly to disk - don't accumulate in memory
-            np.save(
-                os.path.join(output_dir, config["experiment_name"], f"{img_name.replace('/', '_')}.npy"), 
-                hmp
-            )
-        
-        return chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index
-    
     # Process all data in chunks
     all_final_clickmaps = {}
     all_final_keep_index = []
@@ -202,22 +118,133 @@ if __name__ == "__main__":
     # Calculate number of chunks
     num_chunks = (total_images + chunk_size - 1) // chunk_size
     
-    # Use a simple progress tracking system with tqdm
-    for chunk_idx, chunk_start in enumerate(tqdm(range(0, total_images, chunk_size), 
-                                               total=num_chunks,
-                                               desc="Processing chunks")):
-        chunk_end = min(chunk_start + chunk_size, total_images)
-        print(f"\nProcessing chunk {chunk_idx + 1}/{num_chunks} ({chunk_start}-{chunk_end})")
+    # Custom wrapper for prepare_maps_parallel to add progress bar
+    def prepare_maps_with_progress(final_clickmaps, **kwargs):
+        # Create a custom progress bar for image processing
+        # Position=1 puts this below the main chunks progress bar
+        image_pbar = tqdm(total=len(final_clickmaps), desc="│  ├─ Processing images", 
+                         position=1, leave=False, colour="green")
         
-        chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = process_chunk(chunk_start, chunk_end)
+        # Define a wrapper function that updates our progress bar
+        def process_single_with_progress(image_key, *args):
+            result = utils.process_single_image(image_key, *args)
+            image_pbar.update(1)
+            return result
         
-        # Merge results (keeping minimal data in memory)
-        all_final_clickmaps.update(chunk_final_clickmaps)
-        all_final_keep_index.extend(chunk_final_keep_index)
+        # Replace the function used in prepare_maps_parallel
+        original_process_single = utils.process_single_image
+        utils.process_single_image = process_single_with_progress
         
-        # Free memory
-        del chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories
-        
+        try:
+            # Call the original function
+            result = utils.prepare_maps_parallel(final_clickmaps=final_clickmaps, **kwargs)
+            return result
+        finally:
+            # Restore original function and close progress bar
+            utils.process_single_image = original_process_single
+            image_pbar.close()
+    
+    # Use a simple progress tracking system with tqdm - prettier hierarchy
+    print("\nProcessing clickme data in chunks...")
+    with tqdm(total=num_chunks, desc="├─ Processing chunks", position=0, leave=True, colour="blue") as pbar:
+        for chunk_idx in range(num_chunks):
+            chunk_start = chunk_idx * chunk_size
+            chunk_end = min(chunk_start + chunk_size, total_images)
+            
+            # Use a clear, hierarchical format for chunk info
+            print(f"\n├─ Chunk {chunk_idx + 1}/{num_chunks} ({chunk_start}-{chunk_end})")
+            
+            # Create a DataFrame that process_clickmap_files can work with
+            chunk_data = {k: clickme_data[k] for k in list(clickme_data.keys())[chunk_start:chunk_end]}
+            image_paths = list(chunk_data.keys())
+            clicks_data = list(chunk_data.values())
+            
+            # Create a DataFrame with explicit 'image_path' column
+            chunk_df = pd.DataFrame({
+                'image_path': image_paths,
+                'clicks': clicks_data
+            })
+            
+            # Process chunk data
+            print(f"│  ├─ Processing clickmap files...")
+            process_clickmap_files_func = utils.process_clickmap_files
+            chunk_clickmaps, chunk_clickmap_counts = process_clickmap_files_func(
+                clickme_data=chunk_df,
+                image_path=config["image_path"],
+                file_inclusion_filter=config["file_inclusion_filter"],
+                file_exclusion_filter=config["file_exclusion_filter"],
+                min_clicks=config["min_clicks"],
+                max_clicks=config["max_clicks"])
+                
+            # Apply all filters to the chunk
+            if config["class_filter_file"]:
+                print(f"│  ├─ Filtering classes...")
+                chunk_clickmaps = utils.filter_classes(
+                    clickmaps=chunk_clickmaps,
+                    class_filter_file=config["class_filter_file"])
+
+            if config["participant_filter"]:
+                print(f"│  ├─ Filtering participants...")
+                chunk_clickmaps = utils.filter_participants(chunk_clickmaps)
+            
+            # Process maps for this chunk with our custom progress wrapper
+            use_parallel = config.get("parallel_prepare_maps", True)
+            n_jobs = -1 if use_parallel else 1
+            parallel_text = "parallel" if use_parallel else "serial"
+            print(f"│  ├─ Preparing maps ({parallel_text}, n_jobs={n_jobs})...")
+            
+            # Use our custom progress wrapper
+            chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = prepare_maps_with_progress(
+                final_clickmaps=chunk_clickmaps,
+                blur_size=blur_size,
+                blur_sigma=blur_sigma,
+                image_shape=config["image_shape"],
+                min_pixels=min_pixels,
+                min_subjects=config["min_subjects"],
+                metadata=metadata,
+                blur_sigma_function=blur_sigma_function,
+                center_crop=False,
+                n_jobs=n_jobs)
+                
+            # Apply mask filtering if needed
+            if config["mask_dir"]:
+                print(f"│  ├─ Applying mask filtering...")
+                masks = utils.load_masks(config["mask_dir"])
+                chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = utils.filter_for_foreground_masks(
+                    final_clickmaps=chunk_final_clickmaps,
+                    all_clickmaps=chunk_all_clickmaps,
+                    categories=chunk_categories,
+                    masks=masks,
+                    mask_threshold=config["mask_threshold"])
+            
+            # Save results
+            print(f"│  ├─ Saving processed maps...")
+            with tqdm(total=len(chunk_final_keep_index), desc="│  │  ├─ Saving files", 
+                     position=1, leave=False, colour="cyan") as save_pbar:
+                for j, img_name in enumerate(chunk_final_keep_index):
+                    if not os.path.exists(os.path.join(config["image_path"], img_name)):
+                        continue
+                        
+                    hmp = chunk_all_clickmaps[j]
+                    # Save directly to disk - don't accumulate in memory
+                    np.save(
+                        os.path.join(output_dir, config["experiment_name"], f"{img_name.replace('/', '_')}.npy"), 
+                        hmp
+                    )
+                    save_pbar.update(1)
+            
+            # Merge results (keeping minimal data in memory)
+            all_final_clickmaps.update(chunk_final_clickmaps)
+            all_final_keep_index.extend(chunk_final_keep_index)
+            
+            # Free memory
+            del chunk_data, chunk_df, chunk_clickmaps, chunk_clickmap_counts
+            del chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index
+            
+            # Update main progress bar
+            pbar.update(1)
+            print(f"│  └─ Chunk {chunk_idx + 1} complete.\n")
+    
     # Get median number of clicks from the combined results
     percentile_thresh = config["percentile_thresh"]
     medians = get_medians(all_final_clickmaps, 'image', thresh=percentile_thresh)
