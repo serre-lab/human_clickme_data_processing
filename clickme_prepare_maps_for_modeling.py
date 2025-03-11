@@ -134,7 +134,7 @@ if __name__ == "__main__":
         Create a wrapper that shows progress for prepare_maps_parallel.
         
         The original function uses joblib which can make it hard to track progress.
-        Here we use a simple approach: show a progress bar while waiting for results.
+        Here we use a callback function to update the progress bar.
         """
         total_images = len(final_clickmaps)
         
@@ -147,56 +147,24 @@ if __name__ == "__main__":
                          position=1, leave=False, colour="green", 
                          bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]')
         
-        # Start processing in a separate thread so we can update the progress bar
-        import threading
-        import time
+        # Define a callback function to update the progress bar
+        def update_progress(*args):
+            image_pbar.update(1)
         
-        # Store the result in a list so we can access it from the main thread
-        result_container = [None]
-        processed_images = [0]  # Use a list so we can modify it from inside the thread
-        
-        def processing_thread():
-            # Call the original function
-            result_container[0] = utils.prepare_maps_parallel(final_clickmaps=final_clickmaps, **kwargs)
-            # Mark as complete
-            processed_images[0] = total_images
-        
-        # Start the processing thread
-        thread = threading.Thread(target=processing_thread)
-        thread.start()
-        
-        # Update the progress bar periodically until processing is complete
-        # We use a heuristic approach since we can't directly monitor joblib's progress
-        start_time = time.time()
-        while thread.is_alive():
-            # Calculate estimated progress based on elapsed time
-            # This is just an approximation
-            elapsed = time.time() - start_time
-            if elapsed > 0:
-                # Update at least every half second
-                time.sleep(0.5)
-                
-                # Get the number of items that may have been processed
-                # This looks at the return value of prepare_maps_parallel when available
-                if result_container[0] is not None:
-                    try:
-                        # If result is available, count actual processed items
-                        processed = len(result_container[0][0])  # Count keys in first return value (new_final_clickmaps)
-                        processed_images[0] = processed
-                    except (IndexError, TypeError):
-                        pass
-                
-                # Update the progress bar with our current estimate
-                image_pbar.n = min(processed_images[0], total_images)
-                image_pbar.refresh()
+        # Use joblib's Parallel with a callback
+        from joblib import Parallel, delayed
+        results = Parallel(n_jobs=kwargs.get('n_jobs', -1))(
+            delayed(utils.process_single_image)(image_key, *args, callback=update_progress)
+            for image_key, args in final_clickmaps.items()
+        )
         
         # Ensure the progress bar is complete
         image_pbar.n = total_images
         image_pbar.refresh()
         image_pbar.close()
         
-        # Thread is done, return the result
-        return result_container[0]
+        # Return the results
+        return results
     
     # Use a simple progress tracking system with tqdm - prettier hierarchy
     print("\nProcessing clickme data in chunks...")
