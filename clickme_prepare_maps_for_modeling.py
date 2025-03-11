@@ -203,8 +203,9 @@ if __name__ == "__main__":
             print(f"\n├─ Chunk {chunk_idx + 1}/{num_chunks} ({chunk_start}-{chunk_end})")
             
             # Create a DataFrame that process_clickmap_files can work with
-            chunk_data = {k: clickme_data[k] for k in list(clickme_data.keys())[chunk_start:chunk_end]}        
-            print(f"│  ├─ Debug: Initial chunk has {len(chunk_data["image_path"])} images")
+            chunk_data = {k: clickme_data[k] for k in list(clickme_data.keys())[chunk_start:chunk_end]}
+            l = len(chunk_data["image_path"])       
+            print(f"│  ├─ Debug: Initial chunk has {l} images")
 
             # Process chunk data
             print(f"│  ├─ Processing clickmap files...")
