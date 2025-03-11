@@ -669,24 +669,23 @@ def prepare_maps_parallel(
     assert blur_sigma_function is not None, "Blur sigma function not passed."
 
     # Process images in parallel
-    for keys, maps in final_clickmaps:
-        results = Parallel(n_jobs=n_jobs)(
-            delayed(process_single_image)(
-                ikeys, 
-                imaps,
-                image_shape,
-                blur_size,
-                blur_sigma,
-                min_pixels,
-                min_subjects,
-                center_crop,
-                metadata,
-                blur_sigma_function,
-                kernel_type,
-                duplicate_thresh,
-                max_kernel_size
-            ) for ikeys, imaps in tqdm(zip(keys, maps), total=len(keys), desc="Processing images")
-        )
+    results = Parallel(n_jobs=n_jobs)(
+        delayed(process_single_image)(
+            image_key, 
+            image_trials,
+            image_shape,
+            blur_size,
+            blur_sigma,
+            min_pixels,
+            min_subjects,
+            center_crop,
+            metadata,
+            blur_sigma_function,
+            kernel_type,
+            duplicate_thresh,
+            max_kernel_size
+        ) for image_key, image_trials in tqdm(final_clickmaps.items(), total=len(final_clickmaps), desc="Processing images")
+    )
 
     # Process results
     all_clickmaps = []
@@ -766,8 +765,11 @@ def prepare_maps_with_progress(final_clickmaps, **kwargs):
         # Call the original function
         result = prepare_maps_parallel(final_clickmaps=final_clickmaps, **kwargs)
     
+    # Get the actual number of processed images (those that passed all filters)
+    processed_images = len(result[0])
+    
     # Print completion message
-    print(f"│  ├─ ✓ Processed {total_images} images")
+    print(f"│  ├─ ✓ Processed {total_images} images, kept {processed_images} after filtering")
     
     return result
 
