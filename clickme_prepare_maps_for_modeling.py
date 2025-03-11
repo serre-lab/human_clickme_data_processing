@@ -128,70 +128,6 @@ if __name__ == "__main__":
     # Calculate number of chunks
     num_chunks = (total_images + chunk_size - 1) // chunk_size
     
-    # Custom wrapper for prepare_maps_parallel to add progress bar
-    def prepare_maps_with_progress(final_clickmaps, **kwargs):
-        """
-        Create a wrapper that shows progress for prepare_maps_parallel.
-        
-        Since joblib's parallel processing is difficult to track directly,
-        we'll use a simple spinner animation to show that processing is happening.
-        """
-        total_images = len(final_clickmaps)
-        
-        # Display information about the processing
-        print(f"│  ├─ Processing {total_images} images...")
-        
-        # Simple spinner animation characters
-        spinner = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
-        
-        # Use a context manager to handle terminal output and cleanup
-        import sys
-        import time
-        import threading
-        from contextlib import contextmanager
-        
-        @contextmanager
-        def spinner_animation():
-            # Create a flag to control the spinner animation
-            stop_spinner = threading.Event()
-            
-            # Function to animate the spinner
-            def spin():
-                i = 0
-                while not stop_spinner.is_set():
-                    # Print the spinner character and processing message
-                    sys.stdout.write(f"\r│  ├─ {spinner[i]} Processing images... ")
-                    sys.stdout.flush()
-                    time.sleep(0.1)
-                    i = (i + 1) % len(spinner)
-                
-                # Clear the line when done
-                sys.stdout.write("\r" + " " * 50 + "\r")
-                sys.stdout.flush()
-            
-            # Start the spinner in a separate thread
-            spinner_thread = threading.Thread(target=spin)
-            spinner_thread.daemon = True
-            spinner_thread.start()
-            
-            try:
-                # Return control to the caller
-                yield
-            finally:
-                # Stop the spinner when the context exits
-                stop_spinner.set()
-                spinner_thread.join()
-        
-        # Use the spinner animation while processing
-        with spinner_animation():
-            # Call the original function
-            result = utils.prepare_maps_parallel(final_clickmaps=final_clickmaps, **kwargs)
-        
-        # Print completion message
-        print(f"│  ├─ ✓ Processed {total_images} images")
-        
-        return result
-    
     # Use a simple progress tracking system with tqdm - prettier hierarchy
     print("\nProcessing clickme data in chunks...")
     with tqdm(total=num_chunks, desc="├─ Processing chunks", position=0, leave=True, colour="blue") as pbar:
@@ -244,14 +180,13 @@ if __name__ == "__main__":
             n_jobs = -1 if use_parallel else 1
             parallel_text = "parallel" if use_parallel else "serial"
             print(f"│  ├─ Preparing maps ({parallel_text}, n_jobs={n_jobs})...")
-            import pdb; pdb.set_trace()
             
             # Add debug print to check if chunk_clickmaps is empty
             if not chunk_clickmaps:
                 raise ValueError(f"│  ├─ WARNING: No images to process after filtering! Check your filter settings.")
             else:
                 # Use our custom progress wrapper
-                chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = prepare_maps_with_progress(
+                chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = utils.prepare_maps_with_progress(
                     final_clickmaps=chunk_clickmaps,
                     blur_size=blur_size,
                     blur_sigma=blur_sigma,
