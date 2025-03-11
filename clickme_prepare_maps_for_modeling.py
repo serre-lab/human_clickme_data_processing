@@ -229,6 +229,7 @@ if __name__ == "__main__":
             print(f"│  ├─ Debug: After processing clickmap files: {len(chunk_clickmaps)} images")
                 
             # Apply all filters to the chunk
+            import pdb; pdb.set_trace()
             if config["class_filter_file"]:
                 print(f"│  ├─ Filtering classes...")
                 chunk_clickmaps = utils.filter_classes(
