@@ -114,10 +114,16 @@ if __name__ == "__main__":
     def process_chunk(chunk_start, chunk_end):
         chunk_data = {k: clickme_data[k] for k in list(clickme_data.keys())[chunk_start:chunk_end]}
         
-        # Convert the dictionary to a DataFrame with the correct column name 'image_path'
-        # instead of 'image_name' to match what process_clickmap_files expects
-        chunk_df = pd.DataFrame([(k, v) for k, v in chunk_data.items()], 
-                               columns=['image_path', 'clicks'])
+        # Create a DataFrame that process_clickmap_files can work with
+        # The function expects 'image_path' to be a column, not an index
+        image_paths = list(chunk_data.keys())
+        clicks_data = list(chunk_data.values())
+        
+        # Create a DataFrame with explicit 'image_path' column
+        chunk_df = pd.DataFrame({
+            'image_path': image_paths,
+            'clicks': clicks_data
+        })
         
         # Use serial processing for each chunk to avoid joblib overhead
         process_clickmap_files_func = utils.process_clickmap_files
