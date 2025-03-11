@@ -207,6 +207,8 @@ if __name__ == "__main__":
             image_paths = list(chunk_data.keys())
             clicks_data = list(chunk_data.values())
             
+            print(f"│  ├─ Debug: Initial chunk has {len(chunk_data)} images")
+            
             # Create a DataFrame with explicit 'image_path' column
             chunk_df = pd.DataFrame({
                 'image_path': image_paths,
@@ -224,16 +226,20 @@ if __name__ == "__main__":
                 min_clicks=config["min_clicks"],
                 max_clicks=config["max_clicks"])
                 
+            print(f"│  ├─ Debug: After processing clickmap files: {len(chunk_clickmaps)} images")
+                
             # Apply all filters to the chunk
             if config["class_filter_file"]:
                 print(f"│  ├─ Filtering classes...")
                 chunk_clickmaps = utils.filter_classes(
                     clickmaps=chunk_clickmaps,
                     class_filter_file=config["class_filter_file"])
+                print(f"│  ├─ Debug: After class filtering: {len(chunk_clickmaps)} images")
 
             if config["participant_filter"]:
                 print(f"│  ├─ Filtering participants...")
                 chunk_clickmaps = utils.filter_participants(chunk_clickmaps)
+                print(f"│  ├─ Debug: After participant filtering: {len(chunk_clickmaps)} images")
             
             # Process maps for this chunk with our custom progress wrapper
             use_parallel = config.get("parallel_prepare_maps", True)
@@ -241,18 +247,27 @@ if __name__ == "__main__":
             parallel_text = "parallel" if use_parallel else "serial"
             print(f"│  ├─ Preparing maps ({parallel_text}, n_jobs={n_jobs})...")
             
-            # Use our custom progress wrapper
-            chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = prepare_maps_with_progress(
-                final_clickmaps=chunk_clickmaps,
-                blur_size=blur_size,
-                blur_sigma=blur_sigma,
-                image_shape=config["image_shape"],
-                min_pixels=min_pixels,
-                min_subjects=config["min_subjects"],
-                metadata=metadata,
-                blur_sigma_function=blur_sigma_function,
-                center_crop=False,
-                n_jobs=n_jobs)
+            # Add debug print to check if chunk_clickmaps is empty
+            if not chunk_clickmaps:
+                print(f"│  ├─ WARNING: No images to process after filtering! Check your filter settings.")
+                # Create empty results to avoid errors
+                chunk_final_clickmaps = {}
+                chunk_all_clickmaps = []
+                chunk_categories = []
+                chunk_final_keep_index = []
+            else:
+                # Use our custom progress wrapper
+                chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = prepare_maps_with_progress(
+                    final_clickmaps=chunk_clickmaps,
+                    blur_size=blur_size,
+                    blur_sigma=blur_sigma,
+                    image_shape=config["image_shape"],
+                    min_pixels=min_pixels,
+                    min_subjects=config["min_subjects"],
+                    metadata=metadata,
+                    blur_sigma_function=blur_sigma_function,
+                    center_crop=False,
+                    n_jobs=n_jobs)
                 
             # Apply mask filtering if needed
             if config["mask_dir"]:
