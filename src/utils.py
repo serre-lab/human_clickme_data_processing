@@ -670,23 +670,24 @@ def prepare_maps_parallel(
 
     # Process images in parallel
     import pdb; pdb.set_trace()
-    results = Parallel(n_jobs=n_jobs)(
-        delayed(process_single_image)(
-            image_key, 
-            final_clickmaps[image_key],
-            image_shape,
-            blur_size,
-            blur_sigma,
-            min_pixels,
-            min_subjects,
-            center_crop,
-            metadata,
-            blur_sigma_function,
-            kernel_type,
-            duplicate_thresh,
-            max_kernel_size
-        ) for image_key in tqdm(final_clickmaps, total=len(final_clickmaps), desc="Processing images")
-    )
+    for keys, maps in final_clickmaps:
+        results = Parallel(n_jobs=n_jobs)(
+            delayed(process_single_image)(
+                ikeys, 
+                imaps,
+                image_shape,
+                blur_size,
+                blur_sigma,
+                min_pixels,
+                min_subjects,
+                center_crop,
+                metadata,
+                blur_sigma_function,
+                kernel_type,
+                duplicate_thresh,
+                max_kernel_size
+            ) for ikeys, imaps in tqdm(zip(keys, maps), total=len(keys), desc="Processing images")
+        )
 
     # Process results
     all_clickmaps = []
@@ -706,6 +707,70 @@ def prepare_maps_parallel(
 
     return new_final_clickmaps, all_clickmaps, categories, keep_index
 
+
+# Custom wrapper for prepare_maps_parallel to add progress bar
+def prepare_maps_with_progress(final_clickmaps, **kwargs):
+    """
+    Create a wrapper that shows progress for prepare_maps_parallel.
+    
+    Since joblib's parallel processing is difficult to track directly,
+    we'll use a simple spinner animation to show that processing is happening.
+    """
+    total_images = len(final_clickmaps)
+    
+    # Display information about the processing
+    print(f"│  ├─ Processing {total_images} images...")
+    
+    # Simple spinner animation characters
+    spinner = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
+    
+    # Use a context manager to handle terminal output and cleanup
+    import sys
+    import time
+    import threading
+    from contextlib import contextmanager
+    
+    @contextmanager
+    def spinner_animation():
+        # Create a flag to control the spinner animation
+        stop_spinner = threading.Event()
+        
+        # Function to animate the spinner
+        def spin():
+            i = 0
+            while not stop_spinner.is_set():
+                # Print the spinner character and processing message
+                sys.stdout.write(f"\r│  ├─ {spinner[i]} Processing images... ")
+                sys.stdout.flush()
+                time.sleep(0.1)
+                i = (i + 1) % len(spinner)
+            
+            # Clear the line when done
+            sys.stdout.write("\r" + " " * 50 + "\r")
+            sys.stdout.flush()
+        
+        # Start the spinner in a separate thread
+        spinner_thread = threading.Thread(target=spin)
+        spinner_thread.daemon = True
+        spinner_thread.start()
+        
+        try:
+            # Return control to the caller
+            yield
+        finally:
+            # Stop the spinner when the context exits
+            stop_spinner.set()
+            spinner_thread.join()
+    
+    # Use the spinner animation while processing
+    with spinner_animation():
+        # Call the original function
+        result = prepare_maps_parallel(final_clickmaps=final_clickmaps, **kwargs)
+    
+    # Print completion message
+    print(f"│  ├─ ✓ Processed {total_images} images")
+    
+    return result
 
 def compute_average_map(trial_indices, clickmaps, resample=False):
     """

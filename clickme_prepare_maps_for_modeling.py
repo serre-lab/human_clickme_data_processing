@@ -248,12 +248,7 @@ if __name__ == "__main__":
             
             # Add debug print to check if chunk_clickmaps is empty
             if not chunk_clickmaps:
-                print(f"│  ├─ WARNING: No images to process after filtering! Check your filter settings.")
-                # Create empty results to avoid errors
-                chunk_final_clickmaps = {}
-                chunk_all_clickmaps = []
-                chunk_categories = []
-                chunk_final_keep_index = []
+                raise ValueError(f"│  ├─ WARNING: No images to process after filtering! Check your filter settings.")
             else:
                 # Use our custom progress wrapper
                 chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = prepare_maps_with_progress(
