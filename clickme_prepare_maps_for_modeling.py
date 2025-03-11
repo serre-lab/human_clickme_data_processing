@@ -145,20 +145,20 @@ if __name__ == "__main__":
             chunk_clickmaps = utils.filter_participants(chunk_clickmaps)
         
         # Process maps for this chunk
-        # Choose between parallel and non-parallel processing based on config
-        # Use the existing parallel_prepare_maps parameter from the config
+        # We'll always use prepare_maps_parallel, but control the parallelism with n_jobs
         use_parallel = config.get("parallel_prepare_maps", True)
         
+        # The prepare_maps_parallel function accepts an n_jobs parameter
+        # n_jobs=-1 means use all available CPU cores
+        # n_jobs=1 means run serially (no parallelism)
         if use_parallel:
-            prepare_maps_func = utils.prepare_maps_parallel
-            print("Using parallel processing for map preparation...")
+            n_jobs = -1  # Use all available cores
+            print("Using parallel processing for map preparation (n_jobs=-1)...")
         else:
-            # Since there's no non-parallel version, we'll use the parallel version
-            # but we can inform the user that we're using it
-            prepare_maps_func = utils.prepare_maps_parallel
-            print("Non-parallel version not available, using parallel processing for map preparation...")
+            n_jobs = 1  # Run serially (still using the parallel function, but with no parallelism)
+            print("Using serial processing for map preparation (n_jobs=1)...")
             
-        chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = prepare_maps_func(
+        chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = utils.prepare_maps_parallel(
             final_clickmaps=chunk_clickmaps,
             blur_size=blur_size,
             blur_sigma=blur_sigma,
@@ -167,7 +167,8 @@ if __name__ == "__main__":
             min_subjects=config["min_subjects"],
             metadata=metadata,
             blur_sigma_function=blur_sigma_function,
-            center_crop=False)
+            center_crop=False,
+            n_jobs=n_jobs)  # Set n_jobs based on parallel_prepare_maps config
             
         # Apply mask filtering if needed
         if config["mask_dir"]:
