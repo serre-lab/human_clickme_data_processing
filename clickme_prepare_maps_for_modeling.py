@@ -210,6 +210,7 @@ if __name__ == "__main__":
             print(f"│  ├─ Debug: Initial chunk has {len(chunk_data)} images")
             
             # Create a DataFrame with explicit 'image_path' column
+            import pdb; pdb.set_trace()
             chunk_df = pd.DataFrame({
                 'image_path': image_paths,
                 'clicks': clicks_data
