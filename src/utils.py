@@ -401,8 +401,12 @@ def process_clickmap_files(
         # Patch for val co3d
         image_files = glob(os.path.join(image_path, "**", "*.png"))
     import pdb; pdb.set_trace()
-    for _, row in clickme_data.iterrows():
-        image_file_name = os.path.sep.join(row['image_path'].split(os.path.sep)[-2:])
+    for clicks, image_path, user_id in zip(
+            clickme_data["clicks"].values,
+            clickme_data["image_path"].values,
+            clickme_data["user_id"].values
+        ):
+        image_file_name = os.path.sep.join(image_path.split(os.path.sep)[-2:])
         if file_inclusion_filter == "CO3D_ClickmeV2":
             # Patch for val co3d
             if not np.any([image_file_name in x for x in image_files]):
@@ -412,9 +416,9 @@ def process_clickmap_files(
         if file_exclusion_filter and file_exclusion_filter in image_file_name:
             continue
         if image_file_name not in clickmaps.keys():
-            clickmaps[image_file_name] = [row["clicks"]]
+            clickmaps[image_file_name] = [clicks]
         else:
-            clickmaps[image_file_name].append(row["clicks"])
+            clickmaps[image_file_name].append(clicks)
 
     number_of_maps = []
     proc_clickmaps = {}
