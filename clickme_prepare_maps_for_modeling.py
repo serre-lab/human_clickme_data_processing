@@ -203,30 +203,27 @@ if __name__ == "__main__":
             print(f"\n├─ Chunk {chunk_idx + 1}/{num_chunks} ({chunk_start}-{chunk_end})")
             
             # Create a DataFrame that process_clickmap_files can work with
-            chunk_data = {k: clickme_data[k] for k in list(clickme_data.keys())[chunk_start:chunk_end]}
-            image_paths = list(chunk_data.keys())
-            clicks_data = list(chunk_data.values())
-            
+            chunk_data = {k: clickme_data[k] for k in list(clickme_data.keys())[chunk_start:chunk_end]}            
             print(f"│  ├─ Debug: Initial chunk has {len(chunk_data)} images")
-            
-            # Create a DataFrame with explicit 'image_path' column
-            import pdb; pdb.set_trace()
-            chunk_df = pd.DataFrame({
-                'image_path': image_paths,
-                'clicks': clicks_data
-            })
-            
+
             # Process chunk data
             print(f"│  ├─ Processing clickmap files...")
-            chunk_clickmaps, chunk_clickmap_counts = utils.process_clickmap_files(
-                clickme_data=chunk_df,
-                image_path=config["image_path"],
-                file_inclusion_filter=config["file_inclusion_filter"],
-                file_exclusion_filter=config["file_exclusion_filter"],
-                min_clicks=config["min_clicks"],
-                max_clicks=config["max_clicks"])
+            chunk_clickmaps, chunk_clickmap_counts = [], []
+            counts = []
+            for chunk in chunk_data:
+                cclickmaps, ccounts = utils.process_clickmap_files(
+                    clickme_data=chunk_data,
+                    image_path=config["image_path"],
+                    file_inclusion_filter=config["file_inclusion_filter"],
+                    file_exclusion_filter=config["file_exclusion_filter"],
+                    min_clicks=config["min_clicks"],
+                    max_clicks=config["max_clicks"])
+                chunk_clickmaps.append(cclickmaps)
+                chunk_clickmap_counts.append(ccounts)
+                counts.append(len(cclickmaps))
+            counts = np.sum(counts)
                 
-            print(f"│  ├─ Debug: After processing clickmap files: {len(chunk_clickmaps)} images")
+            print(f"│  ├─ Debug: After processing clickmap files: {counts} images")
                 
             # Apply all filters to the chunk
             import pdb; pdb.set_trace()
