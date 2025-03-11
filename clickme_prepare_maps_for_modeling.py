@@ -244,6 +244,7 @@ if __name__ == "__main__":
             n_jobs = -1 if use_parallel else 1
             parallel_text = "parallel" if use_parallel else "serial"
             print(f"│  ├─ Preparing maps ({parallel_text}, n_jobs={n_jobs})...")
+            import pdb; pdb.set_trace()
             
             # Add debug print to check if chunk_clickmaps is empty
             if not chunk_clickmaps:
