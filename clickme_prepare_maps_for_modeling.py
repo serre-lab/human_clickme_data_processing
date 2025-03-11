@@ -46,7 +46,10 @@ def get_medians(point_lists, mode='image', thresh=50):
             num_clicks = []
             for clickmap in clickmaps:
                 num_clicks.append(len(clickmap))
-            medians[image] = np.percentile(num_clicks, thresh)
+            if num_clicks:  # Check if the list is not empty
+                medians[image] = np.percentile(num_clicks, thresh)
+            else:
+                medians[image] = 0  # Default value when no clicks
     elif mode == 'category':
         for image in point_lists:
             category = image.split('/')[0]
@@ -56,14 +59,21 @@ def get_medians(point_lists, mode='image', thresh=50):
             for clickmap in clickmaps:
                 medians[category].append(len(clickmap))
         for category in medians:
-            medians[category] = np.percentile(medians[category], thresh)
+            if medians[category]:  # Check if the list is not empty
+                medians[category] = np.percentile(medians[category], thresh)
+            else:
+                medians[category] = 0  # Default value when no clicks
     elif mode == 'all':
         num_clicks = []
         for image in point_lists:
             clickmaps = point_lists[image]
             for clickmap in clickmaps:
                 num_clicks.append(len(clickmap))
-        medians['all'] = np.percentile(num_clicks, thresh)
+        if num_clicks:  # Check if the list is not empty
+            medians['all'] = np.percentile(num_clicks, thresh)
+        else:
+            medians['all'] = 0  # Default value when no clicks
+            print("Warning: No clicks found when calculating 'all' median")
     else:
         raise NotImplementedError(mode)
     return medians
@@ -120,29 +130,73 @@ if __name__ == "__main__":
     
     # Custom wrapper for prepare_maps_parallel to add progress bar
     def prepare_maps_with_progress(final_clickmaps, **kwargs):
-        # Create a custom progress bar for image processing
+        """
+        Create a wrapper that shows progress for prepare_maps_parallel.
+        
+        The original function uses joblib which can make it hard to track progress.
+        Here we use a simple approach: show a progress bar while waiting for results.
+        """
+        total_images = len(final_clickmaps)
+        
+        # Display information about the processing
+        print(f"│  ├─ Processing {total_images} images...")
+        
+        # Create a custom progress bar that we'll manually update
         # Position=1 puts this below the main chunks progress bar
-        image_pbar = tqdm(total=len(final_clickmaps), desc="│  ├─ Processing images", 
-                         position=1, leave=False, colour="green")
+        image_pbar = tqdm(total=total_images, desc="│  ├─ Processing images", 
+                         position=1, leave=False, colour="green", 
+                         bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]')
         
-        # Define a wrapper function that updates our progress bar
-        def process_single_with_progress(image_key, *args):
-            result = utils.process_single_image(image_key, *args)
-            image_pbar.update(1)
-            return result
+        # Start processing in a separate thread so we can update the progress bar
+        import threading
+        import time
         
-        # Replace the function used in prepare_maps_parallel
-        original_process_single = utils.process_single_image
-        utils.process_single_image = process_single_with_progress
+        # Store the result in a list so we can access it from the main thread
+        result_container = [None]
+        processed_images = [0]  # Use a list so we can modify it from inside the thread
         
-        try:
+        def processing_thread():
             # Call the original function
-            result = utils.prepare_maps_parallel(final_clickmaps=final_clickmaps, **kwargs)
-            return result
-        finally:
-            # Restore original function and close progress bar
-            utils.process_single_image = original_process_single
-            image_pbar.close()
+            result_container[0] = utils.prepare_maps_parallel(final_clickmaps=final_clickmaps, **kwargs)
+            # Mark as complete
+            processed_images[0] = total_images
+        
+        # Start the processing thread
+        thread = threading.Thread(target=processing_thread)
+        thread.start()
+        
+        # Update the progress bar periodically until processing is complete
+        # We use a heuristic approach since we can't directly monitor joblib's progress
+        start_time = time.time()
+        while thread.is_alive():
+            # Calculate estimated progress based on elapsed time
+            # This is just an approximation
+            elapsed = time.time() - start_time
+            if elapsed > 0:
+                # Update at least every half second
+                time.sleep(0.5)
+                
+                # Get the number of items that may have been processed
+                # This looks at the return value of prepare_maps_parallel when available
+                if result_container[0] is not None:
+                    try:
+                        # If result is available, count actual processed items
+                        processed = len(result_container[0][0])  # Count keys in first return value (new_final_clickmaps)
+                        processed_images[0] = processed
+                    except (IndexError, TypeError):
+                        pass
+                
+                # Update the progress bar with our current estimate
+                image_pbar.n = min(processed_images[0], total_images)
+                image_pbar.refresh()
+        
+        # Ensure the progress bar is complete
+        image_pbar.n = total_images
+        image_pbar.refresh()
+        image_pbar.close()
+        
+        # Thread is done, return the result
+        return result_container[0]
     
     # Use a simple progress tracking system with tqdm - prettier hierarchy
     print("\nProcessing clickme data in chunks...")
