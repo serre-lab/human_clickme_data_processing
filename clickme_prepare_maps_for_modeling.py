@@ -145,7 +145,7 @@ if __name__ == "__main__":
             chunk_clickmaps = utils.filter_participants(chunk_clickmaps)
         
         # Process maps for this chunk
-        prepare_maps_func = utils.process_maps  # Use serial version for each chunk
+        prepare_maps_func = utils.prepare_maps_parallel  # Use the parallel version for efficiency
         chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = prepare_maps_func(
             final_clickmaps=chunk_clickmaps,
             blur_size=blur_size,
