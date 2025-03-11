@@ -5,6 +5,7 @@ import json
 import pandas as pd
 from matplotlib import pyplot as plt
 from src import utils
+from tqdm import tqdm
 
 def sample_half_pos(point_lists, num_samples=100):
     num_pos = {}
@@ -198,10 +199,15 @@ if __name__ == "__main__":
     all_final_clickmaps = {}
     all_final_keep_index = []
     
-    # Use a simple progress tracking system
-    for chunk_start in range(0, total_images, chunk_size):
+    # Calculate number of chunks
+    num_chunks = (total_images + chunk_size - 1) // chunk_size
+    
+    # Use a simple progress tracking system with tqdm
+    for chunk_idx, chunk_start in enumerate(tqdm(range(0, total_images, chunk_size), 
+                                               total=num_chunks,
+                                               desc="Processing chunks")):
         chunk_end = min(chunk_start + chunk_size, total_images)
-        print(f"Processing chunk {chunk_start//chunk_size + 1}/{(total_images + chunk_size - 1)//chunk_size} ({chunk_start}-{chunk_end})")
+        print(f"\nProcessing chunk {chunk_idx + 1}/{num_chunks} ({chunk_start}-{chunk_end})")
         
         chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = process_chunk(chunk_start, chunk_end)
         
