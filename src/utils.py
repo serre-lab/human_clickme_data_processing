@@ -669,7 +669,6 @@ def prepare_maps_parallel(
     assert blur_sigma_function is not None, "Blur sigma function not passed."
 
     # Process images in parallel
-    import pdb; pdb.set_trace()
     for keys, maps in final_clickmaps:
         results = Parallel(n_jobs=n_jobs)(
             delayed(process_single_image)(
