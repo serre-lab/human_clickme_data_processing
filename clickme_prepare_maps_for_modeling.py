@@ -145,7 +145,19 @@ if __name__ == "__main__":
             chunk_clickmaps = utils.filter_participants(chunk_clickmaps)
         
         # Process maps for this chunk
-        prepare_maps_func = utils.prepare_maps_parallel  # Use the parallel version for efficiency
+        # Choose between parallel and non-parallel processing based on config
+        # Use the existing parallel_prepare_maps parameter from the config
+        use_parallel = config.get("parallel_prepare_maps", True)
+        
+        if use_parallel:
+            prepare_maps_func = utils.prepare_maps_parallel
+            print("Using parallel processing for map preparation...")
+        else:
+            # Since there's no non-parallel version, we'll use the parallel version
+            # but we can inform the user that we're using it
+            prepare_maps_func = utils.prepare_maps_parallel
+            print("Non-parallel version not available, using parallel processing for map preparation...")
+            
         chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = prepare_maps_func(
             final_clickmaps=chunk_clickmaps,
             blur_size=blur_size,

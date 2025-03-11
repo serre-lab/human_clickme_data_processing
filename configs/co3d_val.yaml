@@ -26,4 +26,4 @@ mask_dir: co3d_masks  # Directory containing masks for each image
 mask_threshold: 0.17  # Max IOU threshold for foreground mask overlap
 participant_filter: False
 display_image_keys: auto   # If "auto", will display the top-10 clicked
-parallel_prepare_maps: True
+parallel_prepare_maps: False
