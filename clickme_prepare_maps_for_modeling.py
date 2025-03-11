@@ -217,8 +217,7 @@ if __name__ == "__main__":
             
             # Process chunk data
             print(f"│  ├─ Processing clickmap files...")
-            process_clickmap_files_func = utils.process_clickmap_files
-            chunk_clickmaps, chunk_clickmap_counts = process_clickmap_files_func(
+            chunk_clickmaps, chunk_clickmap_counts = utils.process_clickmap_files(
                 clickme_data=chunk_df,
                 image_path=config["image_path"],
                 file_inclusion_filter=config["file_inclusion_filter"],
