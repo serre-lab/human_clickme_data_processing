@@ -1031,3 +1031,74 @@ def alt_gaussian_blur(heatmap, kernel):
     blurred_heatmap = torch.nn.functional.conv2d(heatmap, kernel, padding='same')
 
     return blurred_heatmap[0]
+
+def save_clickmaps_parallel(all_clickmaps, final_keep_index, output_dir, experiment_name, image_path, n_jobs=-1):
+    """
+    Save clickmaps to disk in parallel.
+    
+    Parameters:
+    -----------
+    all_clickmaps : list
+        List of clickmaps to save
+    final_keep_index : list
+        List of image names corresponding to the clickmaps
+    output_dir : str
+        Directory to save the clickmaps
+    experiment_name : str
+        Name of the experiment (used for creating subdirectory)
+    image_path : str
+        Path to the original images (used for checking existence)
+    n_jobs : int
+        Number of parallel jobs to run
+        
+    Returns:
+    --------
+    int
+        Number of successfully saved files
+    """
+    from joblib import Parallel, delayed
+    import os
+    import numpy as np
+    from tqdm import tqdm
+    
+    # Create output directory if it doesn't exist
+    save_dir = os.path.join(output_dir, experiment_name)
+    os.makedirs(save_dir, exist_ok=True)
+    
+    def save_single_clickmap(idx, img_name):
+        """Helper function to save a single clickmap"""
+        if not os.path.exists(os.path.join(image_path, img_name)):
+            return 0
+            
+        hmp = all_clickmaps[idx]
+        # Save to disk
+        np.save(
+            os.path.join(save_dir, f"{img_name.replace('/', '_')}.npy"), 
+            hmp
+        )
+        return 1
+    
+    # Use tqdm to show progress
+    with tqdm(total=len(final_keep_index), desc="Saving files in parallel", 
+             colour="cyan") as save_pbar:
+        
+        # Process in smaller batches to update progress bar more frequently
+        batch_size = max(1, min(100, len(final_keep_index) // 10))
+        saved_count = 0
+        
+        for i in range(0, len(final_keep_index), batch_size):
+            batch_indices = list(range(i, min(i + batch_size, len(final_keep_index))))
+            batch_img_names = [final_keep_index[j] for j in batch_indices]
+            
+            # Save batch in parallel
+            results = Parallel(n_jobs=n_jobs)(
+                delayed(save_single_clickmap)(j, img_name) 
+                for j, img_name in zip(batch_indices, batch_img_names)
+            )
+            
+            # Update progress bar
+            batch_saved = sum(results)
+            saved_count += batch_saved
+            save_pbar.update(len(batch_indices))
+    
+    return saved_count

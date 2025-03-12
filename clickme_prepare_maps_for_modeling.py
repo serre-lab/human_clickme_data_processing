@@ -140,11 +140,8 @@ if __name__ == "__main__":
             
             # Create a DataFrame that process_clickmap_files can work with
             chunk_data = clickme_data.iloc[chunk_start:chunk_end]
-            try:
-                l = len(chunk_data["image_path"])       
-                print(f"│  ├─ Debug: Initial chunk has {l} images")
-            except:
-                import pdb; pdb.set_trace()
+            l = len(chunk_data["image_path"])       
+            print(f"│  ├─ Debug: Initial chunk has {l} images")
 
             # Process chunk data
             print(f"│  ├─ Processing clickmap files...")
@@ -214,19 +211,34 @@ if __name__ == "__main__":
             
             # Save results
             print(f"│  ├─ Saving processed maps...")
-            with tqdm(total=len(chunk_final_keep_index), desc="│  │  ├─ Saving files", 
-                     position=1, leave=False, colour="cyan") as save_pbar:
-                for j, img_name in enumerate(chunk_final_keep_index):
-                    if not os.path.exists(os.path.join(config["image_path"], img_name)):
-                        continue
-                        
-                    hmp = chunk_all_clickmaps[j]
-                    # Save directly to disk - don't accumulate in memory
-                    np.save(
-                        os.path.join(output_dir, config["experiment_name"], f"{img_name.replace('/', '_')}.npy"), 
-                        hmp
-                    )
-                    save_pbar.update(1)
+            # Check if parallel saving is enabled (default to True if not specified)
+            use_parallel_save = config.get("parallel_save", True)
+            if use_parallel_save:
+                # Use parallel saving
+                saved_count = utils.save_clickmaps_parallel(
+                    all_clickmaps=chunk_all_clickmaps,
+                    final_keep_index=chunk_final_keep_index,
+                    output_dir=output_dir,
+                    experiment_name=config["experiment_name"],
+                    image_path=config["image_path"],
+                    n_jobs=n_jobs
+                )
+                print(f"│  │  └─ Saved {saved_count} files in parallel")
+            else:
+                # Use sequential saving with tqdm
+                with tqdm(total=len(chunk_final_keep_index), desc="│  │  ├─ Saving files", 
+                         position=1, leave=False, colour="cyan") as save_pbar:
+                    for j, img_name in enumerate(chunk_final_keep_index):
+                        if not os.path.exists(os.path.join(config["image_path"], img_name)):
+                            continue
+                            
+                        hmp = chunk_all_clickmaps[j]
+                        # Save directly to disk - don't accumulate in memory
+                        np.save(
+                            os.path.join(output_dir, config["experiment_name"], f"{img_name.replace('/', '_')}.npy"), 
+                            hmp
+                        )
+                        save_pbar.update(1)
             
             # Merge results (keeping minimal data in memory)
             all_final_clickmaps.update(chunk_final_clickmaps)
