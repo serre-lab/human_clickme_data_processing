@@ -577,14 +577,14 @@ def circle_kernel(size, sigma=None):
 
 def process_single_image(image_key, image_trials, image_shape, blur_size, blur_sigma, 
                         min_pixels, min_subjects, center_crop, metadata, blur_sigma_function,
-                        kernel_type, duplicate_thresh, max_kernel_size, blur_kernel):
+                        kernel_type, duplicate_thresh, max_kernel_size, blur_kernel, device='cuda'):
     """Helper function to process a single image for parallel processing"""
 
     # Process metadata and create clickmaps
     if metadata is not None:
         if image_key not in metadata:
             clickmaps = np.asarray([create_clickmap([trials], image_shape) for trials in image_trials])
-            clickmaps = torch.from_numpy(clickmaps).float().unsqueeze(1)
+            clickmaps = torch.from_numpy(clickmaps).float().unsqueeze(1).to(device)
             if kernel_type == "gaussian":
                 clickmaps = convolve(clickmaps, blur_kernel)
             elif kernel_type == "circle":
@@ -599,7 +599,7 @@ def process_single_image(image_key, image_trials, image_shape, blur_size, blur_s
             adj_blur_size = min(adj_blur_size, max_kernel_size)
             adj_blur_sigma = blur_sigma_function(adj_blur_size)
             clickmaps = np.asarray([create_clickmap([trials], native_size[::-1]) for trials in image_trials])
-            clickmaps = torch.from_numpy(clickmaps).float().unsqueeze(1)
+            clickmaps = torch.from_numpy(clickmaps).float().unsqueeze(1).to(device)
             if kernel_type == "gaussian":
                 adj_blur_kernel = gaussian_kernel(adj_blur_size, adj_blur_sigma)
                 clickmaps = convolve(clickmaps, adj_blur_kernel)
@@ -608,7 +608,7 @@ def process_single_image(image_key, image_trials, image_shape, blur_size, blur_s
                 clickmaps = convolve(clickmaps, adj_blur_kernel, double_conv=True)
     else:
         clickmaps = np.asarray([create_clickmap([trials], image_shape) for trials in image_trials])
-        clickmaps = torch.from_numpy(clickmaps).float().unsqueeze(1)
+        clickmaps = torch.from_numpy(clickmaps).float().unsqueeze(1).to(device)
         if kernel_type == "gaussian":
             clickmaps = convolve(clickmaps, blur_kernel)
         elif kernel_type == "circle":
@@ -854,7 +854,7 @@ def gaussian_kernel(size, sigma):
     return kernel
 
 
-def convolve(heatmap, kernel, double_conv=False):
+def convolve(heatmap, kernel, double_conv=False, device='cpu'):
     """
     Apply Gaussian blur to a heatmap.
 
@@ -869,7 +869,7 @@ def convolve(heatmap, kernel, double_conv=False):
     blurred_heatmap = F.conv2d(heatmap, kernel, padding='same')
     if double_conv:
         blurred_heatmap = F.conv2d(blurred_heatmap, kernel, padding='same')
-    return blurred_heatmap  # [0]
+    return blurred_heatmap.to(device)  # [0]
 
 
 def integrate_surface(iou_scores, x, z, average_areas=True, normalize=False):
