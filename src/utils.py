@@ -657,15 +657,16 @@ def prepare_maps_parallel(
         kernel_type="circle",
         duplicate_thresh=0.01,
         max_kernel_size=51,
+        device='cuda',
         n_jobs=-1):
     """Parallelized version of prepare_maps using joblib"""
     
     assert blur_sigma_function is not None, "Blur sigma function not passed."
 
     if kernel_type == "gaussian":
-        blur_kernel = gaussian_kernel(blur_size, blur_sigma)
+        blur_kernel = gaussian_kernel(blur_size, blur_sigma, device)
     elif kernel_type == "circle":
-        blur_kernel = circle_kernel(blur_size, blur_sigma)
+        blur_kernel = circle_kernel(blur_size, blur_sigma, device)
     else:
         raise NotImplementedError(kernel_type)
 
@@ -831,7 +832,7 @@ def fast_ious(v1, v2):
     return iou
     
 
-def gaussian_kernel(size, sigma):
+def gaussian_kernel(size, sigma, device='cpu'):
     """
     Create a Gaussian kernel.
 
@@ -851,7 +852,7 @@ def gaussian_kernel(size, sigma):
     kernel = kernel / kernel.sum()
     kernel = kernel.unsqueeze(0).unsqueeze(0)
     
-    return kernel
+    return kernel.to(device)
 
 
 def convolve(heatmap, kernel, double_conv=False, device='cpu'):
