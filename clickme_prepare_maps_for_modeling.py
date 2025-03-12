@@ -230,7 +230,7 @@ if __name__ == "__main__":
             all_final_keep_index.extend(chunk_final_keep_index)
             
             # Free memory
-            del chunk_data, chunk_df, chunk_clickmaps, chunk_clickmap_counts
+            del chunk_data, chunk_clickmaps, chunk_clickmap_counts
             del chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index
             
             # Update main progress bar

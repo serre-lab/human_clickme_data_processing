@@ -713,8 +713,7 @@ def prepare_maps_with_progress(final_clickmaps, **kwargs):
     Since joblib's parallel processing is difficult to track directly,
     we'll use a simple spinner animation to show that processing is happening.
     """
-    import pdb; pdb.set_trace()
-    total_images = len(final_clickmaps)
+    total_images = len(final_clickmaps[0])
     
     # Display information about the processing
     print(f"│  ├─ Processing {total_images} images...")
