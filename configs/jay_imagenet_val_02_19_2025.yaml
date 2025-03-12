@@ -27,6 +27,7 @@ mask_threshold: 1  # Max IOU threshold for foreground mask overlap
 participant_filter: False
 display_image_keys: auto   # If "auto", will display the top-10 clicked
 parallel_prepare_maps: True
+parallel_save: True  # Enable parallel saving of clickmaps
 # - ILSVRC2012_val_00009492.JPEG
 # - ILSVRC2012_val_00032959.JPEG
 # - ILSVRC2012_val_00048414.JPEG
