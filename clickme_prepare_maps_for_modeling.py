@@ -118,7 +118,7 @@ if __name__ == "__main__":
     # Determine whether to use parallel processing
     # For very large datasets, sometimes serial processing with efficient chunking is faster
     # due to reduced overhead and better memory management
-    chunk_size = 10000  # Adjust based on available memory
+    chunk_size = 1000000  # Adjust based on available memory
     total_images = len(clickme_data)
     
     # Process all data in chunks

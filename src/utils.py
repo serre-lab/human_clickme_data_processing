@@ -577,14 +577,8 @@ def circle_kernel(size, sigma=None):
 
 def process_single_image(image_key, image_trials, image_shape, blur_size, blur_sigma, 
                         min_pixels, min_subjects, center_crop, metadata, blur_sigma_function,
-                        kernel_type, duplicate_thresh, max_kernel_size):
+                        kernel_type, duplicate_thresh, max_kernel_size, blur_kernel):
     """Helper function to process a single image for parallel processing"""
-    if kernel_type == "gaussian":
-        blur_kernel = gaussian_kernel(blur_size, blur_sigma)
-    elif kernel_type == "circle":
-        blur_kernel = circle_kernel(blur_size, blur_sigma)
-    else:
-        raise NotImplementedError(kernel_type)
 
     # Process metadata and create clickmaps
     if metadata is not None:
@@ -668,6 +662,13 @@ def prepare_maps_parallel(
     
     assert blur_sigma_function is not None, "Blur sigma function not passed."
 
+    if kernel_type == "gaussian":
+        blur_kernel = gaussian_kernel(blur_size, blur_sigma)
+    elif kernel_type == "circle":
+        blur_kernel = circle_kernel(blur_size, blur_sigma)
+    else:
+        raise NotImplementedError(kernel_type)
+
     # Process images in parallel
     results = Parallel(n_jobs=n_jobs)(delayed(process_single_image)(
             ikeys, 
@@ -682,7 +683,8 @@ def prepare_maps_parallel(
             blur_sigma_function,
             kernel_type,
             duplicate_thresh,
-            max_kernel_size
+            max_kernel_size,
+            blur_kernel
         ) for ikeys, imaps in tqdm(final_clickmaps.items(), total=len(final_clickmaps), desc="Processing images")
     )
 
