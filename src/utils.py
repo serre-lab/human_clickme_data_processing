@@ -762,11 +762,10 @@ def prepare_maps_with_progress(final_clickmaps, **kwargs):
             spinner_thread.join()
     
     # Use the spinner animation while processing
-    import pdb; pdb.set_trace()
-    final_clickmaps
     with spinner_animation():
         # Call the original function
-        result = prepare_maps_parallel(final_clickmaps=final_clickmaps, **kwargs)
+        for chunk in final_clickmaps:
+            result = prepare_maps_parallel(final_clickmaps=chunk, **kwargs)
     
     # Print completion message
     print(f"│  ├─ ✓ Processed {total_images} images")
