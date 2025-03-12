@@ -129,7 +129,6 @@ if __name__ == "__main__":
     num_chunks = (total_images + chunk_size - 1) // chunk_size
     
     # Use a simple progress tracking system with tqdm - prettier hierarchy
-    click_keys = np.asarray(list(clickme_data.keys()))
     print("\nProcessing clickme data in chunks...")
     with tqdm(total=num_chunks, desc="├─ Processing chunks", position=0, leave=True, colour="blue") as pbar:
         for chunk_idx in range(num_chunks):
@@ -140,7 +139,7 @@ if __name__ == "__main__":
             print(f"\n├─ Chunk {chunk_idx + 1}/{num_chunks} ({chunk_start}-{chunk_end})")
             
             # Create a DataFrame that process_clickmap_files can work with
-            chunk_data = {k: clickme_data[k] for k in click_keys[chunk_start:chunk_end]}
+            chunk_data = clickme_data.iloc[chunk_start:chunk_end]
             try:
                 l = len(chunk_data["image_path"])       
                 print(f"│  ├─ Debug: Initial chunk has {l} images")
