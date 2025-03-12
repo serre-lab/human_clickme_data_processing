@@ -577,7 +577,7 @@ def circle_kernel(size, sigma=None):
 
 def process_single_image(image_key, image_trials, image_shape, blur_size, blur_sigma, 
                         min_pixels, min_subjects, center_crop, metadata, blur_sigma_function,
-                        kernel_type, duplicate_thresh, max_kernel_size, blur_kernel, device='cuda'):
+                        kernel_type, duplicate_thresh, max_kernel_size, blur_kernel, device='cpu'):
     """Helper function to process a single image for parallel processing"""
 
     # Process metadata and create clickmaps
@@ -685,7 +685,8 @@ def prepare_maps_parallel(
             kernel_type,
             duplicate_thresh,
             max_kernel_size,
-            blur_kernel
+            blur_kernel,
+            device
         ) for ikeys, imaps in tqdm(final_clickmaps.items(), total=len(final_clickmaps), desc="Processing images")
     )
 
