@@ -669,25 +669,22 @@ def prepare_maps_parallel(
     assert blur_sigma_function is not None, "Blur sigma function not passed."
 
     # Process images in parallel
-    import pdb; pdb.set_trace()
-    for keys, maps in final_clickmaps:
-        results = Parallel(n_jobs=n_jobs)(
-            delayed(process_single_image)(
-                ikeys, 
-                imaps,
-                image_shape,
-                blur_size,
-                blur_sigma,
-                min_pixels,
-                min_subjects,
-                center_crop,
-                metadata,
-                blur_sigma_function,
-                kernel_type,
-                duplicate_thresh,
-                max_kernel_size
-            ) for ikeys, imaps in tqdm(zip(keys, maps), total=len(keys), desc="Processing images")
-        )
+    results = Parallel(n_jobs=n_jobs)(delayed(process_single_image)(
+            ikeys, 
+            imaps,
+            image_shape,
+            blur_size,
+            blur_sigma,
+            min_pixels,
+            min_subjects,
+            center_crop,
+            metadata,
+            blur_sigma_function,
+            kernel_type,
+            duplicate_thresh,
+            max_kernel_size
+        ) for ikeys, imaps in tqdm(final_clickmaps.items(), total=len(final_clickmaps), desc="Processing images")
+    )
 
     # Process results
     all_clickmaps = []
@@ -763,10 +760,10 @@ def prepare_maps_with_progress(final_clickmaps, **kwargs):
             spinner_thread.join()
     
     # Use the spinner animation while processing
-    # with spinner_animation():
-    #     # Call the original function
-    for chunk in final_clickmaps:
-        result = prepare_maps_parallel(final_clickmaps=chunk, **kwargs)
+    with spinner_animation():
+        # Call the original function
+        for chunk in final_clickmaps:
+            result = prepare_maps_parallel(final_clickmaps=chunk, **kwargs)
     
     # Print completion message
     print(f"│  ├─ ✓ Processed {total_images} images")
