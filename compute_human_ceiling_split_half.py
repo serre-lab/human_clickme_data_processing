@@ -119,8 +119,9 @@ def main(
     
     if use_gpu_blurring:
         print(f"Using GPU-accelerated blurring (batch_size={gpu_batch_size}, n_jobs={n_jobs})...")
+        # Wrap clickmaps in a list as expected by prepare_maps_with_gpu_batching
         final_clickmaps, all_clickmaps, categories, _ = utils.prepare_maps_with_gpu_batching(
-            final_clickmaps=clickmaps,
+            final_clickmaps=[clickmaps],  # Wrap in list to match expected format
             blur_size=blur_size,
             blur_sigma=blur_sigma,
             image_shape=image_shape,
