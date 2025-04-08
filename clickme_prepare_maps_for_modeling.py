@@ -179,24 +179,50 @@ if __name__ == "__main__":
             use_parallel = config.get("parallel_prepare_maps", True)
             n_jobs = -1 if use_parallel else 1
             parallel_text = "parallel" if use_parallel else "serial"
-            print(f"│  ├─ Preparing maps ({parallel_text}, n_jobs={n_jobs})...")
+            
+            # Get GPU batch size from config or use default
+            gpu_batch_size = config.get("gpu_batch_size", 32)
+            
+            # Use GPU optimized blurring by default, can be disabled with use_gpu_blurring=False
+            use_gpu_blurring = config.get("use_gpu_blurring", True)
+            
+            if use_gpu_blurring:
+                print(f"│  ├─ Preparing maps with GPU-optimized blurring (batch_size={gpu_batch_size}, n_jobs={n_jobs})...")
+            else:
+                print(f"│  ├─ Preparing maps ({parallel_text}, n_jobs={n_jobs})...")
             
             # Add debug print to check if chunk_clickmaps is empty
             if not chunk_clickmaps:
                 raise ValueError(f"│  ├─ WARNING: No images to process after filtering! Check your filter settings.")
             else:
-                # Use our custom progress wrapper
-                chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = utils.prepare_maps_with_progress(
-                    final_clickmaps=chunk_clickmaps,
-                    blur_size=blur_size,
-                    blur_sigma=blur_sigma,
-                    image_shape=config["image_shape"],
-                    min_pixels=min_pixels,
-                    min_subjects=config["min_subjects"],
-                    metadata=metadata,
-                    blur_sigma_function=blur_sigma_function,
-                    center_crop=False,
-                    n_jobs=n_jobs)
+                # Choose the appropriate processing function based on config
+                if use_gpu_blurring:
+                    # Use GPU-optimized batched processing
+                    chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = utils.prepare_maps_with_gpu_batching(
+                        final_clickmaps=chunk_clickmaps,
+                        blur_size=blur_size,
+                        blur_sigma=blur_sigma,
+                        image_shape=config["image_shape"],
+                        min_pixels=min_pixels,
+                        min_subjects=config["min_subjects"],
+                        metadata=metadata,
+                        blur_sigma_function=blur_sigma_function,
+                        center_crop=False,
+                        n_jobs=n_jobs,
+                        batch_size=gpu_batch_size)
+                else:
+                    # Use the original CPU-based processing
+                    chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = utils.prepare_maps_with_progress(
+                        final_clickmaps=chunk_clickmaps,
+                        blur_size=blur_size,
+                        blur_sigma=blur_sigma,
+                        image_shape=config["image_shape"],
+                        min_pixels=min_pixels,
+                        min_subjects=config["min_subjects"],
+                        metadata=metadata,
+                        blur_sigma_function=blur_sigma_function,
+                        center_crop=False,
+                        n_jobs=n_jobs)
                 
             # Apply mask filtering if needed
             if config["mask_dir"]:

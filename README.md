@@ -275,3 +275,45 @@ This project is licensed under the [MIT License](LICENSE).
 ---
 
 Feel free to reach out if you have any questions or need further assistance!
+
+# Human Clickme Data Processing
+
+## GPU-Accelerated Blurring Feature
+
+A significant performance optimization has been implemented to make the blurring process faster by leveraging GPU acceleration. The script now:
+
+1. Pre-processes clickmaps in parallel on CPU with joblib
+2. Runs blurring in batches on GPU for maximum performance
+3. Post-processes results in parallel on CPU with joblib
+
+### How to Use GPU Acceleration
+
+The GPU acceleration is enabled by default. You can control it with the following config parameters:
+
+- `use_gpu_blurring`: Boolean to enable/disable GPU acceleration (default: `true`)
+- `gpu_batch_size`: Number of images to process in each GPU batch (default: `32`)
+
+Example config:
+```json
+{
+  "experiment_name": "my_experiment",
+  "use_gpu_blurring": true,
+  "gpu_batch_size": 64,
+  "other_params": "..."
+}
+```
+
+### Performance Considerations
+
+- The optimal batch size depends on your GPU memory. Larger batches generally provide better performance but require more memory.
+- You may need to adjust the batch size based on your image dimensions and GPU memory.
+- If you experience out-of-memory errors, try reducing the batch size.
+
+### Implementation Details
+
+The implementation splits the work into three phases:
+1. CPU-parallel pre-processing: Creates binary clickmaps from click coordinates
+2. GPU batch processing: Applies blurring to multiple clickmaps simultaneously
+3. CPU-parallel post-processing: Filters and processes the blurred maps
+
+This approach significantly reduces processing time compared to the previous implementation where blurring was done sequentially.
