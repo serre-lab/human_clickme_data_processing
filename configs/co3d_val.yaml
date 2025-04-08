@@ -1,6 +1,6 @@
 experiment_name: co3d_val
 clickme_data: clickme_datasets/prj_clickmev2_dump_co3d_10_10_2024.npz
-processed_clickme_file: co3d_val_processed.npz
+processed_clickme_file: TESTco3d_val_processed.npz
 processed_medians: co3d_val_medians.json
 example_image_output_dir: co3d_val_images
 debug: False
