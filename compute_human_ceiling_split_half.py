@@ -112,20 +112,40 @@ def main(
         clickmaps = utils.filter_participants(clickmaps)
 
     # Prepare maps
-    if config["parallel_prepare_maps"]:
-        prepare_maps = utils.prepare_maps_parallel
+    # Get settings for GPU processing from config
+    use_gpu_blurring = config.get("use_gpu_blurring", True)  # Default to True for GPU acceleration
+    gpu_batch_size = config.get("gpu_batch_size", 32)        # Default batch size of 32
+    n_jobs = config.get("n_jobs", -1) if config["parallel_prepare_maps"] else 1
+    
+    if use_gpu_blurring:
+        print(f"Using GPU-accelerated blurring (batch_size={gpu_batch_size}, n_jobs={n_jobs})...")
+        final_clickmaps, all_clickmaps, categories, _ = utils.prepare_maps_with_gpu_batching(
+            final_clickmaps=clickmaps,
+            blur_size=blur_size,
+            blur_sigma=blur_sigma,
+            image_shape=image_shape,
+            min_pixels=min_pixels,
+            min_subjects=min_subjects,
+            metadata=metadata,
+            blur_sigma_function=blur_sigma_function,
+            center_crop=center_crop,
+            batch_size=gpu_batch_size,
+            n_jobs=n_jobs)
     else:
-        prepare_maps = utils.prepare_maps
-    final_clickmaps, all_clickmaps, categories, _ = prepare_maps(
-        final_clickmaps=clickmaps,
-        blur_size=blur_size,
-        blur_sigma=blur_sigma,
-        image_shape=image_shape,
-        min_pixels=min_pixels,
-        min_subjects=min_subjects,
-        metadata=metadata,
-        blur_sigma_function=blur_sigma_function,
-        center_crop=center_crop)
+        if config["parallel_prepare_maps"]:
+            prepare_maps = utils.prepare_maps_parallel
+        else:
+            prepare_maps = utils.prepare_maps
+        final_clickmaps, all_clickmaps, categories, _ = prepare_maps(
+            final_clickmaps=clickmaps,
+            blur_size=blur_size,
+            blur_sigma=blur_sigma,
+            image_shape=image_shape,
+            min_pixels=min_pixels,
+            min_subjects=min_subjects,
+            metadata=metadata,
+            blur_sigma_function=blur_sigma_function,
+            center_crop=center_crop)
         
     # Filter for foreground mask overlap if requested  
     if mask_dir:
@@ -154,10 +174,16 @@ def main(
 
     # Compute scores through split-halfs
     all_correlations = []
-    for clickmaps in tqdm(all_clickmaps, desc="Processing ceiling", total=len(all_clickmaps)):
+    
+    # Use parallel processing for correlation calculations
+    n_jobs = config.get("n_jobs", -1)
+    print(f"Computing split-half correlations in parallel (n_jobs={n_jobs})...")
+    
+    def compute_correlation_for_clickmap(clickmaps, metric, n_iterations=10):
+        """Compute split-half correlation for a single clickmap"""
         n = len(clickmaps)
         rand_corrs = []
-        for _ in range(randomization_iters):
+        for _ in range(n_iterations):
             rand_perm = np.random.permutation(n)
             fh = rand_perm[:(n // 2)]
             sh = rand_perm[(n // 2):]
@@ -174,13 +200,26 @@ def main(
             else:
                 raise ValueError(f"Invalid metric: {metric}")
             rand_corrs.append(correlation)
-        all_correlations.append(np.mean(rand_corrs))
+        return np.mean(rand_corrs)
+    
+    # Process clickmaps in parallel
+    all_correlations = Parallel(n_jobs=n_jobs)(
+        delayed(compute_correlation_for_clickmap)(
+            clickmaps=clickmaps, 
+            metric=metric,
+            n_iterations=randomization_iters
+        ) for clickmaps in tqdm(all_clickmaps, desc="Computing split-half correlations", total=len(all_clickmaps))
+    )
     all_correlations = np.asarray(all_correlations)
 
     # Compute null scores
-    null_correlations = []
+    print(f"Computing null correlations in parallel (n_jobs={n_jobs})...")
+    
+    # Define click_len which was previously defined within the loop
     click_len = len(all_clickmaps)
-    for _ in tqdm(range(null_iterations), total=null_iterations, desc="Computing null scores"):
+    
+    def compute_null_correlation_batch(all_clickmaps, click_len, metric):
+        """Compute a batch of null correlations"""
         inner_correlations = []
         for i in range(click_len):
             selected_clickmaps = all_clickmaps[i]
@@ -205,7 +244,16 @@ def main(
             else:
                 raise ValueError(f"Invalid metric: {metric}")
             inner_correlations.append(correlation)
-        null_correlations.append(np.nanmean(inner_correlations))
+        return np.nanmean(inner_correlations)
+    
+    # Process null correlations in parallel
+    null_correlations = Parallel(n_jobs=n_jobs)(
+        delayed(compute_null_correlation_batch)(
+            all_clickmaps=all_clickmaps,
+            click_len=click_len,
+            metric=metric
+        ) for _ in tqdm(range(null_iterations), total=null_iterations, desc="Computing null correlations")
+    )
     null_correlations = np.asarray(null_correlations)
     return final_clickmaps, all_correlations, null_correlations, all_clickmaps
 
