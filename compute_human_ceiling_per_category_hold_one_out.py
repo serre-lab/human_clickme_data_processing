@@ -33,9 +33,14 @@ def gaussian_blur(heatmap, kernel):
     return blurred_heatmap[0]
 
 
-def circle_kernel(size):
+def circle_kernel(size, sigma=None, device='cpu'):
     """
     Create a flat circular kernel normalized to sum to 1.
+    
+    Args:
+        size (int): The diameter of the circle and the size of the kernel.
+        sigma (float, optional): Not used for flat kernel. Included for compatibility.
+        device (str, optional): Device to place the kernel on. Default is 'cpu'.
     """
     y, x = torch.meshgrid(torch.arange(size), torch.arange(size), indexing='ij')
     center = (size - 1) / 2
@@ -44,7 +49,7 @@ def circle_kernel(size):
     kernel = torch.zeros((size, size), dtype=torch.float32)
     kernel[mask] = 1.0
     kernel /= kernel.sum()
-    return kernel.unsqueeze(0).unsqueeze(0)
+    return kernel.unsqueeze(0).unsqueeze(0).to(device)
 
 
 def generate_heatmap(x_coords, y_coords, image_shape):
@@ -90,7 +95,7 @@ def eval_alignment(category_data, image_shape, kernel_size=21):
     """
     Evaluate alignment scores for each category using Spearman correlation.
     """
-    kernel = circle_kernel(kernel_size).to(torch.device('cpu'))
+    kernel = circle_kernel(kernel_size, device='cpu')
     category_alignments = []
 
     for category, data in tqdm(category_data.items(), desc="Evaluating alignments"):

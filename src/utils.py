@@ -541,13 +541,14 @@ def process_clickmap_files_parallel(
     return proc_clickmaps, number_of_maps
 
 
-def circle_kernel(size, sigma=None):
+def circle_kernel(size, sigma=None, device='cpu'):
     """
     Create a flat circular kernel where the values are the average of the total number of on pixels in the filter.
 
     Args:
         size (int): The diameter of the circle and the size of the kernel (size x size).
         sigma (float, optional): Not used for flat kernel. Included for compatibility. Default is None.
+        device (str, optional): Device to place the kernel on. Default is 'cpu'.
 
     Returns:
         torch.Tensor: A 2D circular kernel normalized so that the sum of its elements is 1.
@@ -572,7 +573,8 @@ def circle_kernel(size, sigma=None):
     # Add batch and channel dimensions
     kernel = kernel.unsqueeze(0).unsqueeze(0)
 
-    return kernel
+    # Move to the specified device
+    return kernel.to(device)
 
 
 def process_single_image(image_key, image_trials, image_shape, blur_size, blur_sigma, 
@@ -601,10 +603,10 @@ def process_single_image(image_key, image_trials, image_shape, blur_size, blur_s
             clickmaps = np.asarray([create_clickmap([trials], native_size[::-1]) for trials in image_trials])
             clickmaps = torch.from_numpy(clickmaps).float().unsqueeze(1).to(device)
             if kernel_type == "gaussian":
-                adj_blur_kernel = gaussian_kernel(adj_blur_size, adj_blur_sigma)
+                adj_blur_kernel = gaussian_kernel(adj_blur_size, adj_blur_sigma, device)
                 clickmaps = convolve(clickmaps, adj_blur_kernel)
             elif kernel_type == "circle":
-                adj_blur_kernel = circle_kernel(adj_blur_size, adj_blur_sigma)
+                adj_blur_kernel = circle_kernel(adj_blur_size, adj_blur_sigma, device)
                 clickmaps = convolve(clickmaps, adj_blur_kernel, double_conv=True)
     else:
         clickmaps = np.asarray([create_clickmap([trials], image_shape) for trials in image_trials])
