@@ -181,8 +181,8 @@ def main(
         file_inclusion_filter=False,
         file_exclusion_filter=False,
         n_jobs=-1,
-        gpu_batch_size=64,
-        correlation_batch_size=16,
+        gpu_batch_size=1024,
+        correlation_batch_size=1024,
     ):
     """
     Calculate split-half correlations for clickmaps across different image categories.
@@ -365,8 +365,8 @@ if __name__ == "__main__":
 
     # Get parallelization settings
     n_jobs = config.get("n_jobs", -1)  # Default to all cores
-    gpu_batch_size = config.get("gpu_batch_size", 64)  # Larger default batch size
-    correlation_batch_size = config.get("correlation_batch_size", 16)  # Batch size for correlation computations
+    gpu_batch_size = config.get("gpu_batch_size", 1024)  # Larger default batch size
+    correlation_batch_size = config.get("correlation_batch_size", 1024)  # Batch size for correlation computations
 
     # Load metadata
     if config["metadata_file"]:

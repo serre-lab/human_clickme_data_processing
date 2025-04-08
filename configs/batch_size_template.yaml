@@ -1,0 +1,34 @@
+experiment_name: batch_size_template
+clickme_data: clickme_datasets/your_data.npz
+processed_clickme_file: your_processed.npz
+processed_medians: your_medians.json
+example_image_output_dir: output_images
+debug: False
+assets: assets
+preprocess_db_data: True
+blur_size: 21
+min_clicks: 10  # Minimum number of clicks for a map to be included
+max_clicks: 75 # Maximum number of clicks for a map to be included
+min_subjects: 5  # Minimum number of subjects for an image to be included
+null_iterations: 10
+percentile_thresh: 50  # For median splits
+filter_mobile: True
+metric: spearman  # AUC, crossentropy, spearman, RSA
+image_shape: [256, 256]
+center_crop: [224, 224]
+class_filter_file: False  # Filter classes based on co3d class list
+image_path: /path/to/your/images
+metadata_file: False  # Per image sizes
+file_inclusion_filter: False  # Only include images that match this string
+file_exclusion_filter: False  # Exclude images that match this string
+mask_dir: False  # Directory containing masks for each image
+mask_threshold: 1  # Max IOU threshold for foreground mask overlap
+participant_filter: False
+display_image_keys: auto   # If "auto", will display the top-10 clicked
+
+# Batch size and parallelization settings
+gpu_batch_size: 1024  # Size of batches for GPU operations
+correlation_batch_size: 1024  # Size of batches for correlation computations
+n_jobs: -1  # Number of parallel CPU jobs (-1 for all available cores)
+parallel_prepare_maps: True  # Enable parallel map preparation
+parallel_save: True  # Enable parallel saving of clickmaps 

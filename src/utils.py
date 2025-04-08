@@ -1123,7 +1123,7 @@ def prepare_maps_batched_gpu(
         duplicate_thresh=0.01,
         max_kernel_size=51,
         device='cuda',
-        batch_size=32,
+        batch_size=1024,
         n_jobs=-1):
     """
     Optimized version of prepare_maps that separates CPU and GPU work:
@@ -1145,7 +1145,7 @@ def prepare_maps_batched_gpu(
         duplicate_thresh (float, optional): Threshold for duplicate detection. Defaults to 0.01.
         max_kernel_size (int, optional): Maximum kernel size. Defaults to 51.
         device (str, optional): Device to use for GPU operations. Defaults to 'cuda'.
-        batch_size (int, optional): Batch size for GPU processing. Defaults to 32.
+        batch_size (int, optional): Batch size for GPU processing. Defaults to 1024.
         n_jobs (int, optional): Number of parallel jobs for CPU operations. Defaults to -1.
         
     Returns:
@@ -1373,7 +1373,7 @@ def prepare_maps_with_gpu_batching(final_clickmaps, **kwargs):
     Returns:
         tuple: (new_final_clickmaps, all_clickmaps, categories, keep_index)
     """
-    batch_size = kwargs.pop('batch_size', 32)  # Default batch size of 32
+    batch_size = kwargs.pop('batch_size', 1024)  # Default batch size of 1024
     
     # Simply call the batched GPU function
     print(f"│  ├─ Processing with GPU-optimized batching (batch_size={batch_size})...")

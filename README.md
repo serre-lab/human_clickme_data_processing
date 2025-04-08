@@ -317,3 +317,34 @@ The implementation splits the work into three phases:
 3. CPU-parallel post-processing: Filters and processes the blurred maps
 
 This approach significantly reduces processing time compared to the previous implementation where blurring was done sequentially.
+
+## GPU Acceleration and Batch Size Configuration
+
+The processing pipeline has been optimized for GPU acceleration with large batch processing. By default, the batch size is set to 1024 for both GPU operations and correlation computations.
+
+### Batch Size Settings
+
+You can control batch sizes through the configuration file:
+
+```yaml
+# GPU and parallelization settings
+gpu_batch_size: 1024        # Batch size for GPU blurring operations
+correlation_batch_size: 1024 # Batch size for correlation computations
+n_jobs: -1                  # Number of CPU jobs (-1 for all cores)
+```
+
+If you experience out-of-memory errors on your GPU, try reducing the batch sizes.
+
+### Updating Existing Configs
+
+To update all your existing config files with these batch size settings, run:
+
+```bash
+python update_configs_with_batch_size.py
+```
+
+This will add `gpu_batch_size: 1024` and `correlation_batch_size: 1024` to all your YAML configuration files.
+
+### Template Config
+
+A template config file with these settings is available at `configs/batch_size_template.yaml`.
