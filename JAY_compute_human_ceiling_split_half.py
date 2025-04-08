@@ -8,7 +8,6 @@ from joblib import Parallel, delayed
 import scipy.stats as stats
 import random
 
-
 def minmax_normalize(x):
     """Simple min-max normalization to avoid division by zero."""
     return (x - x.min()) / (x.max() - x.min() + 1e-7)
@@ -178,6 +177,7 @@ def main(
             filtered_clickmaps[k] = v
     clickmaps = filtered_clickmaps
     
+
     final_clickmaps, all_clickmaps, categories, _ = prepare_maps(
         final_clickmaps=clickmaps,
         blur_size=blur_size,
@@ -189,7 +189,8 @@ def main(
         metadata=metadata,
         blur_sigma_function=blur_sigma_function,
         center_crop=center_crop)
-        
+
+    
     # Filter for foreground mask overlap if requested  
     if mask_dir:
         masks = utils.load_masks(mask_dir)
@@ -214,9 +215,29 @@ def main(
             plt.axis('off');plt.title("mean")
             plt.subplot(4,5,20);plt.imshow(np.asarray(image_data)[16:-16, 16:-16]);plt.axis('off')
             plt.show()
+    
+    SAVING = False
+    if SAVING:
+        # Ensure the output directory exists
+        os.makedirs("clickme_v2_heatmaps", exist_ok=True)
 
+        for fname, arr in zip(final_clickmaps.keys(), all_clickmaps):
+            # Step 1: Transpose from (NUM_MAPS, 256, 256) to (256, 256, NUM_MAPS)
+            transposed = np.transpose(arr, (1, 2, 0))
+            
+            # Step 2: Average across the NUM_MAPS dimension to get (256, 256, 1)
+            avg_map = np.mean(transposed, axis=2, keepdims=True)
+            
+            # Clean filename by replacing any slashes with underscores
+            sanitized_fname = fname.replace("/", "_")
+            
+            # Step 3: Save the array with the key as filename (adding .npy) in the specified folder
+            save_path = os.path.join("clickme_v2_heatmaps", f"{sanitized_fname}.npy")
+            np.save(save_path, avg_map)
+        
+    
     # Compute correlations using bootstrapping
-    min_subjects, max_subjects = 3, 10
+    min_subjects, max_subjects = 3, 18
 
     mean_results, stdev_results = [], []
     null_mean_results, null_stdev_results = [], []
@@ -424,4 +445,10 @@ if __name__ == "__main__":
     print('st dev results', stdev_results)
     print('null correlations', null_mean_results)
     print('null st dev results', null_stdev_results)
+
+    with open("results_TRAIN_18.txt", "w") as f:
+        f.write(f"all correlations: {mean_results}\n")
+        f.write(f"st dev results: {stdev_results}\n")
+        f.write(f"null correlations: {null_mean_results}\n")
+        f.write(f"null st dev results: {null_stdev_results}\n")
     

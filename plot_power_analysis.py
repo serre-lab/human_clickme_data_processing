@@ -1,33 +1,60 @@
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 
 # Data
-human_corr = [0.32287320282227366, 0.42474398869008084, 0.4470524865544557, 0.4912216421661969,
-              0.5130588753643014, 0.5375884544763164, 0.5609434694819505, 0.5778145601116464]
-human_stdev = [0.2410261091807557, 0.22913161705698046, 0.21246802554817398, 0.2103430339098439,
-               0.19880155217647275, 0.19758463946881646, 0.18806661784688627, 0.18373515624847167]
+num_subjects = np.arange(3, 19)  # Subjects from 3 to 18
 
-null_corr = [0.10790180891789856, 0.1908512449716566, 0.16260753364102393, 0.19142352398883766,
-             0.20626915819144864, 0.24559848937569162, 0.24948005141216936, 0.25209586036145976]
-null_stdev = [0.1297419943061997, 0.1696543487094471, 0.15213209707064185, 0.17875360131773407,
-              0.17009567214314936, 0.19445878729582114, 0.1571407354183409, 0.18483782066809282]
+num_images = 670
+num_iterations = 100
 
-# X-axis: Subjects from 3 to 10.
-x = np.arange(3, 11)
+avg_corr = np.array([0.3446527387373417, 0.42376321394987987, 0.46814070280541004,
+                     0.5138981114929807, 0.5355055354217811, 0.569223531173753,
+                     0.5882340141671173, 0.6106291343675455, 0.6243911735671871,
+                     0.638232125042545, 0.6527289709621268, 0.6645768941992727,
+                     0.6729530791509648, 0.6842618863083281, 0.6921077683813978,
+                     0.7015506292531952])
+std_corr = np.array([0.22229090870059834, 0.2066206333009592, 0.18665901165477053,
+                     0.19020722771563622, 0.18112638602926623, 0.17707219871660118,
+                     0.17016635573052932, 0.1662384228649881, 0.15818469594729245,
+                     0.15897384429620418, 0.14528364483336836, 0.15379228319309524,
+                     0.14226172003974355, 0.14104288329225684, 0.13698920293955896,
+                     0.13227616633564498])
 
-# Compute error bars: standard deviation divided by sqrt(186)
-n = 186
-err_human = np.array(human_stdev) / np.sqrt(n)
-err_null = np.array(null_stdev) / np.sqrt(n)
+avg_null = np.array([0.05891959007048204, 0.13483131471250848, 0.11301162958454036,
+                     0.15022625977733303, 0.1542826425914332, 0.17126830279071947,
+                     0.17857080023135813, 0.19445101153566735, 0.1893968841876873,
+                     0.24765132063008963, 0.22518285591865414, 0.2497178586057861,
+                     0.23211821540852173, 0.22746495391235882, 0.23070554397378834,
+                     0.2673953309652816])
+std_null = np.array([0.1313799411854781, 0.18997030400745837, 0.18753222117487872,
+                     0.20966552067544522, 0.21207781772478276, 0.23640374709999024,
+                     0.2353965593665213, 0.251617041451966, 0.24624245271362286,
+                     0.2501991264914405, 0.2524312943488681, 0.24649442120960496,
+                     0.26284819924702385, 0.2722618604237423, 0.28323149505127815,
+                     0.27335179012182464])
 
+# Compute standard errors using the number of iterations
+stderr_corr = std_corr / np.sqrt(num_iterations)
+stderr_null = std_null / np.sqrt(num_iterations)
+
+# Plotting
 plt.figure(figsize=(12, 8))
-plt.errorbar(x, human_corr, yerr=err_human, fmt='-o', markersize=10, linewidth=3, label='Human Correlation')
-plt.errorbar(x, null_corr, yerr=err_null, fmt='-s', markersize=10, linewidth=3, label='Null Correlation')
-plt.xlabel("Number of Subjects Per Image", fontsize=22, fontweight='bold')
-plt.ylabel("Alignment (Spearman)", fontsize=22, fontweight='bold')
-plt.title("ClickMe 2.0 Power Analysis", fontsize=28, fontweight='bold')
-plt.xticks(x, fontsize=18)
-plt.yticks(fontsize=18)
-plt.legend(fontsize=18)
+
+# Plot lines with error bars
+plt.errorbar(num_subjects, avg_corr, yerr=stderr_corr, label="Human vs. Human", fmt='-o', capsize=5, linewidth=3)
+plt.errorbar(num_subjects, avg_null, yerr=stderr_null, label="Null Correlation", fmt='--o', capsize=5, linewidth=3)
+
+# Horizontal line for ClickMe 1.0
+plt.axhline(y=0.58, color='green', linestyle=':', linewidth=3, label='ClickMe 1.0')
+
+# Labels and styling
+plt.title("ClickMe 2.0 Consistency", fontsize=28)
+plt.xlabel("Number of Subjects", fontsize=24)
+plt.ylabel("Correlation (Spearman's R)", fontsize=24)
+plt.xticks(fontsize=20)
+plt.yticks(fontsize=20)
+plt.legend(fontsize=20)
 plt.grid(True)
-plt.show()
+plt.tight_layout()
+plt.savefig("ClickMe_2.0_Consistency.png", dpi=300)
+plt.close()
