@@ -1378,3 +1378,186 @@ def prepare_maps_with_gpu_batching(final_clickmaps, **kwargs):
     # Simply call the batched GPU function
     print(f"│  ├─ Processing with GPU-optimized batching (batch_size={batch_size})...")
     return prepare_maps_batched_gpu(final_clickmaps=final_clickmaps, batch_size=batch_size, **kwargs)
+
+# GPU-accelerated correlation metrics
+def compute_AUC_gpu(pred, target, device='cuda'):
+    """
+    GPU-accelerated implementation of AUC score computation.
+    
+    Args:
+        pred (np.ndarray): Predicted heatmap
+        target (np.ndarray): Target heatmap
+        device (str): Device to run computation on ('cuda' or 'cpu')
+        
+    Returns:
+        float: AUC score
+    """
+    import torch
+    from sklearn import metrics
+    
+    # Flatten arrays
+    pred_flat = pred.flatten()
+    target_flat = target.flatten()
+    
+    # Convert to PyTorch tensors
+    pred_tensor = torch.tensor(pred_flat, device=device)
+    target_tensor = torch.tensor(target_flat, device=device)
+    
+    # Create a binary mask of non-zero target pixels
+    mask = target_tensor > 0
+    
+    # If no positive pixels, return 0.5 (random chance)
+    if not torch.any(mask):
+        return 0.5
+    
+    # Get masked predictions and binary ground truth
+    masked_pred = pred_tensor[mask].cpu().numpy()
+    masked_target = torch.ones_like(target_tensor[mask]).cpu().numpy()
+    
+    # Get an equal number of negative samples
+    neg_mask = ~mask
+    if torch.sum(neg_mask) > 0:
+        # Select same number of negative samples as positive ones
+        num_pos = torch.sum(mask).item()
+        num_neg = min(num_pos, torch.sum(neg_mask).item())
+        
+        # Get indices of negative samples
+        neg_indices = torch.nonzero(neg_mask).squeeze()
+        if neg_indices.numel() > 0:
+            if neg_indices.numel() > num_neg:
+                # Random sample negative indices if we have more than we need
+                perm = torch.randperm(neg_indices.numel(), device=device)
+                neg_indices = neg_indices[perm[:num_neg]]
+            
+            # Get predictions for negative samples and set target to 0
+            neg_pred = pred_tensor[neg_indices].cpu().numpy()
+            neg_target = torch.zeros(neg_indices.numel()).numpy()
+            
+            # Combine positive and negative samples
+            masked_pred = np.concatenate([masked_pred, neg_pred])
+            masked_target = np.concatenate([masked_target, neg_target])
+    
+    # Compute AUC score
+    try:
+        return metrics.roc_auc_score(masked_target, masked_pred)
+    except ValueError:
+        # In case of errors, fallback to 0.5
+        return 0.5
+
+def compute_spearman_correlation_gpu(pred, target, device='cuda'):
+    """
+    GPU-accelerated implementation of Spearman correlation computation.
+    
+    Args:
+        pred (np.ndarray): Predicted heatmap
+        target (np.ndarray): Target heatmap
+        device (str): Device to run computation on ('cuda' or 'cpu')
+        
+    Returns:
+        float: Spearman correlation coefficient
+    """
+    import torch
+    
+    # Flatten arrays
+    pred_flat = pred.flatten()
+    target_flat = target.flatten()
+    
+    # Convert to PyTorch tensors
+    pred_tensor = torch.tensor(pred_flat, device=device)
+    target_tensor = torch.tensor(target_flat, device=device)
+    
+    # Compute ranks
+    pred_rank = torch.argsort(torch.argsort(pred_tensor)).float()
+    target_rank = torch.argsort(torch.argsort(target_tensor)).float()
+    
+    # Compute mean ranks
+    pred_mean = torch.mean(pred_rank)
+    target_mean = torch.mean(target_rank)
+    
+    # Compute numerator and denominator
+    numerator = torch.sum((pred_rank - pred_mean) * (target_rank - target_mean))
+    denominator = torch.sqrt(torch.sum((pred_rank - pred_mean)**2) * torch.sum((target_rank - target_mean)**2))
+    
+    # Compute correlation
+    if denominator > 0:
+        correlation = numerator / denominator
+        return correlation.cpu().item()
+    else:
+        return 0.0
+
+def compute_crossentropy_gpu(pred, target, eps=1e-10, device='cuda'):
+    """
+    GPU-accelerated implementation of cross-entropy computation.
+    
+    Args:
+        pred (np.ndarray): Predicted heatmap
+        target (np.ndarray): Target heatmap
+        eps (float): Small value to avoid numerical issues
+        device (str): Device to run computation on ('cuda' or 'cpu')
+        
+    Returns:
+        float: Cross-entropy loss
+    """
+    import torch
+    import torch.nn.functional as F
+    
+    # Convert to PyTorch tensors
+    pred_tensor = torch.tensor(pred, device=device).float()
+    target_tensor = torch.tensor(target, device=device).float()
+    
+    # Normalize target to sum to 1
+    target_sum = torch.sum(target_tensor)
+    if target_sum > 0:
+        target_tensor = target_tensor / target_sum
+    
+    # Normalize prediction to sum to 1
+    pred_sum = torch.sum(pred_tensor)
+    if pred_sum > 0:
+        pred_tensor = pred_tensor / pred_sum
+    
+    # Add small epsilon to avoid log(0)
+    pred_tensor = torch.clamp(pred_tensor, min=eps)
+    
+    # Compute cross-entropy loss
+    loss = -torch.sum(target_tensor * torch.log(pred_tensor))
+    
+    return loss.cpu().item()
+
+# Function to process a batch of correlation computations on GPU
+def batch_compute_correlations_gpu(test_maps, reference_maps, metric='auc', device='cuda'):
+    """
+    Process a batch of correlation computations on GPU for improved performance.
+    For Spearman correlation, uses scipy's implementation instead of the GPU version
+    
+    Args:
+        test_maps (list): List of test maps
+        reference_maps (list): List of reference maps
+        metric (str): Metric to use ('auc', 'spearman', 'crossentropy')
+        device (str): Device to run computation on ('cuda' or 'cpu')
+        
+    Returns:
+        list: Correlation scores for each pair of maps
+    """
+    assert len(test_maps) == len(reference_maps), "Number of test and reference maps must match"
+    from scipy.stats import spearmanr
+    
+    results = []
+    for test_map, reference_map in zip(test_maps, reference_maps):
+        # Normalize maps
+        test_map = (test_map - test_map.min()) / (test_map.max() - test_map.min() + 1e-10)
+        reference_map = (reference_map - reference_map.min()) / (reference_map.max() - reference_map.min() + 1e-10)
+        
+        # Compute correlation using appropriate function
+        if metric.lower() == 'auc':
+            score = compute_AUC_gpu(test_map, reference_map, device)
+        elif metric.lower() == 'spearman':
+            # Use scipy's spearman implementation instead of GPU version
+            score, _ = spearmanr(test_map.flatten(), reference_map.flatten())
+        elif metric.lower() == 'crossentropy':
+            score = compute_crossentropy_gpu(test_map, reference_map, device)
+        else:
+            raise ValueError(f"Unsupported metric: {metric}")
+        
+        results.append(score)
+    
+    return results
