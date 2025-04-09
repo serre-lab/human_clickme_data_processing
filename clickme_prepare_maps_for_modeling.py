@@ -94,7 +94,6 @@ if __name__ == "__main__":
     clickme_data = utils.process_clickme_data(
         config["clickme_data"],
         config["filter_mobile"])
-    import pdb;pdb.set_trace()
     output_dir = config["assets"]
     image_output_dir = config["example_image_output_dir"]
     blur_size = config["blur_size"]
