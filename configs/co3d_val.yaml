@@ -10,10 +10,7 @@ debug: false
 display_image_keys: auto
 example_image_output_dir: co3d_val_images
 experiment_name: co3d_val
-file_exclusion_filter:
-- ILSVRC2012_val
-- ILSVRC2012_train
-- CO3D_ClickMe_Training2
+file_exclusion_filter: ILSVRC2012_val
 file_inclusion_filter: CO3D_ClickMe2
 filter_mobile: true
 gpu_batch_size: 4096
