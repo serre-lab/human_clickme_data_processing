@@ -16,7 +16,7 @@ file_exclusion_filter:
 - CO3D_ClickMe_Training2
 file_inclusion_filter: CO3D_ClickMe2
 filter_mobile: true
-gpu_batch_size: 1024
+gpu_batch_size: 4096
 image_path: /media/data_cifs/projects/prj_video_imagenet/CO3D_ClickMe2
 image_shape:
 - 256

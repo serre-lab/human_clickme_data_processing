@@ -140,7 +140,7 @@ if __name__ == "__main__":
             print(f"\n├─ Chunk {chunk_idx + 1}/{num_chunks} ({chunk_start}-{chunk_end})")
             
             # Create a DataFrame that process_clickmap_files can work with
-            chunk_data = clickmec_data.iloc[chunk_start:chunk_end]
+            chunk_data = clickme_data.iloc[chunk_start:chunk_end]
             l = len(chunk_data["image_path"])       
             print(f"│  ├─ Debug: Initial chunk has {l} images")
 
@@ -149,7 +149,7 @@ if __name__ == "__main__":
             chunk_clickmaps, chunk_clickmap_counts = [], []
             counts = []
             for chunk in chunk_data:
-                cclickmaps, ccounts = utils.process_clickmap_files(
+                clickmaps, ccounts = utils.process_clickmap_files(
                     clickme_data=chunk_data,
                     image_path=config["image_path"],
                     file_inclusion_filter=config["file_inclusion_filter"],

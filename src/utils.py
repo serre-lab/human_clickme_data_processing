@@ -412,8 +412,13 @@ def process_clickmap_files(
                 continue
         elif file_inclusion_filter and file_inclusion_filter not in image_file_name:
             continue
-        if file_exclusion_filter and file_exclusion_filter in image_file_name:
+
+        if isinstance(file_exclusion_filter, list):
+            if any(f in image_file_name for f in file_exclusion_filter):
+                continue
+        elif file_exclusion_filter and file_exclusion_filter in image_file_name:
             continue
+
         if image_file_name not in clickmaps.keys():
             clickmaps[image_file_name] = [clicks]
         else:
@@ -489,7 +494,6 @@ def process_clickmap_files_parallel(
         elif file_inclusion_filter and file_inclusion_filter not in image_file_name:
             return None
 
-        import pdb;pdb.set_trace()
         if isinstance(file_exclusion_filter, list):
             if any(f in image_file_name for f in file_exclusion_filter):
                 return None
