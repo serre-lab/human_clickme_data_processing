@@ -397,7 +397,7 @@ def process_clickmap_files(
         file_exclusion_filter=None,
         process_max="trim"):
     clickmaps = {}
-    if file_inclusion_filter == "CO3D_ClickmeV2":
+    if file_inclusion_filter == "CO3D_ClickmeV2" or file_inclusion_filter == "CO3D_ClickMe2":
         # Patch for val co3d
         image_files = glob(os.path.join(image_path, "**", "*.png"))
     for clicks, image_path, user_id in zip(
@@ -406,7 +406,7 @@ def process_clickmap_files(
             clickme_data["user_id"].values
         ):
         image_file_name = os.path.sep.join(image_path.split(os.path.sep)[-2:])
-        if file_inclusion_filter == "CO3D_ClickmeV2":
+        if file_inclusion_filter == "CO3D_ClickmeV2" or file_inclusion_filter == "CO3D_ClickMe2":
             # Patch for val co3d
             if not np.any([image_file_name in x for x in image_files]):
                 continue
