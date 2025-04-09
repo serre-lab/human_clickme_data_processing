@@ -11,7 +11,7 @@ display_image_keys: auto
 example_image_output_dir: co3d_val_images
 experiment_name: co3d_val
 file_exclusion_filter: ILSVRC2012_val
-file_inclusion_filter: CO3D_ClickmeV2
+file_inclusion_filter: CO3D_ClickMe2
 filter_mobile: true
 gpu_batch_size: 1024
 image_path: /media/data_cifs/projects/prj_video_imagenet/CO3D_ClickMe2
