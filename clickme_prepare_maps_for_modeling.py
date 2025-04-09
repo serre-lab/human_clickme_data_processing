@@ -155,9 +155,9 @@ if __name__ == "__main__":
                     file_exclusion_filter=config["file_exclusion_filter"],
                     min_clicks=config["min_clicks"],
                     max_clicks=config["max_clicks"])
-                chunk_clickmaps.append(cclickmaps)
+                chunk_clickmaps.append(clickmaps)
                 chunk_clickmap_counts.append(ccounts)
-                counts.append(len(cclickmaps))
+                counts.append(len(clickmaps))
             counts = np.sum(counts)
                 
             print(f"│  ├─ Debug: After processing clickmap files: {counts} images")
