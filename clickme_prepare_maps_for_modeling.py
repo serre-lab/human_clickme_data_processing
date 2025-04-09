@@ -94,6 +94,7 @@ if __name__ == "__main__":
     clickme_data = utils.process_clickme_data(
         config["clickme_data"],
         config["filter_mobile"])
+    import pdb;pdb.set_trace()
     output_dir = config["assets"]
     image_output_dir = config["example_image_output_dir"]
     blur_size = config["blur_size"]
@@ -139,7 +140,7 @@ if __name__ == "__main__":
             print(f"\n├─ Chunk {chunk_idx + 1}/{num_chunks} ({chunk_start}-{chunk_end})")
             
             # Create a DataFrame that process_clickmap_files can work with
-            chunk_data = clickme_data.iloc[chunk_start:chunk_end]
+            chunk_data = clickmec_data.iloc[chunk_start:chunk_end]
             l = len(chunk_data["image_path"])       
             print(f"│  ├─ Debug: Initial chunk has {l} images")
 
