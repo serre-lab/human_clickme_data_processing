@@ -489,7 +489,7 @@ def process_clickmap_files_parallel(
         elif file_inclusion_filter and file_inclusion_filter not in image_file_name:
             return None
         if isinstance(file_exclusion_filter, list):
-            if any(file_exclusion_filter in image_file_name for file_exclusion_filter in file_exclusion_filter):
+            if any(f in image_file_name for f in file_exclusion_filter):
                 return None
         elif file_exclusion_filter and file_exclusion_filter in image_file_name:
             return None
