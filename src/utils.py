@@ -488,7 +488,10 @@ def process_clickmap_files_parallel(
                 return None
         elif file_inclusion_filter and file_inclusion_filter not in image_file_name:
             return None
-        if file_exclusion_filter and file_exclusion_filter in image_file_name:
+        if isinstance(file_exclusion_filter, list):
+            if any(file_exclusion_filter in image_file_name for file_exclusion_filter in file_exclusion_filter):
+                return None
+        elif file_exclusion_filter and file_exclusion_filter in image_file_name:
             return None
 
         clickmap = row["clicks"]
