@@ -20,175 +20,6 @@ import numpy as np
 from scipy import stats
 from scipy.spatial.distance import cdist
 
-try:
-    import cupy as cp
-    HAS_CUPY = True
-except ImportError:
-    HAS_CUPY = False
-
-
-def normalize_heatmap(heatmap):
-    """Normalize heatmap to sum to 1 while preserving zeros"""
-    total = heatmap.sum()
-    return heatmap / total if total != 0 else heatmap
-
-
-def get_cost_matrix(shape, device='cpu'):
-    """
-    Compute cost matrix for grid coordinates.
-    Vectorized implementation for speed.
-    """
-    h, w = shape
-    xp = cp if (device == 'gpu' and HAS_CUPY) else np
-    
-    y, x = xp.meshgrid(xp.arange(h), xp.arange(w), indexing='ij')
-    points = xp.stack([y.flatten(), x.flatten()], axis=1)
-    
-    # Compute pairwise distances using broadcasting
-    diff = points[:, None, :] - points[None, :, :]
-    costs = xp.sqrt(xp.sum(diff ** 2, axis=2))
-    
-    return costs
-
-
-def sinkhorn_knopp(cost_matrix, a, b, epsilon=1e-1, max_iters=100, tol=1e-6):
-    """
-    Fast Sinkhorn-Knopp algorithm for approximate optimal transport.
-    
-    Parameters:
-    -----------
-    cost_matrix : array
-        Matrix of transport costs
-    a, b : array
-        Source and target distributions
-    epsilon : float
-        Regularization parameter (smaller = more accurate but slower)
-    """
-    xp = cp if isinstance(cost_matrix, cp.ndarray) else np
-    
-    # Initialization
-    K = xp.exp(-cost_matrix / epsilon)
-    
-    # Initialize scaling vectors
-    u = xp.ones_like(a)
-    v = xp.ones_like(b)
-    
-    # Sinkhorn iterations
-    for _ in range(max_iters):
-        u_old = u.copy()
-        
-        # u update
-        u = a / (K @ v)
-        # v update
-        v = b / (K.T @ u)
-        
-        # Check convergence
-        err = xp.max(xp.abs(u - u_old))
-        if err < tol:
-            break
-    
-    # Compute transport plan
-    P = xp.diag(u) @ K @ xp.diag(v)
-    
-    # Compute total cost
-    cost = xp.sum(P * cost_matrix)
-    
-    return cost
-
-
-def fast_normalized_emd(heatmap1, heatmap2, epsilon=1e-1):
-    """
-    Compute normalized Earth Mover's Distance between two heatmaps.
-    Uses Sinkhorn algorithm for speed and GPU if available.
-    
-    Parameters:
-    -----------
-    heatmap1, heatmap2 : np.ndarray
-        Input heatmaps
-    epsilon : float
-        Regularization parameter for Sinkhorn
-        
-    Returns:
-    --------
-    float
-        Normalized EMD value
-    """
-    if heatmap1.shape != heatmap2.shape:
-        raise ValueError("Heatmaps must have same shape")
-    
-    # Use GPU if available
-    if HAS_CUPY:
-        heatmap1 = cp.array(heatmap1)
-        heatmap2 = cp.array(heatmap2)
-        device = 'gpu'
-    else:
-        device = 'cpu'
-    
-    # Normalize heatmaps
-    a = normalize_heatmap(heatmap1).flatten()
-    b = normalize_heatmap(heatmap2).flatten()
-    
-    # Get or compute cost matrix
-    cost_matrix = get_cost_matrix(heatmap1.shape, device)
-    
-    # Compute EMD using Sinkhorn
-    distance = sinkhorn_knopp(cost_matrix, a, b, epsilon=epsilon)
-    
-    # Move back to CPU if needed
-    if HAS_CUPY:
-        distance = cp.asnumpy(distance)
-    
-    return distance
-
-
-def benchmark_speed(shape=(64, 64), n_iterations=100):
-    """Benchmark the speed of the EMD computation"""
-    import time
-    
-    # Generate random heatmaps
-    heatmap1 = np.random.rand(*shape)
-    heatmap2 = np.random.rand(*shape)
-    
-    start = time.time()
-    for _ in range(n_iterations):
-        _ = fast_normalized_emd(heatmap1, heatmap2)
-    end = time.time()
-    
-    avg_time = (end - start) / n_iterations
-    print(f"Average time per computation: {avg_time*1000:.2f}ms")
-    return avg_time
-
-
-def compute_similarity(heatmap1, heatmap2, method='spatial_correlation', **kwargs):
-    """
-    Wrapper function to compute heatmap similarity using different methods.
-    
-    Parameters:
-    -----------
-    heatmap1, heatmap2 : np.ndarray
-        Input heatmaps
-    method : str
-        Similarity method to use
-    **kwargs : dict
-        Additional parameters for specific methods
-    
-    Returns:
-    --------
-    float
-        Similarity score
-    """
-    methods = {
-        'spatial_correlation': spatial_correlation_similarity,
-        'spearman': lambda x, y: stats.spearmanr(x.flatten(), y.flatten())[0],
-        'pearson': lambda x, y: stats.pearsonr(x.flatten(), y.flatten())[0]
-    }
-    
-    if method not in methods:
-        raise ValueError(f"Method {method} not supported")
-    
-    return methods[method](heatmap1, heatmap2, **kwargs)
-
-
 def load_masks(mask_dir, wc="*.pth"):
     files = glob(os.path.join(mask_dir, wc))
     assert len(files), "No masks found in {}".format(mask_dir)
@@ -787,23 +618,6 @@ def prepare_maps_with_progress(final_clickmaps, **kwargs):
     
     return result
 
-def compute_average_map(trial_indices, clickmaps, resample=False):
-    """
-    Compute the average map from selected trials.
-
-    Args:
-        trial_indices (list of int): Indices of the trials to be averaged.
-        clickmaps (np.ndarray): 3D array of clickmaps.
-        resample (bool): If True, resample trials with replacement. Default is False.
-
-    Returns:
-        np.ndarray: The average clickmap.
-    """
-    if resample:
-        trial_indices = np.random.choice(trial_indices, size=len(trial_indices), replace=True)
-    return clickmaps[trial_indices].mean(0)
-
-
 def compute_spearman_correlation(map1, map2):
     """
     Compute the Spearman correlation between two maps.
@@ -909,17 +723,6 @@ def integrate_surface(iou_scores, x, z, average_areas=True, normalize=False):
     return int_xz
 
 
-def compute_RSA(map1, map2):
-    """
-    Compute the RSA between two maps.
-
-    Returns:    
-        float: The RSA between the two maps.
-    """
-    import pdb; pdb.set_trace()
-    return np.corrcoef(map1, map2)[0, 1]
-
-
 def compute_AUC(
         pred_map,
         target_map,
@@ -999,55 +802,6 @@ def create_clickmap(point_lists, image_shape, exponential_decay=False, tau=0.5):
                     heatmap[point[1], point[0]] += 1
     return heatmap
 
-
-def alt_gaussian_kernel(size=10, sigma=10):
-    """
-    Generates a 2D Gaussian kernel.
-
-    Parameters
-    ----------
-    size : int, optional
-        Kernel size, by default 10
-    sigma : int, optional
-        Kernel sigma, by default 10
-
-    Returns
-    -------
-    kernel : torch.Tensor
-        A Gaussian kernel.
-    """
-    x_range = torch.arange(-(size-1)//2, (size-1)//2 + 1, 1)
-    y_range = torch.arange((size-1)//2, -(size-1)//2 - 1, -1)
-
-    xs, ys = torch.meshgrid(x_range, y_range, indexing='ij')
-    kernel = torch.exp(-(xs**2 + ys**2) / (2 * sigma**2)) / (2 * np.pi * sigma**2)
-    
-    kernel = kernel / kernel.sum()
-    kernel = kernel.unsqueeze(0).unsqueeze(0)  # Add batch and channel dimensions
-    
-    return kernel
-
-def alt_gaussian_blur(heatmap, kernel):
-    """
-    Blurs a heatmap with a Gaussian kernel.
-
-    Parameters
-    ----------
-    heatmap : torch.Tensor
-        The heatmap to blur.
-    kernel : torch.Tensor
-        The Gaussian kernel.
-
-    Returns
-    -------
-    blurred_heatmap : torch.Tensor
-        The blurred heatmap.
-    """
-    # Ensure heatmap and kernel have the correct dimensions
-    heatmap = heatmap.unsqueeze(0) if heatmap.dim() == 3 else heatmap
-    blurred_heatmap = torch.nn.functional.conv2d(heatmap, kernel, padding='same')
-
-    return blurred_heatmap[0]
 
 def save_clickmaps_parallel(all_clickmaps, final_keep_index, output_dir, experiment_name, image_path, n_jobs=-1):
     """
