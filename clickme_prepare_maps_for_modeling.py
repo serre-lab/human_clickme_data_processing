@@ -7,36 +7,6 @@ from matplotlib import pyplot as plt
 from src import utils
 from tqdm import tqdm
 
-def sample_half_pos(point_lists, num_samples=100):
-    num_pos = {}
-    for image in point_lists:
-        sample_nums = []
-        for i in range(num_samples):
-            clickmaps = point_lists[image]
-            all_maps = []
-            map_indices = list(range(len(clickmaps)))
-            random_indices = np.random.choice(map_indices, int(len(clickmaps)//2))
-            s1 = []
-            s2 = []
-            for j, clickmap in enumerate(clickmaps):
-                if j in random_indices:
-                    s1 += clickmap
-                else:
-                    s2 += clickmap
-            sample_nums += [len(set(s1)), len(set(s2))]
-        num_pos[image] = np.mean(sample_nums)
-    return num_pos
-    
-def get_num_pos(point_lists):
-    num_pos = {}
-    for image in point_lists:
-        clickmaps = point_lists[image]
-        all_maps = []
-        for clickmap in clickmaps:
-            all_maps += clickmap
-        all_maps = set(all_maps)
-        num_pos[image] = len(all_maps)
-    return num_pos
 
 def get_medians(point_lists, mode='image', thresh=50):
     medians = {}
