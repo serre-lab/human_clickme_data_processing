@@ -240,14 +240,18 @@ def process_clickmap_files(
         if file_inclusion_filter == "CO3D_ClickmeV2" or file_inclusion_filter == "CO3D_ClickMe2":
             # Patch for val co3d
             if not np.any([image_file_name in x for x in image_files]):
+                import pdb; pdb.set_trace()
                 continue
         elif file_inclusion_filter and file_inclusion_filter not in image_file_name:
+            import pdb; pdb.set_trace()
             continue
 
         if isinstance(file_exclusion_filter, list):
             if any(f in image_file_name for f in file_exclusion_filter):
+                import pdb; pdb.set_trace()
                 continue
         elif file_exclusion_filter and file_exclusion_filter in image_file_name:
+            import pdb; pdb.set_trace()
             continue
 
         if image_file_name not in clickmaps.keys():
@@ -256,6 +260,7 @@ def process_clickmap_files(
             clickmaps[image_file_name].append(clicks)
 
     import pdb; pdb.set_trace()
+
 
     number_of_maps = []
     proc_clickmaps = {}
