@@ -195,6 +195,7 @@ if __name__ == "__main__":
                         n_jobs=n_jobs)
                 
             # Apply mask filtering if needed
+            import pdb;pdb.set_trace()
             if config["mask_dir"]:
                 print(f"│  ├─ Applying mask filtering...")
                 masks = utils.load_masks(config["mask_dir"])
@@ -206,6 +207,7 @@ if __name__ == "__main__":
                     mask_threshold=config["mask_threshold"])
             
             # Save results
+            import pdb;pdb.set_trace()
             print(f"│  ├─ Saving processed maps...")
             # Check if parallel saving is enabled (default to True if not specified)
             use_parallel_save = config.get("parallel_save", True)
