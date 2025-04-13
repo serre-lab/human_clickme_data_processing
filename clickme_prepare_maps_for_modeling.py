@@ -195,7 +195,6 @@ if __name__ == "__main__":
                         n_jobs=n_jobs)
                 
             # Apply mask filtering if needed
-            import pdb;pdb.set_trace()
             if config["mask_dir"]:
                 print(f"│  ├─ Applying mask filtering...")
                 masks = utils.load_masks(config["mask_dir"])
