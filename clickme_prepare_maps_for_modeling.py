@@ -226,7 +226,8 @@ if __name__ == "__main__":
                 with tqdm(total=len(chunk_final_keep_index), desc="│  │  ├─ Saving files", 
                          position=1, leave=False, colour="cyan") as save_pbar:
                     for j, img_name in enumerate(chunk_final_keep_index):
-                        if not os.path.exists(os.path.join(config["image_path"], img_name)):
+                        # if not os.path.exists(os.path.join(config["image_path"], img_name)):
+                        if not os.path.join(config["image_path"].replace(config["file_inclusion_filter"] + os.path.sep, ""), img_name):
                             continue
                             
                         hmp = chunk_all_clickmaps[j]
