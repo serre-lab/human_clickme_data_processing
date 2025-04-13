@@ -96,6 +96,7 @@ if __name__ == "__main__":
     all_final_keep_index = []
     
     # Calculate number of chunks
+    import pdb;pdb.set_trace()
     num_chunks = (total_images + chunk_size - 1) // chunk_size
     
     # Use a simple progress tracking system with tqdm - prettier hierarchy

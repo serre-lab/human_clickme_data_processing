@@ -25,6 +25,7 @@ def load_masks(mask_dir, wc="*.pth"):
     assert len(files), "No masks found in {}".format(mask_dir)
     masks = {}
     for f in files:
+        import pdb;pdb.set_trace()
         loaded = torch.load(f)  # Akash added image/mask/category
         # image = loaded[0]
         mask = loaded[1]
