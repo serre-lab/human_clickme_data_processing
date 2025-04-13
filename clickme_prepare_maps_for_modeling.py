@@ -206,7 +206,6 @@ if __name__ == "__main__":
                     mask_threshold=config["mask_threshold"])
             
             # Save results
-            import pdb;pdb.set_trace()
             print(f"│  ├─ Saving processed maps...")
             # Check if parallel saving is enabled (default to True if not specified)
             use_parallel_save = config.get("parallel_save", True)
