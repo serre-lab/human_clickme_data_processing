@@ -938,7 +938,7 @@ def prepare_maps_batched_gpu(
     
     # Process each chunk in the list
     for chunk_idx, clickmap_chunk in enumerate(final_clickmaps):
-        print(f"│  ├─ Processing chunk {chunk_idx+1}/{len(final_clickmaps)}...")
+        print(f"│  ├─ Processing GPU batch {chunk_idx+1}/{len(final_clickmaps)}...")
         
         # Step 2: Prepare data for pre-processing
         all_keys = list(clickmap_chunk.keys())

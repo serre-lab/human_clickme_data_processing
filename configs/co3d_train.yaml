@@ -4,16 +4,17 @@ center_crop:
 - 224
 - 224
 class_filter_file: false
-clickme_data: clickme_datasets/dump_co3d_combined_03_13_2025.npz
+# clickme_data: clickme_datasets/dump_co3d_combined_03_13_2025.npz
+clickme_data: clickme_datasets/prj_clickmev2_dump_co3d_10_10_2024.npz
 correlation_batch_size: 1024
 debug: false
 display_image_keys: auto
 example_image_output_dir: co3d_train_images
 experiment_name: co3d_train
 file_exclusion_filter: ILSVRC2012_val
-file_inclusion_filter: null
+file_inclusion_filter: CO3D_ClickMe_Training2
 filter_mobile: true
-gpu_batch_size: 1024
+gpu_batch_size: 4096
 image_path: /media/data_cifs/projects/prj_video_imagenet/CO3D_ClickMe_Training2/
 image_shape:
 - 256
