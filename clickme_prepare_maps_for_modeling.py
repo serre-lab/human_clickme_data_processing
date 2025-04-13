@@ -270,7 +270,6 @@ if __name__ == "__main__":
         print("Generating visualizations for display images...")
         for img_name in config["display_image_keys"]:
             # Find the corresponding heatmap
-            import pdb;pdb.set_trace()
             heatmap_path = os.path.join(output_dir, config["experiment_name"], f"{img_name.replace('/', '_')}.npy")
             if not os.path.exists(heatmap_path):
                 print(f"Heatmap not found for {img_name}")
