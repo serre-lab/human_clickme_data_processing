@@ -256,8 +256,6 @@ def process_clickmap_files(
         else:
             clickmaps[image_file_name].append(clicks)
 
-    import pdb; pdb.set_trace()
-
     number_of_maps = []
     proc_clickmaps = {}
     n_empty_clickmap = 0
@@ -302,6 +300,7 @@ def process_clickmap_files(
             n_clickmaps += 1
             proc_clickmaps[image].append(tuples_list)
         number_of_maps.append(n_clickmaps)
+    import pdb; pdb.set_trace()
     return proc_clickmaps, number_of_maps
 
 
