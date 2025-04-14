@@ -19,7 +19,7 @@ image_path: /media/data_cifs/projects/prj_video_imagenet/CO3D_ClickMe2
 image_shape:
 - 256
 - 256
-mask_dir: co3d_masks
+mask_dir: null
 mask_threshold: 0.17
 max_clicks: 75
 metadata_file: false
