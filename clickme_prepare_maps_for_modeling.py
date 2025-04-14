@@ -283,8 +283,9 @@ if __name__ == "__main__":
                 img = Image.open(os.path.join(config["image_path"], img_name))
             elif os.path.exists(os.path.join(config["image_path"].replace(config["file_inclusion_filter"] + os.path.sep, ""), img_name)):
                 img = Image.open(os.path.join(config["image_path"].replace(config["file_inclusion_filter"] + os.path.sep, ""), img_name))
+            elif os.path.exists(os.path.join(config["image_path"].replace(config["file_inclusion_filter"], ""), img_name)):
+                img = Image.open(os.path.join(config["image_path"].replace(config["file_inclusion_filter"], ""), img_name))
             else:
-                import pdb; pdb.set_trace()
                 raise ValueError(f"Image not found for {img_name}")
             if metadata:
                 click_match = [k_ for k_ in all_final_clickmaps.keys() if img_name in k_]
