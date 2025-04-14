@@ -89,21 +89,22 @@ if __name__ == "__main__":
     # For very large datasets, sometimes serial processing with efficient chunking is faster
     # due to reduced overhead and better memory management
     chunk_size = 50000  # Adjust based on available memory
-    total_images = len(clickme_data)
+    total_maps = len(clickme_data)
+    import pdb; pdb.set_trace()
     
     # Process all data in chunks
     all_final_clickmaps = {}
     all_final_keep_index = []
     
     # Calculate number of chunks
-    num_chunks = (total_images + chunk_size - 1) // chunk_size
+    num_chunks = (total_maps + chunk_size - 1) // chunk_size
     
     # Use a simple progress tracking system with tqdm - prettier hierarchy
     print("\nProcessing clickme data in chunks...")
     with tqdm(total=num_chunks, desc="├─ Processing chunks", position=0, leave=True, colour="blue") as pbar:
         for chunk_idx in range(num_chunks):
             chunk_start = chunk_idx * chunk_size
-            chunk_end = min(chunk_start + chunk_size, total_images)
+            chunk_end = min(chunk_start + chunk_size, total_maps)
             
             # Use a clear, hierarchical format for chunk info
             print(f"\n├─ Chunk {chunk_idx + 1}/{num_chunks} ({chunk_start}-{chunk_end})")
