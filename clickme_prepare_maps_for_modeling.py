@@ -82,37 +82,40 @@ if __name__ == "__main__":
     os.makedirs(os.path.join(output_dir, config["experiment_name"]), exist_ok=True)
 
     # Process data in chunks to avoid memory issues
-    # Instead of loading all 5.3M+ images at once, process in manageable batches
-    print(f"Processing clickme data in chunks...")
+    print(f"Processing clickme data in chunks by unique images...")
     
-    # Determine whether to use parallel processing
-    # For very large datasets, sometimes serial processing with efficient chunking is faster
-    # due to reduced overhead and better memory management
-    chunk_size = 50000  # Adjust based on available memory
-    total_maps = len(clickme_data)
-    import pdb; pdb.set_trace()
+    # Group clickme_data by image_path to ensure all maps for an image are processed together
+    unique_images = clickme_data['image_path'].unique()
+    total_unique_images = len(unique_images)
+    
+    # Determine chunk size based on unique images, not total maps
+    chunk_size = 50000  # Adjust based on available memory and average maps per image
+    
+    # Calculate number of chunks based on unique images
+    num_chunks = (total_unique_images + chunk_size - 1) // chunk_size
     
     # Process all data in chunks
     all_final_clickmaps = {}
     all_final_keep_index = []
     
-    # Calculate number of chunks
-    num_chunks = (total_maps + chunk_size - 1) // chunk_size
-    
     # Use a simple progress tracking system with tqdm - prettier hierarchy
-    print("\nProcessing clickme data in chunks...")
+    print(f"\nProcessing {total_unique_images} unique images in {num_chunks} chunks...")
     with tqdm(total=num_chunks, desc="├─ Processing chunks", position=0, leave=True, colour="blue") as pbar:
         for chunk_idx in range(num_chunks):
             chunk_start = chunk_idx * chunk_size
-            chunk_end = min(chunk_start + chunk_size, total_maps)
+            chunk_end = min(chunk_start + chunk_size, total_unique_images)
             
             # Use a clear, hierarchical format for chunk info
             print(f"\n├─ Chunk {chunk_idx + 1}/{num_chunks} ({chunk_start}-{chunk_end})")
             
-            # Create a DataFrame that process_clickmap_files can work with
-            chunk_data = clickme_data.iloc[chunk_start:chunk_end]
-            l = len(chunk_data["image_path"])       
-            print(f"│  ├─ Debug: Initial chunk has {l} images")
+            # Get the image_paths for this chunk
+            chunk_image_paths = unique_images[chunk_start:chunk_end]
+            
+            # Filter clickme_data to only include maps for images in this chunk
+            chunk_data = clickme_data[clickme_data['image_path'].isin(chunk_image_paths)]
+            
+            l = len(chunk_data)       
+            print(f"│  ├─ Debug: Chunk has {l} maps for {len(chunk_image_paths)} unique images")
 
             # Process chunk data
             print(f"│  ├─ Processing clickmap files...")
