@@ -1,12 +1,19 @@
 from setuptools import setup, Extension
 from Cython.Build import cythonize
 import numpy as np
+import os
+
+# Ensure the file exists and get the absolute path
+src_file = os.path.abspath("src/cython_utils.pyx")
+if not os.path.exists(src_file):
+    raise FileNotFoundError(f"Cython source file not found: {src_file}")
+print(f"Found Cython source file: {src_file}")
 
 # Define the extension
 extensions = [
     Extension(
         "src.cython_utils",
-        ["src/cython_utils.pyx"],
+        sources=[src_file],
         include_dirs=[np.get_include()],
         extra_compile_args=["-O3"]  # Optimize for maximum performance
     )
