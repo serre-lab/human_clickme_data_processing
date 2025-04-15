@@ -6,7 +6,7 @@ import numpy as np
 extensions = [
     Extension(
         "src.cython_utils",
-        ["src/cython_utils.py"],
+        ["src/cython_utils.pyx"],
         include_dirs=[np.get_include()],
         extra_compile_args=["-O3"]  # Optimize for maximum performance
     )
