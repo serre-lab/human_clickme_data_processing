@@ -5,3 +5,4 @@ scipy
 torch
 matplotlib
 h5py
+cython

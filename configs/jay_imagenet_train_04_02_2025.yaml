@@ -5,7 +5,7 @@ center_crop:
 - 256
 class_filter_file: false
 clickme_data: clickme_datasets/train_combined_04_02_2025.npz
-correlation_batch_size: 1024
+correlation_batch_size: 4096
 debug: false
 display_image_keys: auto
 example_image_output_dir: jay_imagenet_train_combined_04_02_2025_images
@@ -13,7 +13,7 @@ experiment_name: jay_imagenet_train_04_02_2025
 file_exclusion_filter: ILSVRC2012_val
 file_inclusion_filter: null
 filter_mobile: true
-gpu_batch_size: 100000000
+gpu_batch_size: 16384
 image_path: /media/data_cifs/projects/prj_video_imagenet/imagenet/ILSVRC/Data/CLS-LOC/train
 image_shape:
 - 256
