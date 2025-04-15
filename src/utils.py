@@ -1159,6 +1159,9 @@ def prepare_maps_batched_gpu(
             def preprocess_clickmap(image_key, image_trials, image_shape, metadata=None):
                 """Helper function to pre-process a clickmap before GPU processing"""
                 # Process metadata and create clickmaps (creates binary maps, no blurring)
+                # Ensure image_shape is a tuple as required by create_clickmap_func
+                image_shape_tuple = tuple(image_shape) if isinstance(image_shape, list) else image_shape
+                
                 if metadata is not None and image_key in metadata:
                     native_size = metadata[image_key]
                     # Use provided create_clickmap_func
@@ -1170,7 +1173,7 @@ def prepare_maps_batched_gpu(
                     }
                 else:
                     # Use provided create_clickmap_func
-                    clickmaps = np.asarray([create_clickmap_func([trials], image_shape) for trials in image_trials])
+                    clickmaps = np.asarray([create_clickmap_func([trials], image_shape_tuple) for trials in image_trials])
                     return {
                         'key': image_key,
                         'clickmaps': clickmaps,
