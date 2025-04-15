@@ -4,3 +4,4 @@ Pillow
 scipy
 torch
 matplotlib
+h5py
