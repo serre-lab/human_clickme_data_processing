@@ -6,6 +6,7 @@ import pandas as pd
 from matplotlib import pyplot as plt
 from src import utils
 from tqdm import tqdm
+import h5py  # Add h5py for HDF5 support
 
 
 def get_medians(point_lists, mode='image', thresh=50):
@@ -69,6 +70,30 @@ if __name__ == "__main__":
     blur_size = config["blur_size"]
     blur_sigma = blur_sigma_function(blur_size)
     min_pixels = (2 * blur_size) ** 2  # Minimum number of pixels for a map to be included following filtering
+    
+    # Set output format (HDF5 by default for large datasets)
+    output_format = config.get("output_format", "auto")
+    if output_format == "auto":
+        # Automatically choose format based on dataset size
+        large_dataset_threshold = 100000  # If more than 100K images, use HDF5
+        if len(clickme_data) > large_dataset_threshold:
+            output_format = "hdf5"
+        else:
+            output_format = "numpy"
+    
+    # Choose processing method (compiled Cython vs. Python)
+    use_cython = config.get("use_cython", True)
+    if use_cython:
+        try:
+            from src import cython_utils
+            create_clickmap_func = cython_utils.create_clickmap_fast
+            print("Using Cython-optimized functions")
+        except ImportError:
+            use_cython = False
+            create_clickmap_func = utils.create_clickmap
+            print("Cython modules not available, using Python implementation")
+    else:
+        create_clickmap_func = utils.create_clickmap
 
     # Load metadata
     if config["metadata_file"]:
@@ -89,7 +114,7 @@ if __name__ == "__main__":
     total_unique_images = len(unique_images)
     
     # Determine chunk size based on unique images, not total maps
-    chunk_size = 100000  # Adjust based on available memory and average maps per image
+    chunk_size = config.get("chunk_size", 100000)  # Configurable chunk size
     
     # Calculate number of chunks based on unique images
     num_chunks = (total_unique_images + chunk_size - 1) // chunk_size
@@ -97,6 +122,21 @@ if __name__ == "__main__":
     # Process all data in chunks
     all_final_clickmaps = {}
     all_final_keep_index = []
+    
+    # Prepare HDF5 file if using HDF5 format
+    hdf5_path = None
+    if output_format == "hdf5":
+        hdf5_path = os.path.join(output_dir, f"{config['experiment_name']}.h5")
+        print(f"Saving results to HDF5 file: {hdf5_path}")
+        # Create the file initially to ensure directory exists
+        with h5py.File(hdf5_path, 'w') as f:
+            # Create datasets group to store all clickmaps
+            f.create_group("clickmaps")
+            # Create a metadata group
+            meta_grp = f.create_group("metadata")
+            # Add some useful metadata
+            meta_grp.attrs["total_unique_images"] = total_unique_images
+            meta_grp.attrs["creation_date"] = np.string_(pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"))
     
     # Use a simple progress tracking system with tqdm - prettier hierarchy
     print(f"\nProcessing {total_unique_images} unique images in {num_chunks} chunks...")
@@ -120,14 +160,28 @@ if __name__ == "__main__":
             # Process chunk data
             print(f"│  ├─ Processing clickmap files...")
             
-            # FIX: Only process once, not in a loop
-            clickmaps, ccounts = utils.process_clickmap_files(
-                clickme_data=chunk_data,
-                image_path=config["image_path"],
-                file_inclusion_filter=config["file_inclusion_filter"],
-                file_exclusion_filter=config["file_exclusion_filter"],
-                min_clicks=config["min_clicks"],
-                max_clicks=config["max_clicks"])
+            # Choose the appropriate method based on dataset size
+            parallel_clickmap_processing = config.get("parallel_clickmap_processing", True)
+            
+            if parallel_clickmap_processing and l > 10000:
+                # Use parallel processing for large chunks
+                clickmaps, ccounts = utils.process_clickmap_files_parallel(
+                    clickme_data=chunk_data,
+                    image_path=config["image_path"],
+                    file_inclusion_filter=config["file_inclusion_filter"],
+                    file_exclusion_filter=config["file_exclusion_filter"],
+                    min_clicks=config["min_clicks"],
+                    max_clicks=config["max_clicks"],
+                    n_jobs=config.get("n_jobs", -1))
+            else:
+                # Use regular processing for smaller chunks
+                clickmaps, ccounts = utils.process_clickmap_files(
+                    clickme_data=chunk_data,
+                    image_path=config["image_path"],
+                    file_inclusion_filter=config["file_inclusion_filter"],
+                    file_exclusion_filter=config["file_exclusion_filter"],
+                    min_clicks=config["min_clicks"],
+                    max_clicks=config["max_clicks"])
             
             print(f"│  ├─ Debug: After processing clickmap files: {len(clickmaps)} unique images with clickmaps")
                 
@@ -178,7 +232,8 @@ if __name__ == "__main__":
                         blur_sigma_function=blur_sigma_function,
                         center_crop=False,
                         n_jobs=n_jobs,
-                        batch_size=gpu_batch_size)
+                        batch_size=gpu_batch_size,
+                        create_clickmap_func=create_clickmap_func if use_cython else None)
                 else:
                     # Use the original CPU-based processing
                     chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = utils.prepare_maps_with_progress(
@@ -191,7 +246,8 @@ if __name__ == "__main__":
                         metadata=metadata,
                         blur_sigma_function=blur_sigma_function,
                         center_crop=False,
-                        n_jobs=n_jobs)
+                        n_jobs=n_jobs,
+                        create_clickmap_func=create_clickmap_func if use_cython else None)
                 
             # Apply mask filtering if needed
             if config["mask_dir"]:
@@ -206,38 +262,49 @@ if __name__ == "__main__":
             
             # Save results
             print(f"│  ├─ Saving processed maps...")
-            # Check if parallel saving is enabled (default to True if not specified)
-            use_parallel_save = config.get("parallel_save", True)
-            if use_parallel_save:
-                # Use parallel saving
-                saved_count = utils.save_clickmaps_parallel(
+            
+            if output_format == "hdf5":
+                # Save to HDF5 file
+                saved_count = utils.save_clickmaps_to_hdf5(
                     all_clickmaps=chunk_all_clickmaps,
                     final_keep_index=chunk_final_keep_index,
-                    output_dir=output_dir,
-                    experiment_name=config["experiment_name"],
-                    image_path=config["image_path"],
+                    hdf5_path=hdf5_path,
                     n_jobs=n_jobs
                 )
-                print(f"│  │  └─ Saved {saved_count} files in parallel")
+                print(f"│  │  └─ Saved {saved_count} datasets to HDF5 file")
             else:
-                # Use sequential saving with tqdm
-                with tqdm(total=len(chunk_final_keep_index), desc="│  │  ├─ Saving files", 
-                         position=1, leave=False, colour="cyan") as save_pbar:
-                    for j, img_name in enumerate(chunk_final_keep_index):
-                        # if not os.path.exists(os.path.join(config["image_path"], img_name)):
-                        if (
-                            not os.path.join(config["image_path"].replace(config["file_inclusion_filter"] + os.path.sep, ""), img_name)  # New for Co3d train
-                            and not os.path.exists(os.path.join(config["image_path"], img_name))  # Legacy
-                        ):
-                            continue
-                            
-                        hmp = chunk_all_clickmaps[j]
-                        # Save directly to disk - don't accumulate in memory
-                        np.save(
-                            os.path.join(output_dir, config["experiment_name"], f"{img_name.replace('/', '_')}.npy"), 
-                            hmp
-                        )
-                        save_pbar.update(1)
+                # Check if parallel saving is enabled (default to True if not specified)
+                use_parallel_save = config.get("parallel_save", True)
+                if use_parallel_save:
+                    # Use parallel saving
+                    saved_count = utils.save_clickmaps_parallel(
+                        all_clickmaps=chunk_all_clickmaps,
+                        final_keep_index=chunk_final_keep_index,
+                        output_dir=output_dir,
+                        experiment_name=config["experiment_name"],
+                        image_path=config["image_path"],
+                        n_jobs=n_jobs
+                    )
+                    print(f"│  │  └─ Saved {saved_count} files in parallel")
+                else:
+                    # Use sequential saving with tqdm
+                    with tqdm(total=len(chunk_final_keep_index), desc="│  │  ├─ Saving files", 
+                             position=1, leave=False, colour="cyan") as save_pbar:
+                        for j, img_name in enumerate(chunk_final_keep_index):
+                            # if not os.path.exists(os.path.join(config["image_path"], img_name)):
+                            if (
+                                not os.path.join(config["image_path"].replace(config["file_inclusion_filter"] + os.path.sep, ""), img_name)  # New for Co3d train
+                                and not os.path.exists(os.path.join(config["image_path"], img_name))  # Legacy
+                            ):
+                                continue
+                                
+                            hmp = chunk_all_clickmaps[j]
+                            # Save directly to disk - don't accumulate in memory
+                            np.save(
+                                os.path.join(output_dir, config["experiment_name"], f"{img_name.replace('/', '_')}.npy"), 
+                                hmp
+                            )
+                            save_pbar.update(1)
             
             # Merge results (keeping minimal data in memory)
             all_final_clickmaps.update(chunk_final_clickmaps)
@@ -272,12 +339,24 @@ if __name__ == "__main__":
         print("Generating visualizations for display images...")
         for img_name in config["display_image_keys"]:
             # Find the corresponding heatmap
-            heatmap_path = os.path.join(output_dir, config["experiment_name"], f"{img_name.replace('/', '_')}.npy")
-            if not os.path.exists(heatmap_path):
-                print(f"Heatmap not found for {img_name}")
-                continue
+            if output_format == "hdf5":
+                # Read from HDF5 file
+                with h5py.File(hdf5_path, 'r') as f:
+                    dataset_name = img_name.replace('/', '_')
+                    if dataset_name in f["clickmaps"]:
+                        hmp = f["clickmaps"][dataset_name][:]
+                    else:
+                        print(f"Heatmap not found for {img_name}")
+                        continue
+            else:
+                # Read from numpy file
+                heatmap_path = os.path.join(output_dir, config["experiment_name"], f"{img_name.replace('/', '_')}.npy")
+                if not os.path.exists(heatmap_path):
+                    print(f"Heatmap not found for {img_name}")
+                    continue
+                    
+                hmp = np.load(heatmap_path)
                 
-            hmp = np.load(heatmap_path)
             if os.path.exists(os.path.join(config["image_path"], img_name)):
                 img = Image.open(os.path.join(config["image_path"], img_name))
             elif os.path.exists(os.path.join(config["image_path"].replace(config["file_inclusion_filter"] + os.path.sep, ""), img_name)):

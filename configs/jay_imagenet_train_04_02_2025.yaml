@@ -35,3 +35,6 @@ preprocess_db_data: true
 processed_clickme_file: jay_imagenet_train_combined_04_02_2025_processed.npz
 processed_medians: jay_imagenet_train_combined_04_02_2025_medians.json
 remove_string: imagenet/train/
+output_format: "hdf5"
+use_cython: true
+chunk_size: 100000

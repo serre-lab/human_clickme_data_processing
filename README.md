@@ -51,6 +51,7 @@ Follow these steps to set up the project:
 
    ```bash
    pip install -r requirements.txt
+   python setup.py build_ext --inplace
    ```
 
 ## Usage
@@ -348,3 +349,108 @@ This will add `gpu_batch_size: 1024` and `correlation_batch_size: 1024` to all y
 ### Template Config
 
 A template config file with these settings is available at `configs/batch_size_template.yaml`.
+
+# ClickMe Data Processing - Optimized for Large Datasets
+
+This repository contains optimized tools for processing the ClickMe dataset, particularly when dealing with very large datasets (6M+ trials).
+
+## Optimizations
+
+The code has been optimized with several performance improvements:
+
+1. **Cython-accelerated functions** - Core computational functions rewritten in Cython for significant speed improvements
+2. **HDF5 storage** - Optional HDF5 file format for storing clickmaps, much faster than individual numpy files
+3. **Parallel processing** - Multi-core processing for CPU-bound tasks
+4. **GPU acceleration** - CUDA-optimized blurring and convolution operations
+5. **Memory management** - Improved chunk processing to minimize memory usage
+6. **Optimized algorithms** - Faster implementations of common operations like duplicate detection
+
+## Installation
+
+Before running the optimized code, you need to compile the Cython extensions:
+
+```bash
+# Install required dependencies
+pip install cython numpy scipy h5py
+
+# Compile Cython extensions
+python setup.py build_ext --inplace
+```
+
+## Usage
+
+The script can be run with a config file:
+
+```bash
+python clickme_prepare_maps_for_modeling.py configs/your_config.yaml
+```
+
+### Configuration Options
+
+The following configuration options are available to control the optimization:
+
+```yaml
+# Core settings (existing)
+clickme_data: "path/to/clickme_data.csv"
+filter_mobile: true
+assets: "assets"
+example_image_output_dir: "examples"
+blur_size: 15
+image_shape: [224, 224]
+min_clicks: 4
+max_clicks: 100
+min_subjects: 3
+percentile_thresh: 50
+experiment_name: "experiment1"
+processed_medians: "processed_medians.json"
+
+# New optimization settings
+output_format: "hdf5"  # "hdf5", "numpy", or "auto" (auto selects based on dataset size)
+use_cython: true  # Use Cython-optimized functions (much faster)
+chunk_size: 100000  # Number of unique images per chunk
+parallel_clickmap_processing: true  # Use parallel processing for clickmap file processing
+parallel_prepare_maps: true  # Use parallel processing for map preparation
+use_gpu_blurring: true  # Use GPU for blurring operations
+gpu_batch_size: 32  # Batch size for GPU operations
+n_jobs: -1  # Number of CPU jobs (-1 = all cores)
+```
+
+## Performance Tips
+
+For extremely large datasets (6M+ trials):
+
+1. **Use HDF5 format** - Set `output_format: "hdf5"` to avoid slow file I/O with individual numpy files
+2. **Enable Cython** - Keep `use_cython: true` for maximum performance
+3. **Adjust chunk size** - If you encounter memory issues, reduce `chunk_size` to a smaller value
+4. **Monitor GPU memory** - If running out of GPU memory, reduce `gpu_batch_size`
+5. **Use compression** - HDF5 compression is enabled by default, but you can adjust compression level in the code
+
+## Example Config
+
+Here's an example config for processing a very large dataset:
+
+```yaml
+# Data settings
+clickme_data: "data/clickme_6m_trials.csv"
+filter_mobile: true
+assets: "assets/large_dataset"
+example_image_output_dir: "examples/large_dataset"
+blur_size: 15
+image_shape: [224, 224]
+min_clicks: 4
+max_clicks: 100
+min_subjects: 3
+percentile_thresh: 50
+experiment_name: "clickme_large"
+processed_medians: "clickme_large_medians.json"
+
+# Optimization settings for large dataset
+output_format: "hdf5"
+use_cython: true
+chunk_size: 50000  # Reduced chunk size for memory management
+parallel_clickmap_processing: true
+parallel_prepare_maps: true
+use_gpu_blurring: true
+gpu_batch_size: 16  # Smaller batch size to avoid GPU OOM
+n_jobs: -1
+```

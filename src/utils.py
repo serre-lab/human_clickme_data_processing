@@ -14,6 +14,7 @@ from glob import glob
 from train_subject_classifier import RNN
 from accelerate import Accelerator
 from joblib import Parallel, delayed
+import h5py
 
 
 import numpy as np
@@ -801,6 +802,154 @@ def create_clickmap(point_lists, image_shape, exponential_decay=False, tau=0.5):
                     heatmap[point[1], point[0]] += 1
     return heatmap
 
+
+def save_clickmaps_to_hdf5(all_clickmaps, final_keep_index, hdf5_path, n_jobs=-1, compression="gzip", compression_opts=4):
+    """
+    Save clickmaps to an HDF5 file in parallel with optimized compression.
+    
+    Parameters:
+    -----------
+    all_clickmaps : list
+        List of clickmaps to save
+    final_keep_index : list
+        List of image names corresponding to the clickmaps
+    hdf5_path : str
+        Path to the HDF5 file to save to
+    n_jobs : int
+        Number of parallel jobs to run
+    compression : str
+        Compression algorithm to use (default: gzip)
+    compression_opts : int
+        Compression level (1-9, where 9 is highest compression but slowest)
+        
+    Returns:
+    --------
+    int
+        Number of successfully saved datasets
+    """
+    from joblib import Parallel, delayed
+    import h5py
+    import numpy as np
+    from tqdm import tqdm
+    import os
+    
+    # Function to process a batch of clickmaps
+    def save_batch_to_hdf5(batch_indices, batch_img_names, hdf5_path, compression, compression_opts):
+        """Save a batch of clickmaps to the HDF5 file"""
+        saved_count = 0
+        
+        # Open the HDF5 file
+        with h5py.File(hdf5_path, 'a') as f:
+            # Process each clickmap in the batch
+            for i, img_name in zip(batch_indices, batch_img_names):
+                dataset_name = img_name.replace('/', '_')
+                
+                # Get the clickmap
+                hmp = all_clickmaps[i]
+                
+                # Skip if dataset already exists
+                if dataset_name in f["clickmaps"]:
+                    continue
+                
+                # Create dataset with compression
+                try:
+                    f["clickmaps"].create_dataset(
+                        dataset_name, 
+                        data=hmp,
+                        compression=compression,
+                        compression_opts=compression_opts,
+                        # Add some helpful attributes
+                        attrs={
+                            "original_path": img_name,
+                            "shape": hmp.shape
+                        }
+                    )
+                    saved_count += 1
+                except Exception as e:
+                    print(f"Error saving {dataset_name}: {e}")
+        
+        return saved_count
+    
+    # Determine optimal batch size based on dataset characteristics
+    total_maps = len(final_keep_index)
+    
+    # Check if any maps exist
+    if total_maps == 0:
+        print("No clickmaps to save")
+        return 0
+    
+    # Check average clickmap size to adjust batch size
+    sample_size = min(10, len(all_clickmaps))
+    avg_size = np.mean([clickmap.nbytes for clickmap in all_clickmaps[:sample_size]])
+    
+    # Adjust batch size based on average clickmap size
+    # Larger clickmaps = smaller batches to avoid memory issues
+    if avg_size > 100_000_000:  # > 100MB
+        batch_size = 10
+    elif avg_size > 10_000_000:  # > 10MB
+        batch_size = 100
+    else:
+        batch_size = 1000
+    
+    print(f"Saving {total_maps} clickmaps to HDF5 file (avg size: {avg_size/1_000_000:.2f}MB, batch size: {batch_size})...")
+    
+    # Process in batches for better progress reporting and memory management
+    total_saved = 0
+    
+    # Use tqdm to show progress
+    with tqdm(total=total_maps, desc="Saving to HDF5") as pbar:
+        for batch_start in range(0, total_maps, batch_size):
+            batch_end = min(batch_start + batch_size, total_maps)
+            batch_size_actual = batch_end - batch_start
+            
+            # Prepare batch data
+            batch_indices = list(range(batch_start, batch_end))
+            batch_img_names = [final_keep_index[i] for i in batch_indices]
+            
+            # Process this batch in parallel workers if multiple jobs
+            if n_jobs != 1 and batch_size_actual > 10:
+                # Split the batch for parallel processing
+                sub_batch_size = max(1, batch_size_actual // max(1, n_jobs))
+                sub_batches = [(
+                    batch_indices[i:i+sub_batch_size],
+                    batch_img_names[i:i+sub_batch_size]
+                ) for i in range(0, batch_size_actual, sub_batch_size)]
+                
+                # Process sub-batches in parallel
+                results = Parallel(n_jobs=n_jobs)(
+                    delayed(save_batch_to_hdf5)(
+                        sub_batch_indices,
+                        sub_batch_names,
+                        hdf5_path,
+                        compression,
+                        compression_opts
+                    ) 
+                    for sub_batch_indices, sub_batch_names in sub_batches
+                )
+                
+                # Sum results
+                batch_saved = sum(results)
+            else:
+                # Process batch sequentially
+                batch_saved = save_batch_to_hdf5(
+                    batch_indices,
+                    batch_img_names,
+                    hdf5_path,
+                    compression,
+                    compression_opts
+                )
+            
+            # Update counters and progress
+            total_saved += batch_saved
+            pbar.update(batch_size_actual)
+            
+    # Update metadata in the HDF5 file
+    with h5py.File(hdf5_path, 'a') as f:
+        if "metadata" in f:
+            f["metadata"].attrs["total_saved"] = total_saved
+            f["metadata"].attrs["last_updated"] = np.string_(pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"))
+    
+    return total_saved
 
 def save_clickmaps_parallel(all_clickmaps, final_keep_index, output_dir, experiment_name, image_path, n_jobs=-1):
     """
