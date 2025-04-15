@@ -89,7 +89,7 @@ if __name__ == "__main__":
     total_unique_images = len(unique_images)
     
     # Determine chunk size based on unique images, not total maps
-    chunk_size = 10000000  # Adjust based on available memory and average maps per image
+    chunk_size = 100000  # Adjust based on available memory and average maps per image
     
     # Calculate number of chunks based on unique images
     num_chunks = (total_unique_images + chunk_size - 1) // chunk_size
