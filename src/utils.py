@@ -623,14 +623,14 @@ def prepare_maps_with_progress(final_clickmaps, **kwargs):
             stop_spinner.set()
             spinner_thread.join()
     
+    # Extract the required functions from kwargs
+    create_clickmap_func = kwargs.get('create_clickmap_func')
+    fast_duplicate_detection = kwargs.get('fast_duplicate_detection')
+    
     # Use the spinner animation while processing
     with spinner_animation():
         # Call the original function
         for chunk in final_clickmaps:
-            # Pass the required functions from kwargs
-            create_clickmap_func = kwargs.get('create_clickmap_func')
-            fast_duplicate_detection = kwargs.get('fast_duplicate_detection')
-            
             result = prepare_maps_parallel(
                 final_clickmaps=chunk, 
                 create_clickmap_func=create_clickmap_func,

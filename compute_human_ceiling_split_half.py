@@ -208,6 +208,19 @@ def main(
 
     assert blur_sigma_function is not None, "Blur sigma function needs to be provided."
 
+    # Import required functions
+    try:
+        from src import cython_utils
+        create_clickmap_func = cython_utils.create_clickmap_fast
+        fast_duplicate_detection = cython_utils.fast_duplicate_detection
+        print("Using Cython-optimized functions")
+    except (ImportError, ModuleNotFoundError) as e:
+        from src import python_utils
+        create_clickmap_func = python_utils.create_clickmap_fast
+        fast_duplicate_detection = python_utils.fast_duplicate_detection
+        print(f"Cython modules not available: {e}")
+        print("Falling back to Python implementation. For best performance, run 'python compile_cython.py build_ext --inplace' first.")
+
     # Check if GPU is available
     if torch.cuda.is_available():
         device = 'cuda'
@@ -258,7 +271,9 @@ def main(
         center_crop=center_crop,
         batch_size=gpu_batch_size,
         device=device,
-        n_jobs=n_jobs)
+        n_jobs=n_jobs,
+        create_clickmap_func=create_clickmap_func,
+        fast_duplicate_detection=fast_duplicate_detection)
         
     # Filter for foreground mask overlap if requested  
     if mask_dir:

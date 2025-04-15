@@ -242,7 +242,8 @@ if __name__ == "__main__":
                         center_crop=False,
                         n_jobs=n_jobs,
                         batch_size=gpu_batch_size,
-                        create_clickmap_func=create_clickmap_func if use_cython else None)
+                        create_clickmap_func=create_clickmap_func,
+                        fast_duplicate_detection=fast_duplicate_detection)
                 else:
                     # Use the original CPU-based processing
                     chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = utils.prepare_maps_with_progress(
@@ -256,7 +257,8 @@ if __name__ == "__main__":
                         blur_sigma_function=blur_sigma_function,
                         center_crop=False,
                         n_jobs=n_jobs,
-                        create_clickmap_func=create_clickmap_func if use_cython else None)
+                        create_clickmap_func=create_clickmap_func,
+                        fast_duplicate_detection=fast_duplicate_detection)
                 
             # Apply mask filtering if needed
             if config["mask_dir"]:
