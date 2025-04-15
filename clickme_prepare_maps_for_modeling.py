@@ -88,10 +88,11 @@ if __name__ == "__main__":
             from src import cython_utils
             create_clickmap_func = cython_utils.create_clickmap_fast
             print("Using Cython-optimized functions")
-        except ImportError:
+        except (ImportError, ModuleNotFoundError) as e:
             use_cython = False
             create_clickmap_func = utils.create_clickmap
-            print("Cython modules not available, using Python implementation")
+            print(f"Cython modules not available: {e}")
+            print("Falling back to Python implementation. For best performance, run 'python setup.py build_ext --inplace' first.")
     else:
         create_clickmap_func = utils.create_clickmap
 
