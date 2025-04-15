@@ -947,7 +947,7 @@ def save_clickmaps_to_hdf5(all_clickmaps, final_keep_index, hdf5_path, n_jobs=-1
     with h5py.File(hdf5_path, 'a') as f:
         if "metadata" in f:
             f["metadata"].attrs["total_saved"] = total_saved
-            f["metadata"].attrs["last_updated"] = np.string_(pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"))
+            f["metadata"].attrs["last_updated"] = np.bytes_(pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"))
     
     return total_saved
 

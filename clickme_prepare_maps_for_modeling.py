@@ -145,7 +145,7 @@ if __name__ == "__main__":
             meta_grp = f.create_group("metadata")
             # Add some useful metadata
             meta_grp.attrs["total_unique_images"] = total_unique_images
-            meta_grp.attrs["creation_date"] = np.string_(pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"))
+            meta_grp.attrs["creation_date"] = np.bytes_(pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"))
     
     # Use a simple progress tracking system with tqdm - prettier hierarchy
     print(f"\nProcessing {total_unique_images} unique images in {num_chunks} chunks...")
