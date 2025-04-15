@@ -933,18 +933,40 @@ def prepare_maps_batched_gpu(
     else:
         raise NotImplementedError(kernel_type)
     
-    # Process each chunk in the final_clickmaps list
-    results_for_all_chunks = []
+    # We'll store all results here
+    all_final_results = {
+        'all_clickmaps': [],
+        'categories': [],
+        'keep_index': [],
+        'new_final_clickmaps': {}
+    }
     
-    # Process each chunk in the list
-    for chunk_idx, clickmap_chunk in enumerate(final_clickmaps):
-        print(f"│  ├─ Processing GPU batch {chunk_idx+1}/{len(final_clickmaps)}...")
+    # FIX: Flatten all dictionaries in the list into a single dictionary for processing
+    # Only process once per unique image
+    merged_clickmaps = {}
+    for clickmap_dict in final_clickmaps:
+        merged_clickmaps.update(clickmap_dict)
+    
+    # Step 2: Get all keys and prepare for batch processing
+    all_keys = list(merged_clickmaps.keys())
+    total_images = len(all_keys)
+    
+    # Calculate number of batches based on total unique images
+    num_batches = (total_images + batch_size - 1) // batch_size
+    
+    print(f"Processing {total_images} unique images in {num_batches} batches...")
+    
+    # Process each batch of images
+    for batch_idx in range(num_batches):
+        batch_start = batch_idx * batch_size
+        batch_end = min(batch_start + batch_size, total_images)
         
-        # Step 2: Prepare data for pre-processing
-        all_keys = list(clickmap_chunk.keys())
-        all_maps = [clickmap_chunk[k] for k in all_keys]
+        print(f"│  ├─ Processing GPU batch {batch_idx+1}/{num_batches} (images {batch_start}-{batch_end})...")
         
-        # Step 3: Pre-process clickmaps in parallel on CPU (prepare points, no blurring)
+        # Get keys for this batch
+        batch_keys = all_keys[batch_start:batch_end]
+        
+        # Step 3: Pre-process only this batch of clickmaps in parallel on CPU
         print(f"│  │  ├─ Pre-processing clickmaps on CPU (parallel, n_jobs={n_jobs})...")
         
         def preprocess_clickmap(image_key, image_trials, image_shape, metadata=None):
@@ -966,30 +988,30 @@ def prepare_maps_batched_gpu(
                     'native_size': None
                 }
         
-        # Use parallel processing for pre-processing
+        # Use parallel processing for pre-processing only this batch
         preprocessed = Parallel(n_jobs=n_jobs)(
             delayed(preprocess_clickmap)(
-                all_keys[i], 
-                all_maps[i], 
+                key, 
+                merged_clickmaps[key], 
                 image_shape, 
                 metadata
-            ) for i in tqdm(range(len(all_keys)), desc="Pre-processing clickmaps")
+            ) for key in tqdm(batch_keys, desc="Pre-processing clickmaps")
         )
         
         # Only keep non-empty preprocessed data
         preprocessed = [p for p in preprocessed if len(p['clickmaps']) > 0]
         
-        # Step 4: Process blurring in batches on GPU
-        print(f"│  │  ├─ Processing blurring in batches on GPU (batch_size={batch_size})...")
+        # Step 4: Process GPU blurring
+        print(f"│  │  ├─ Processing blurring on GPU...")
         
-        results = []
+        # Process in smaller GPU sub-batches if needed
+        gpu_batch_size = min(batch_size, 256)  # Smaller GPU batches to avoid OOM
+        batch_results = []
         
-        # Process in batches
-        for batch_idx in tqdm(range(0, len(preprocessed), batch_size), desc="Processing GPU batches"):
-            batch = preprocessed[batch_idx:batch_idx + batch_size]
-            batch_results = []
+        for gpu_batch_idx in tqdm(range(0, len(preprocessed), gpu_batch_size), desc="Processing GPU batches"):
+            gpu_batch = preprocessed[gpu_batch_idx:gpu_batch_idx + gpu_batch_size]
             
-            for item in batch:
+            for item in gpu_batch:
                 image_key = item['key']
                 clickmaps = item['clickmaps']
                 native_size = item['native_size']
@@ -1033,9 +1055,9 @@ def prepare_maps_batched_gpu(
                     'key': image_key,
                     'clickmaps': processed_clickmaps
                 })
-            
-            # Add batch results to overall results
-            results.extend(batch_results)
+                
+                # Free GPU memory
+                del clickmaps_tensor
         
         # Step 5: Post-process results in parallel on CPU
         print(f"│  │  ├─ Post-processing results on CPU (parallel, n_jobs={n_jobs})...")
@@ -1073,51 +1095,35 @@ def prepare_maps_batched_gpu(
         # Use parallel processing for post-processing
         post_results = Parallel(n_jobs=n_jobs)(
             delayed(postprocess_clickmap)(
-                results[i],
+                batch_results[i],
                 min_pixels,
                 min_subjects,
                 duplicate_thresh
-            ) for i in tqdm(range(len(results)), desc="Post-processing results")
+            ) for i in tqdm(range(len(batch_results)), desc="Post-processing results")
         )
         
-        # Step 6: Compile final results for this chunk
-        chunk_result = {
-            'all_clickmaps': [],
-            'categories': [],
-            'keep_index': [],
-            'new_final_clickmaps': {}
-        }
-        
+        # Step 6: Compile final results for this batch
         for result in post_results:
             if result is not None:
                 image_key, clickmaps = result
                 category = image_key.split("/")[0]
                 
-                chunk_result['all_clickmaps'].append(clickmaps)
-                chunk_result['categories'].append(category)
-                chunk_result['keep_index'].append(image_key)
-                chunk_result['new_final_clickmaps'][image_key] = clickmap_chunk[image_key]
+                all_final_results['all_clickmaps'].append(clickmaps)
+                all_final_results['categories'].append(category)
+                all_final_results['keep_index'].append(image_key)
+                all_final_results['new_final_clickmaps'][image_key] = merged_clickmaps[image_key]
         
-        results_for_all_chunks.append(chunk_result)
+        # Free memory
+        del preprocessed, batch_results, post_results
+        torch.cuda.empty_cache()
     
-    # If there's only one chunk, return its results directly
-    if len(results_for_all_chunks) == 1:
-        r = results_for_all_chunks[0]
-        return r['new_final_clickmaps'], r['all_clickmaps'], r['categories'], r['keep_index']
-    
-    # Combine results from all chunks
-    all_clickmaps = []
-    categories = []
-    keep_index = []
-    new_final_clickmaps = {}
-    
-    for r in results_for_all_chunks:
-        all_clickmaps.extend(r['all_clickmaps'])
-        categories.extend(r['categories'])
-        keep_index.extend(r['keep_index'])
-        new_final_clickmaps.update(r['new_final_clickmaps'])
-    
-    return new_final_clickmaps, all_clickmaps, categories, keep_index
+    # Return combined results
+    return (
+        all_final_results['new_final_clickmaps'], 
+        all_final_results['all_clickmaps'], 
+        all_final_results['categories'], 
+        all_final_results['keep_index']
+    )
 
 # Custom wrapper for prepare_maps_batched_gpu with progress display
 def prepare_maps_with_gpu_batching(final_clickmaps, **kwargs):
