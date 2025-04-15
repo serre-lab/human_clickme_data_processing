@@ -119,35 +119,30 @@ if __name__ == "__main__":
 
             # Process chunk data
             print(f"│  ├─ Processing clickmap files...")
-            chunk_clickmaps, chunk_clickmap_counts = [], []
-            counts = []
-            for chunk in chunk_data:
-                clickmaps, ccounts = utils.process_clickmap_files(
-                    clickme_data=chunk_data,
-                    image_path=config["image_path"],
-                    file_inclusion_filter=config["file_inclusion_filter"],
-                    file_exclusion_filter=config["file_exclusion_filter"],
-                    min_clicks=config["min_clicks"],
-                    max_clicks=config["max_clicks"])
-                chunk_clickmaps.append(clickmaps)
-                chunk_clickmap_counts.append(ccounts)
-                counts.append(len(clickmaps))
-            counts = np.sum(counts)
-                
-            print(f"│  ├─ Debug: After processing clickmap files: {counts} images")
+            
+            # FIX: Only process once, not in a loop
+            clickmaps, ccounts = utils.process_clickmap_files(
+                clickme_data=chunk_data,
+                image_path=config["image_path"],
+                file_inclusion_filter=config["file_inclusion_filter"],
+                file_exclusion_filter=config["file_exclusion_filter"],
+                min_clicks=config["min_clicks"],
+                max_clicks=config["max_clicks"])
+            
+            print(f"│  ├─ Debug: After processing clickmap files: {len(clickmaps)} unique images with clickmaps")
                 
             # Apply all filters to the chunk
             if config["class_filter_file"]:
                 print(f"│  ├─ Filtering classes...")
-                chunk_clickmaps = utils.filter_classes(
-                    clickmaps=chunk_clickmaps,
+                clickmaps = utils.filter_classes(
+                    clickmaps=clickmaps,
                     class_filter_file=config["class_filter_file"])
-                print(f"│  ├─ Debug: After class filtering: {len(chunk_clickmaps)} images")
+                print(f"│  ├─ Debug: After class filtering: {len(clickmaps)} images")
 
             if config["participant_filter"]:
                 print(f"│  ├─ Filtering participants...")
-                chunk_clickmaps = utils.filter_participants(chunk_clickmaps)
-                print(f"│  ├─ Debug: After participant filtering: {len(chunk_clickmaps)} images")
+                clickmaps = utils.filter_participants(clickmaps)
+                print(f"│  ├─ Debug: After participant filtering: {len(clickmaps)} images")
             
             # Process maps for this chunk with our custom progress wrapper
             use_parallel = config.get("parallel_prepare_maps", True)
@@ -166,14 +161,14 @@ if __name__ == "__main__":
                 print(f"│  ├─ Preparing maps ({parallel_text}, n_jobs={n_jobs})...")
             
             # Add debug print to check if chunk_clickmaps is empty
-            if not chunk_clickmaps:
+            if not clickmaps:
                 raise ValueError(f"│  ├─ WARNING: No images to process after filtering! Check your filter settings.")
             else:
                 # Choose the appropriate processing function based on config
                 if use_gpu_blurring:
                     # Use GPU-optimized batched processing
                     chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = utils.prepare_maps_with_gpu_batching(
-                        final_clickmaps=chunk_clickmaps,
+                        final_clickmaps=clickmaps,
                         blur_size=blur_size,
                         blur_sigma=blur_sigma,
                         image_shape=config["image_shape"],
@@ -187,7 +182,7 @@ if __name__ == "__main__":
                 else:
                     # Use the original CPU-based processing
                     chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = utils.prepare_maps_with_progress(
-                        final_clickmaps=chunk_clickmaps,
+                        final_clickmaps=clickmaps,
                         blur_size=blur_size,
                         blur_sigma=blur_sigma,
                         image_shape=config["image_shape"],
@@ -249,7 +244,7 @@ if __name__ == "__main__":
             all_final_keep_index.extend(chunk_final_keep_index)
             
             # Free memory
-            del chunk_data, chunk_clickmaps, chunk_clickmap_counts
+            del chunk_data, clickmaps, ccounts
             del chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index
             
             # Update main progress bar
