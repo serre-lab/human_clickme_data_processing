@@ -13,7 +13,7 @@ experiment_name: jay_imagenet_train_04_02_2025
 file_exclusion_filter: ILSVRC2012_val
 file_inclusion_filter: null
 filter_mobile: true
-gpu_batch_size: 16384
+gpu_batch_size: 1024
 image_path: /media/data_cifs/projects/prj_video_imagenet/imagenet/ILSVRC/Data/CLS-LOC/train
 image_shape:
 - 256
