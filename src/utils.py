@@ -238,6 +238,7 @@ def process_clickmap_files(
         ):
         # image_file_name = os.path.sep.join(image_path.split(os.path.sep)[-2:])
         image_file_name = image_path
+        import pdb;pdb.set_trace()
         if file_inclusion_filter == "CO3D_ClickmeV2" or file_inclusion_filter == "CO3D_ClickMe2":
             # Patch for val co3d
             if not np.any([image_file_name in x for x in image_files]):
