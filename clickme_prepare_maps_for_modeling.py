@@ -87,14 +87,22 @@ if __name__ == "__main__":
         try:
             from src import cython_utils
             create_clickmap_func = cython_utils.create_clickmap_fast
+            fast_duplicate_detection = cython_utils.fast_duplicate_detection
+            fast_ious_binary = cython_utils.fast_ious_binary
             print("Using Cython-optimized functions")
         except (ImportError, ModuleNotFoundError) as e:
             use_cython = False
-            create_clickmap_func = utils.create_clickmap
+            from src import python_utils
+            create_clickmap_func = python_utils.create_clickmap_fast
+            fast_duplicate_detection = python_utils.fast_duplicate_detection
+            fast_ious_binary = python_utils.fast_ious_binary
             print(f"Cython modules not available: {e}")
-            print("Falling back to Python implementation. For best performance, run 'python setup.py build_ext --inplace' first.")
+            print("Falling back to Python implementation. For best performance, run 'python compile_cython.py build_ext --inplace' first.")
     else:
-        create_clickmap_func = utils.create_clickmap
+        from src import python_utils
+        create_clickmap_func = python_utils.create_clickmap_fast
+        fast_duplicate_detection = python_utils.fast_duplicate_detection
+        fast_ious_binary = python_utils.fast_ious_binary
 
     # Load metadata
     if config["metadata_file"]:

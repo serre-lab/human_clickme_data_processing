@@ -17,8 +17,8 @@ cimport cython
 np.import_array()
 
 # Define C types for NumPy arrays
-ctypedef np.int_t DTYPE_INT
-ctypedef np.float_t DTYPE_FLOAT
+ctypedef np.int32_t DTYPE_INT
+ctypedef np.float32_t DTYPE_FLOAT
 ctypedef np.uint8_t DTYPE_UINT8
 
 @cython.boundscheck(False)  # Disable bounds checking
@@ -83,7 +83,7 @@ def fast_duplicate_detection(np.ndarray[DTYPE_FLOAT, ndim=2] clickmaps_vec, floa
     """
     cdef int n_maps = clickmaps_vec.shape[0]
     cdef int n_pixels = clickmaps_vec.shape[1]
-    cdef np.ndarray[np.int_t, ndim=1] is_duplicate = np.zeros(n_maps, dtype=np.int)
+    cdef np.ndarray[np.int32_t, ndim=1] is_duplicate = np.zeros(n_maps, dtype=np.int32)
     cdef int i, j, k
     cdef float distance, diff
     cdef float sq_duplicate_thresh = duplicate_thresh * duplicate_thresh
@@ -112,7 +112,7 @@ def fast_duplicate_detection(np.ndarray[DTYPE_FLOAT, ndim=2] clickmaps_vec, floa
                 is_duplicate[j] = 1
     
     # Create array of indices for non-duplicate maps
-    cdef np.ndarray[np.int_t, ndim=1] non_duplicate_indices = np.where(is_duplicate == 0)[0]
+    cdef np.ndarray[np.int32_t, ndim=1] non_duplicate_indices = np.where(is_duplicate == 0)[0]
     return non_duplicate_indices
 
 

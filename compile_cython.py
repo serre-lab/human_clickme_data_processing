@@ -4,6 +4,11 @@ from setuptools import setup, Extension
 from Cython.Build import cythonize
 import numpy as np
 
+# Print NumPy information for debugging
+print(f"NumPy version: {np.__version__}")
+print(f"NumPy include directory: {np.get_include()}")
+print(f"NumPy integer types: int8={np.int8}, int16={np.int16}, int32={np.int32}, int64={np.int64}")
+
 module_name = "src.cython_utils"
 source_file = "src/cython_utils.pyx"
 
@@ -24,6 +29,7 @@ extension = Extension(
     sources=[source_file],
     include_dirs=[np.get_include()],
     extra_compile_args=["-O3"],
+    define_macros=[("NPY_NO_DEPRECATED_API", "NPY_1_7_API_VERSION")]  # Use newer NumPy API
 )
 
 # Configure and run setup
@@ -36,6 +42,7 @@ setup(
             "boundscheck": False,
             "wraparound": False,
             "initializedcheck": False,
+            "nonecheck": False,
         },
     ),
     include_dirs=[np.get_include()]
