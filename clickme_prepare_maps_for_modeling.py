@@ -168,7 +168,7 @@ if __name__ == "__main__":
                 if use_gpu_blurring:
                     # Use GPU-optimized batched processing
                     chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = utils.prepare_maps_with_gpu_batching(
-                        final_clickmaps=clickmaps,
+                        final_clickmaps=[clickmaps],  # Wrap in a list as the function expects a list of dictionaries
                         blur_size=blur_size,
                         blur_sigma=blur_sigma,
                         image_shape=config["image_shape"],
@@ -182,7 +182,7 @@ if __name__ == "__main__":
                 else:
                     # Use the original CPU-based processing
                     chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = utils.prepare_maps_with_progress(
-                        final_clickmaps=clickmaps,
+                        final_clickmaps=[clickmaps],  # Wrap in a list as the function expects a list of dictionaries
                         blur_size=blur_size,
                         blur_sigma=blur_sigma,
                         image_shape=config["image_shape"],
