@@ -59,27 +59,56 @@ if __name__ == "__main__":
     parser.add_argument('--end-chunk', type=int, default=None, help='Chunk number to end processing at')
     parser.add_argument('--debug', action='store_true', help='Enable additional debug output')
     parser.add_argument('--verbose', action='store_true', help='Show detailed progress for GPU processing')
+    parser.add_argument('--cpu-only', action='store_true', help='Force CPU-only processing regardless of config')
+    parser.add_argument('--gpu-batch-size', type=int, default=None, help='Override GPU batch size')
+    parser.add_argument('--max-workers', type=int, default=None, help='Maximum number of CPU workers')
     args = parser.parse_args()
     
-    # Performance tuning
+    # Load config file
     if args.config:
         config_file = args.config if "configs" + os.path.sep in args.config else os.path.join("configs", args.config)
         assert os.path.exists(config_file), f"Cannot find config file: {config_file}"
-        
-        # Load config first to modify settings
         config = utils.process_config(config_file)
-        
-        # Override GPU settings based on dataset size
-        if len(clickme_data) > 500000:  # Large dataset
-            config["gpu_batch_size"] = 2048  # Smaller batches for large datasets
-            config["n_jobs"] = min(12, os.cpu_count())  # Limit CPU workers
-            config["parallel_clickmap_processing"] = True  # Enable parallel processing
-            config["use_gpu_blurring"] = True  # Keep GPU acceleration
-        
-        # Finalize config
-        config_file = utils.update_config(config, config_file)
     else:
         config_file = utils.get_config(sys.argv)
+        config = utils.process_config(config_file)
+    
+    # Load clickme data first to assess dataset size
+    clickme_data = utils.process_clickme_data(
+        config["clickme_data"],
+        config["filter_mobile"])
+    total_maps = len(clickme_data)
+    
+    # Performance tuning based on dataset size
+    if total_maps > 500000:  # Large dataset
+        # Smaller batch sizes for large datasets
+        if args.gpu_batch_size:
+            config["gpu_batch_size"] = args.gpu_batch_size
+        else:
+            config["gpu_batch_size"] = 1024  # Significantly smaller batch size for better throughput
+        
+        # Limit CPU workers
+        if args.max_workers:
+            config["n_jobs"] = min(args.max_workers, os.cpu_count())
+        else:
+            config["n_jobs"] = min(8, os.cpu_count())  # Limit CPU workers
+        
+        config["parallel_clickmap_processing"] = True  # Enable parallel processing
+        
+        # Force CPU-only if requested
+        if args.cpu_only:
+            config["use_gpu_blurring"] = False
+        else:
+            config["use_gpu_blurring"] = True  # Keep GPU acceleration
+        
+        # Add more aggressive chunking
+        config["chunk_size"] = min(50000, config.get("chunk_size", 100000))  # Smaller chunks for large datasets
+        
+        print(f"Large dataset detected ({total_maps} maps). Using optimized settings:")
+        print(f"- GPU batch size: {config['gpu_batch_size']}")
+        print(f"- CPU workers: {config['n_jobs']}")
+        print(f"- Using GPU: {config['use_gpu_blurring']}")
+        print(f"- Chunk size: {config['chunk_size']}")
 
     # Other Args
     # blur_sigma_function = lambda x: np.sqrt(x)
@@ -87,10 +116,6 @@ if __name__ == "__main__":
     blur_sigma_function = lambda x: x
 
     # Load config
-    config = utils.process_config(config_file)
-    clickme_data = utils.process_clickme_data(
-        config["clickme_data"],
-        config["filter_mobile"])
     output_dir = config["assets"]
     image_output_dir = config["example_image_output_dir"]
     blur_size = config["blur_size"]
@@ -102,7 +127,7 @@ if __name__ == "__main__":
     if output_format == "auto":
         # Automatically choose format based on dataset size
         large_dataset_threshold = 100000  # If more than 100K images, use HDF5
-        if len(clickme_data) > large_dataset_threshold:
+        if total_maps > large_dataset_threshold:
             output_format = "hdf5"
         else:
             output_format = "numpy"
@@ -242,78 +267,120 @@ if __name__ == "__main__":
                 clickmaps = utils.filter_participants(clickmaps)
                 print(f"│  ├─ Debug: After participant filtering: {len(clickmaps)} images")
             
-            # Process maps for this chunk with our custom progress wrapper
-            use_parallel = config.get("parallel_prepare_maps", True)
-            n_jobs = -1 if use_parallel else 1
-            parallel_text = "parallel" if use_parallel else "serial"
-            
-            # Get GPU batch size from config or use default
-            gpu_batch_size = config.get("gpu_batch_size", 256)  # Reduced from default 32 to a safer 256
+            # Get GPU batch size and workers from config or command line args
+            gpu_batch_size = args.gpu_batch_size or config.get("gpu_batch_size", 1024)
+            n_jobs = args.max_workers or config.get("n_jobs", min(8, os.cpu_count()))
             
             # Add max processing time for GPU batching 
-            gpu_timeout = config.get("gpu_timeout", 600)  # 10 minutes timeout for parallel jobs
+            gpu_timeout = config.get("gpu_timeout", 900)  # 15 minutes timeout for parallel jobs
             
             # Add a safety exit mechanism
             retry_count = 0
             max_retries = config.get("max_retries", 2)
             
             # Use GPU optimized blurring by default, can be disabled with use_gpu_blurring=False
-            use_gpu_blurring = config.get("use_gpu_blurring", True)
+            use_gpu_blurring = False if args.cpu_only else config.get("use_gpu_blurring", True)
             
-            if use_gpu_blurring:
-                print(f"│  ├─ Preparing maps with GPU-optimized blurring (batch_size={gpu_batch_size}, n_jobs={n_jobs})...")
-            else:
-                print(f"│  ├─ Preparing maps ({parallel_text}, n_jobs={n_jobs})...")
-            
-            # Add debug print to check if chunk_clickmaps is empty
-            if not clickmaps:
-                raise ValueError(f"│  ├─ WARNING: No images to process after filtering! Check your filter settings.")
-            else:
-                # Choose the appropriate processing function based on config
-                if use_gpu_blurring:
-                    # Add retry mechanism for GPU batched processing
-                    while retry_count <= max_retries:
-                        try:
-                            # Use GPU-optimized batched processing
-                            chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = utils.prepare_maps_with_gpu_batching(
-                                final_clickmaps=[clickmaps],  # Wrap in a list as the function expects a list of dictionaries
-                                blur_size=blur_size,
-                                blur_sigma=blur_sigma,
-                                image_shape=config["image_shape"],
-                                min_pixels=min_pixels,
-                                min_subjects=config["min_subjects"],
-                                metadata=metadata,
-                                blur_sigma_function=blur_sigma_function,
-                                center_crop=False,
-                                n_jobs=n_jobs,
-                                batch_size=gpu_batch_size,
-                                timeout=gpu_timeout,
-                                verbose=args.verbose or args.debug,  # Use verbose if --verbose or --debug flag is set
-                                create_clickmap_func=create_clickmap_func,
-                                fast_duplicate_detection=fast_duplicate_detection)
-                            # If we get here, processing succeeded
-                            break
-                        except Exception as e:
-                            retry_count += 1
-                            if retry_count > max_retries:
-                                print(f"│  ├─ ERROR: Failed to process chunk after {max_retries} retries: {e}")
-                                print(f"│  ├─ Skipping this chunk and continuing to the next one...")
-                                # Initialize with empty results to avoid errors in subsequent code
-                                chunk_final_clickmaps = {}
-                                chunk_all_clickmaps = []
-                                chunk_categories = []
-                                chunk_final_keep_index = []
-                                break
-                            else:
-                                print(f"│  ├─ WARNING: Error processing chunk: {e}")
-                                print(f"│  ├─ Retry {retry_count}/{max_retries} with smaller batch size...")
-                                # Reduce batch size for retry
-                                gpu_batch_size = max(32, gpu_batch_size // 2)
-                                # Continue to retry
-                else:
-                    # Use the original CPU-based processing with better error handling
+            # Try different strategies for smaller subsets if dataset is very large
+            if len(clickmaps) > 10000 and use_gpu_blurring:
+                # Process in smaller sub-chunks for very large datasets
+                sub_chunk_size = config.get("sub_chunk_size", 10000)  # Process 10k images at a time
+                print(f"│  ├─ Dataset is large, processing in {(len(clickmaps) + sub_chunk_size - 1) // sub_chunk_size} sub-chunks of max {sub_chunk_size} images")
+                
+                # Initialize sub-chunk results
+                all_sub_clickmaps = []
+                all_sub_keep_index = []
+                
+                # Create list of image keys
+                img_keys = list(clickmaps.keys())
+                
+                # Process sub-chunks
+                for i in range(0, len(img_keys), sub_chunk_size):
+                    sub_keys = img_keys[i:i+sub_chunk_size]
+                    sub_clickmaps = {k: clickmaps[k] for k in sub_keys}
+                    
+                    print(f"│  ├─ Processing sub-chunk {i//sub_chunk_size + 1}/{(len(clickmaps) + sub_chunk_size - 1) // sub_chunk_size} ({len(sub_clickmaps)} images)")
+                    
+                    if use_gpu_blurring:
+                        print(f"│  ├─ Preparing maps with GPU-optimized blurring (batch_size={gpu_batch_size}, n_jobs={n_jobs})...")
+                    else:
+                        print(f"│  ├─ Preparing maps with CPU processing (n_jobs={n_jobs})...")
+                    
+                    # Process sub-chunk
                     try:
-                        chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = utils.prepare_maps_with_progress(
+                        # Use GPU-optimized batched processing with smaller batch size for better throughput
+                        sub_final_clickmaps, sub_all_clickmaps, sub_categories, sub_final_keep_index = utils.prepare_maps_with_gpu_batching(
+                            final_clickmaps=[sub_clickmaps],  # Wrap in a list as the function expects a list of dictionaries
+                            blur_size=blur_size,
+                            blur_sigma=blur_sigma,
+                            image_shape=config["image_shape"],
+                            min_pixels=min_pixels,
+                            min_subjects=config["min_subjects"],
+                            metadata=metadata,
+                            blur_sigma_function=blur_sigma_function,
+                            center_crop=False,
+                            n_jobs=n_jobs,
+                            batch_size=gpu_batch_size,
+                            timeout=gpu_timeout,
+                            verbose=args.verbose or args.debug,
+                            create_clickmap_func=create_clickmap_func,
+                            fast_duplicate_detection=fast_duplicate_detection)
+                        
+                        # Collect results
+                        all_sub_clickmaps.extend(sub_all_clickmaps)
+                        all_sub_keep_index.extend(sub_final_keep_index)
+                        
+                        # Update main chunk results
+                        all_final_clickmaps.update(sub_final_clickmaps)
+                    
+                    except Exception as e:
+                        print(f"│  ├─ ERROR: Failed to process sub-chunk: {e}")
+                        if retry_count < max_retries:
+                            retry_count += 1
+                            print(f"│  ├─ Trying again with CPU processing...")
+                            try:
+                                # Fall back to CPU processing
+                                sub_final_clickmaps, sub_all_clickmaps, sub_categories, sub_final_keep_index = utils.prepare_maps_with_progress(
+                                    final_clickmaps=[sub_clickmaps],  # Wrap in a list as the function expects a list of dictionaries
+                                    blur_size=blur_size,
+                                    blur_sigma=blur_sigma,
+                                    image_shape=config["image_shape"],
+                                    min_pixels=min_pixels,
+                                    min_subjects=config["min_subjects"],
+                                    metadata=metadata,
+                                    blur_sigma_function=blur_sigma_function,
+                                    center_crop=False,
+                                    n_jobs=n_jobs,
+                                    create_clickmap_func=create_clickmap_func,
+                                    fast_duplicate_detection=fast_duplicate_detection)
+                                
+                                # Collect results
+                                all_sub_clickmaps.extend(sub_all_clickmaps)
+                                all_sub_keep_index.extend(sub_final_keep_index)
+                                
+                                # Update main chunk results
+                                all_final_clickmaps.update(sub_final_clickmaps)
+                            except Exception as e:
+                                print(f"│  ├─ ERROR: CPU processing also failed: {e}")
+                                continue
+                        else:
+                            print(f"│  ├─ Skipping this sub-chunk after {max_retries} retries")
+                            continue
+                
+                # Set results for saving
+                chunk_all_clickmaps = all_sub_clickmaps
+                chunk_final_keep_index = all_sub_keep_index
+                chunk_final_clickmaps = all_final_clickmaps  # This is accumulated from sub-chunks
+                chunk_categories = []  # Not used for saving
+                
+            elif use_gpu_blurring:
+                print(f"│  ├─ Preparing maps with GPU-optimized blurring (batch_size={gpu_batch_size}, n_jobs={n_jobs})...")
+                
+                # Add retry mechanism for GPU batched processing
+                while retry_count <= max_retries:
+                    try:
+                        # Use GPU-optimized batched processing
+                        chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = utils.prepare_maps_with_gpu_batching(
                             final_clickmaps=[clickmaps],  # Wrap in a list as the function expects a list of dictionaries
                             blur_size=blur_size,
                             blur_sigma=blur_sigma,
@@ -324,16 +391,73 @@ if __name__ == "__main__":
                             blur_sigma_function=blur_sigma_function,
                             center_crop=False,
                             n_jobs=n_jobs,
+                            batch_size=gpu_batch_size,
+                            timeout=gpu_timeout,
+                            verbose=args.verbose or args.debug,  # Use verbose if --verbose or --debug flag is set
                             create_clickmap_func=create_clickmap_func,
                             fast_duplicate_detection=fast_duplicate_detection)
+                        # If we get here, processing succeeded
+                        break
                     except Exception as e:
-                        print(f"│  ├─ ERROR: Failed to process chunk: {e}")
-                        print(f"│  ├─ Skipping this chunk and continuing to the next one...")
-                        # Initialize with empty results to avoid errors in subsequent code
-                        chunk_final_clickmaps = {}
-                        chunk_all_clickmaps = []
-                        chunk_categories = []
-                        chunk_final_keep_index = []
+                        retry_count += 1
+                        if retry_count > max_retries:
+                            print(f"│  ├─ ERROR: Failed to process chunk after {max_retries} retries: {e}")
+                            print(f"│  ├─ Trying CPU processing as a last resort...")
+                            try:
+                                # Fall back to CPU processing
+                                chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = utils.prepare_maps_with_progress(
+                                    final_clickmaps=[clickmaps],  # Wrap in a list as the function expects a list of dictionaries
+                                    blur_size=blur_size,
+                                    blur_sigma=blur_sigma,
+                                    image_shape=config["image_shape"],
+                                    min_pixels=min_pixels,
+                                    min_subjects=config["min_subjects"],
+                                    metadata=metadata,
+                                    blur_sigma_function=blur_sigma_function,
+                                    center_crop=False,
+                                    n_jobs=n_jobs,
+                                    create_clickmap_func=create_clickmap_func,
+                                    fast_duplicate_detection=fast_duplicate_detection)
+                            except Exception as e:
+                                print(f"│  ├─ ERROR: CPU processing also failed: {e}")
+                                print(f"│  ├─ Skipping this chunk and continuing to the next one...")
+                                # Initialize with empty results to avoid errors in subsequent code
+                                chunk_final_clickmaps = {}
+                                chunk_all_clickmaps = []
+                                chunk_categories = []
+                                chunk_final_keep_index = []
+                            break
+                        else:
+                            print(f"│  ├─ WARNING: Error processing chunk: {e}")
+                            print(f"│  ├─ Retry {retry_count}/{max_retries} with smaller batch size...")
+                            # Reduce batch size for retry
+                            gpu_batch_size = max(256, gpu_batch_size // 2)
+                            # Continue to retry
+            else:
+                # Use the original CPU-based processing with better error handling
+                print(f"│  ├─ Preparing maps with CPU processing (n_jobs={n_jobs})...")
+                try:
+                    chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = utils.prepare_maps_with_progress(
+                        final_clickmaps=[clickmaps],  # Wrap in a list as the function expects a list of dictionaries
+                        blur_size=blur_size,
+                        blur_sigma=blur_sigma,
+                        image_shape=config["image_shape"],
+                        min_pixels=min_pixels,
+                        min_subjects=config["min_subjects"],
+                        metadata=metadata,
+                        blur_sigma_function=blur_sigma_function,
+                        center_crop=False,
+                        n_jobs=n_jobs,
+                        create_clickmap_func=create_clickmap_func,
+                        fast_duplicate_detection=fast_duplicate_detection)
+                except Exception as e:
+                    print(f"│  ├─ ERROR: Failed to process chunk: {e}")
+                    print(f"│  ├─ Skipping this chunk and continuing to the next one...")
+                    # Initialize with empty results to avoid errors in subsequent code
+                    chunk_final_clickmaps = {}
+                    chunk_all_clickmaps = []
+                    chunk_categories = []
+                    chunk_final_keep_index = []
 
             # Apply mask filtering if needed and if chunk was processed successfully
             if chunk_final_keep_index and config["mask_dir"]:
