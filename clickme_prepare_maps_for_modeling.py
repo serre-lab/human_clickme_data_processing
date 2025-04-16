@@ -61,10 +61,23 @@ if __name__ == "__main__":
     parser.add_argument('--verbose', action='store_true', help='Show detailed progress for GPU processing')
     args = parser.parse_args()
     
-    # Get config file from args or traditional argv method
+    # Performance tuning
     if args.config:
         config_file = args.config if "configs" + os.path.sep in args.config else os.path.join("configs", args.config)
         assert os.path.exists(config_file), f"Cannot find config file: {config_file}"
+        
+        # Load config first to modify settings
+        config = utils.process_config(config_file)
+        
+        # Override GPU settings based on dataset size
+        if len(clickme_data) > 500000:  # Large dataset
+            config["gpu_batch_size"] = 2048  # Smaller batches for large datasets
+            config["n_jobs"] = min(12, os.cpu_count())  # Limit CPU workers
+            config["parallel_clickmap_processing"] = True  # Enable parallel processing
+            config["use_gpu_blurring"] = True  # Keep GPU acceleration
+        
+        # Finalize config
+        config_file = utils.update_config(config, config_file)
     else:
         config_file = utils.get_config(sys.argv)
 
