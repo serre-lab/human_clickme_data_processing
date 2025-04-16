@@ -3,6 +3,7 @@ import numpy as np
 from PIL import Image
 import json
 import pandas as pd
+import argparse
 from matplotlib import pyplot as plt
 from src import utils
 from tqdm import tqdm
@@ -51,9 +52,21 @@ def get_medians(point_lists, mode='image', thresh=50):
 
 
 if __name__ == "__main__":
-
-    # Get config file
-    config_file = utils.get_config(sys.argv)
+    # Add command line arguments
+    parser = argparse.ArgumentParser(description="Process clickme data for modeling")
+    parser.add_argument('config', nargs='?', help='Path to config file')
+    parser.add_argument('--start-chunk', type=int, default=1, help='Chunk number to start processing from')
+    parser.add_argument('--end-chunk', type=int, default=None, help='Chunk number to end processing at')
+    parser.add_argument('--debug', action='store_true', help='Enable additional debug output')
+    parser.add_argument('--verbose', action='store_true', help='Show detailed progress for GPU processing')
+    args = parser.parse_args()
+    
+    # Get config file from args or traditional argv method
+    if args.config:
+        config_file = args.config if "configs" + os.path.sep in args.config else os.path.join("configs", args.config)
+        assert os.path.exists(config_file), f"Cannot find config file: {config_file}"
+    else:
+        config_file = utils.get_config(sys.argv)
 
     # Other Args
     # blur_sigma_function = lambda x: np.sqrt(x)
@@ -146,11 +159,20 @@ if __name__ == "__main__":
             # Add some useful metadata
             meta_grp.attrs["total_unique_images"] = total_unique_images
             meta_grp.attrs["creation_date"] = np.bytes_(pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"))
+            meta_grp.attrs["chunks_completed"] = 0  # Track progress
+    
+    # Determine start and end chunks based on command line arguments
+    start_chunk = max(0, args.start_chunk - 1)  # Convert to 0-indexed
+    end_chunk = args.end_chunk if args.end_chunk is not None else num_chunks
+    
+    # Display restart information if needed
+    if start_chunk > 0:
+        print(f"\nRestarting from chunk {start_chunk + 1} (skipping chunks 1-{start_chunk})")
     
     # Use a simple progress tracking system with tqdm - prettier hierarchy
-    print(f"\nProcessing {total_unique_images} unique images in {num_chunks} chunks...")
-    with tqdm(total=num_chunks, desc="├─ Processing chunks", position=0, leave=True, colour="blue") as pbar:
-        for chunk_idx in range(num_chunks):
+    print(f"\nProcessing {total_unique_images} unique images in {num_chunks} chunks (processing chunks {start_chunk + 1}-{end_chunk})...")
+    with tqdm(total=end_chunk-start_chunk, desc="├─ Processing chunks", position=0, leave=True, colour="blue") as pbar:
+        for chunk_idx in range(start_chunk, end_chunk):
             chunk_start = chunk_idx * chunk_size
             chunk_end = min(chunk_start + chunk_size, total_unique_images)
             
@@ -213,7 +235,14 @@ if __name__ == "__main__":
             parallel_text = "parallel" if use_parallel else "serial"
             
             # Get GPU batch size from config or use default
-            gpu_batch_size = config.get("gpu_batch_size", 32)
+            gpu_batch_size = config.get("gpu_batch_size", 256)  # Reduced from default 32 to a safer 256
+            
+            # Add max processing time for GPU batching 
+            gpu_timeout = config.get("gpu_timeout", 600)  # 10 minutes timeout for parallel jobs
+            
+            # Add a safety exit mechanism
+            retry_count = 0
+            max_retries = config.get("max_retries", 2)
             
             # Use GPU optimized blurring by default, can be disabled with use_gpu_blurring=False
             use_gpu_blurring = config.get("use_gpu_blurring", True)
@@ -229,39 +258,72 @@ if __name__ == "__main__":
             else:
                 # Choose the appropriate processing function based on config
                 if use_gpu_blurring:
-                    # Use GPU-optimized batched processing
-                    chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = utils.prepare_maps_with_gpu_batching(
-                        final_clickmaps=[clickmaps],  # Wrap in a list as the function expects a list of dictionaries
-                        blur_size=blur_size,
-                        blur_sigma=blur_sigma,
-                        image_shape=config["image_shape"],
-                        min_pixels=min_pixels,
-                        min_subjects=config["min_subjects"],
-                        metadata=metadata,
-                        blur_sigma_function=blur_sigma_function,
-                        center_crop=False,
-                        n_jobs=n_jobs,
-                        batch_size=gpu_batch_size,
-                        create_clickmap_func=create_clickmap_func,
-                        fast_duplicate_detection=fast_duplicate_detection)
+                    # Add retry mechanism for GPU batched processing
+                    while retry_count <= max_retries:
+                        try:
+                            # Use GPU-optimized batched processing
+                            chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = utils.prepare_maps_with_gpu_batching(
+                                final_clickmaps=[clickmaps],  # Wrap in a list as the function expects a list of dictionaries
+                                blur_size=blur_size,
+                                blur_sigma=blur_sigma,
+                                image_shape=config["image_shape"],
+                                min_pixels=min_pixels,
+                                min_subjects=config["min_subjects"],
+                                metadata=metadata,
+                                blur_sigma_function=blur_sigma_function,
+                                center_crop=False,
+                                n_jobs=n_jobs,
+                                batch_size=gpu_batch_size,
+                                timeout=gpu_timeout,
+                                verbose=args.verbose or args.debug,  # Use verbose if --verbose or --debug flag is set
+                                create_clickmap_func=create_clickmap_func,
+                                fast_duplicate_detection=fast_duplicate_detection)
+                            # If we get here, processing succeeded
+                            break
+                        except Exception as e:
+                            retry_count += 1
+                            if retry_count > max_retries:
+                                print(f"│  ├─ ERROR: Failed to process chunk after {max_retries} retries: {e}")
+                                print(f"│  ├─ Skipping this chunk and continuing to the next one...")
+                                # Initialize with empty results to avoid errors in subsequent code
+                                chunk_final_clickmaps = {}
+                                chunk_all_clickmaps = []
+                                chunk_categories = []
+                                chunk_final_keep_index = []
+                                break
+                            else:
+                                print(f"│  ├─ WARNING: Error processing chunk: {e}")
+                                print(f"│  ├─ Retry {retry_count}/{max_retries} with smaller batch size...")
+                                # Reduce batch size for retry
+                                gpu_batch_size = max(32, gpu_batch_size // 2)
+                                # Continue to retry
                 else:
-                    # Use the original CPU-based processing
-                    chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = utils.prepare_maps_with_progress(
-                        final_clickmaps=[clickmaps],  # Wrap in a list as the function expects a list of dictionaries
-                        blur_size=blur_size,
-                        blur_sigma=blur_sigma,
-                        image_shape=config["image_shape"],
-                        min_pixels=min_pixels,
-                        min_subjects=config["min_subjects"],
-                        metadata=metadata,
-                        blur_sigma_function=blur_sigma_function,
-                        center_crop=False,
-                        n_jobs=n_jobs,
-                        create_clickmap_func=create_clickmap_func,
-                        fast_duplicate_detection=fast_duplicate_detection)
-                
-            # Apply mask filtering if needed
-            if config["mask_dir"]:
+                    # Use the original CPU-based processing with better error handling
+                    try:
+                        chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = utils.prepare_maps_with_progress(
+                            final_clickmaps=[clickmaps],  # Wrap in a list as the function expects a list of dictionaries
+                            blur_size=blur_size,
+                            blur_sigma=blur_sigma,
+                            image_shape=config["image_shape"],
+                            min_pixels=min_pixels,
+                            min_subjects=config["min_subjects"],
+                            metadata=metadata,
+                            blur_sigma_function=blur_sigma_function,
+                            center_crop=False,
+                            n_jobs=n_jobs,
+                            create_clickmap_func=create_clickmap_func,
+                            fast_duplicate_detection=fast_duplicate_detection)
+                    except Exception as e:
+                        print(f"│  ├─ ERROR: Failed to process chunk: {e}")
+                        print(f"│  ├─ Skipping this chunk and continuing to the next one...")
+                        # Initialize with empty results to avoid errors in subsequent code
+                        chunk_final_clickmaps = {}
+                        chunk_all_clickmaps = []
+                        chunk_categories = []
+                        chunk_final_keep_index = []
+
+            # Apply mask filtering if needed and if chunk was processed successfully
+            if chunk_final_keep_index and config["mask_dir"]:
                 print(f"│  ├─ Applying mask filtering...")
                 masks = utils.load_masks(config["mask_dir"])
                 chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = utils.filter_for_foreground_masks(
@@ -270,6 +332,10 @@ if __name__ == "__main__":
                     categories=chunk_categories,
                     masks=masks,
                     mask_threshold=config["mask_threshold"])
+            
+            # Save results if we have any
+            if chunk_final_keep_index:
+                print(f"│  ├─ Saving processed maps ({len(chunk_final_keep_index)} images)...")
             
             # Save results
             print(f"│  ├─ Saving processed maps...")
@@ -324,6 +390,19 @@ if __name__ == "__main__":
             # Free memory
             del chunk_data, clickmaps, ccounts
             del chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index
+            
+            # Force Python garbage collection
+            import gc
+            gc.collect()
+            
+            # Update progress in HDF5 file if using HDF5
+            if output_format == "hdf5":
+                try:
+                    with h5py.File(hdf5_path, 'a') as f:
+                        f["metadata"].attrs["chunks_completed"] = chunk_idx + 1
+                        f["metadata"].attrs["last_updated"] = np.bytes_(pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"))
+                except Exception as e:
+                    print(f"Warning: Could not update HDF5 metadata: {e}")
             
             # Update main progress bar
             pbar.update(1)

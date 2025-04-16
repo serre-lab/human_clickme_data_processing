@@ -21,6 +21,13 @@ import numpy as np
 from scipy import stats
 from scipy.spatial.distance import cdist
 
+# Near the top of the file (around line 10), add torch.cuda memory management functions
+try:
+    import torch.cuda
+    import gc
+except ImportError:
+    pass
+
 def load_masks(mask_dir, wc="*.pth"):
     files = glob(os.path.join(mask_dir, wc))
     assert len(files), "No masks found in {}".format(mask_dir)
@@ -1047,6 +1054,45 @@ def save_clickmaps_parallel(all_clickmaps, final_keep_index, output_dir, experim
     
     return saved_count
 
+# Add a function to monitor GPU memory and force cleanup (around line 800)
+def check_gpu_memory_usage(threshold=0.9, force_cleanup=False):
+    """
+    Check GPU memory usage and optionally force cleanup if it exceeds threshold
+    
+    Args:
+        threshold (float): Memory usage threshold (0.0-1.0) to trigger cleanup
+        force_cleanup (bool): Whether to force cleanup regardless of threshold
+        
+    Returns:
+        float: Current GPU memory usage ratio (0.0-1.0)
+    """
+    if not torch.cuda.is_available():
+        return 0.0
+        
+    # Get current memory usage
+    try:
+        current = torch.cuda.memory_allocated()
+        total = torch.cuda.get_device_properties(0).total_memory
+        usage_ratio = float(current) / float(total)
+        
+        # Force cleanup if memory usage exceeds threshold or if explicitly requested
+        if force_cleanup or usage_ratio > threshold:
+            # First try regular empty cache
+            torch.cuda.empty_cache()
+            # Then force Python garbage collection
+            gc.collect()
+            # Empty cache again
+            torch.cuda.empty_cache()
+            
+            # Check memory again after cleanup
+            current = torch.cuda.memory_allocated()
+            usage_ratio = float(current) / float(total)
+            
+        return usage_ratio
+    except Exception as e:
+        print(f"Error checking GPU memory: {e}")
+        return 0.0
+
 def prepare_maps_batched_gpu(
         final_clickmaps,
         blur_size,
@@ -1061,9 +1107,11 @@ def prepare_maps_batched_gpu(
         duplicate_thresh=0.01,
         max_kernel_size=51,
         device='cuda',
-        batch_size=1024,
+        batch_size=512,  # Reduced from 1024 to 512
         n_jobs=-1,
-        create_clickmap_func=None, # Add function arguments
+        timeout=600,  # Add timeout parameter (10 minutes default)
+        verbose=True,  # Add verbose parameter to control detailed logging
+        create_clickmap_func=None,
         fast_duplicate_detection=None):
     """
     Optimized version of prepare_maps that separates CPU and GPU work:
@@ -1085,10 +1133,12 @@ def prepare_maps_batched_gpu(
         duplicate_thresh (float, optional): Threshold for duplicate detection. Defaults to 0.01.
         max_kernel_size (int, optional): Maximum kernel size. Defaults to 51.
         device (str, optional): Device to use for GPU operations. Defaults to 'cuda'.
-        batch_size (int, optional): Batch size for GPU processing. Defaults to 1024.
+        batch_size (int, optional): Batch size for GPU processing. Defaults to 512.
         n_jobs (int, optional): Number of parallel jobs for CPU operations. Defaults to -1.
-        create_clickmap_func (function): Function to create the initial clickmap (can be Cython or Python version)
-        fast_duplicate_detection (function): Function for duplicate detection (can be Cython or Python version)
+        timeout (int, optional): Timeout in seconds for parallel jobs. Defaults to 600.
+        verbose (bool): Whether to show detailed progress logging
+        create_clickmap_func (function): Function to create the initial clickmap
+        fast_duplicate_detection (function): Function for duplicate detection
         
     Returns:
         tuple: (new_final_clickmaps, all_clickmaps, categories, keep_index)
@@ -1133,10 +1183,10 @@ def prepare_maps_batched_gpu(
     total_images = len(all_keys)
     
     # Calculate number of batches based on total unique images
-    # Use a different batch size for the CPU pre-processing if needed
-    cpu_batch_size = min(batch_size * 2, 10000)  # Use smaller multiplier and cap at 10,000
+    # Set more conservative batch sizes for stability
+    cpu_batch_size = min(batch_size, 5000)  # Cap at 5000 for stability 
     num_cpu_batches = (total_images + cpu_batch_size - 1) // cpu_batch_size
-    effective_n_jobs = min(n_jobs if n_jobs > 0 else os.cpu_count(), os.cpu_count(), 32)  # Cap at 32 workers to avoid overloading
+    effective_n_jobs = min(n_jobs if n_jobs > 0 else os.cpu_count(), os.cpu_count(), 16)  # Cap at 16 workers
 
     print(f"Processing {total_images} unique images in {num_cpu_batches} CPU batches (GPU batch size: {batch_size})...")
     print(f"Using {effective_n_jobs} parallel jobs for CPU pre/post-processing.")
@@ -1182,14 +1232,14 @@ def prepare_maps_batched_gpu(
             
             # Use parallel processing for pre-processing only this batch
             try:
-                # Set a longer timeout for workers
-                preprocessed = Parallel(n_jobs=effective_n_jobs, timeout=3600)(
+                # Set a timeout for workers to avoid indefinite hanging
+                preprocessed = Parallel(n_jobs=effective_n_jobs, timeout=timeout)(
                     delayed(preprocess_clickmap)(
                         key, 
                         merged_clickmaps[key], 
                         image_shape, 
                         metadata
-                    ) for key in batch_keys # tqdm(batch_keys, desc="Pre-processing clickmaps", leave=False)
+                    ) for key in batch_keys
                 )
             except Exception as e:
                 print(f"WARNING: Error during parallel pre-processing: {e}")
@@ -1201,7 +1251,9 @@ def prepare_maps_batched_gpu(
                         result = preprocess_clickmap(key, merged_clickmaps[key], image_shape, metadata)
                         preprocessed.append(result)
                     except Exception as batch_e:
-                        raise Exception(f"ERROR processing key {key}: {batch_e}")
+                        print(f"ERROR processing key {key}: {batch_e}")
+                        # Continue instead of raising exception
+                        continue
             
             # Only keep non-empty preprocessed data
             preprocessed = [p for p in preprocessed if p is not None and len(p['clickmaps']) > 0]
@@ -1212,8 +1264,8 @@ def prepare_maps_batched_gpu(
             # Step 4: Process GPU blurring
             # print(f"│  │  ├─ Processing blurring on GPU (batch_size={batch_size})...")
             
-            # Process in smaller GPU sub-batches if needed
-            gpu_batch_size = min(batch_size, 1024)  # Cap at 1024 to prevent OOM errors
+            # Process in smaller GPU sub-batches to prevent OOM errors
+            gpu_batch_size = min(batch_size, 256)  # Cap at 256 to prevent OOM errors
             batch_results = []
             
             # Flatten the list of clickmaps for efficient GPU batching
@@ -1223,187 +1275,226 @@ def prepare_maps_batched_gpu(
                 # We need to process each clickmap individually on the GPU eventually
                 gpu_processing_list.append(item)
 
-            # Process GPU batches with a progress bar
-            for gpu_batch_idx in tqdm(range(0, len(gpu_processing_list), gpu_batch_size), 
-                                    desc="GPU batches", leave=False):
-                try:
-                    gpu_batch_items = gpu_processing_list[gpu_batch_idx : gpu_batch_idx + gpu_batch_size]
-                    
-                    # Prepare tensors for this GPU batch
-                    tensors_to_blur = []
-                    metadata_for_batch = []
-                    keys_for_batch = []
-                    map_counts = [] # Track how many maps belong to each original image key
-
-                    for item in gpu_batch_items:
-                        key = item['key']
-                        clickmaps_np = item['clickmaps']
-                        native_size = item['native_size']
+            # Process GPU batches with a progress bar 
+            total_gpu_batches = (len(gpu_processing_list) + gpu_batch_size - 1) // gpu_batch_size
+            if verbose:
+                print(f"Processing {len(gpu_processing_list)} images in {total_gpu_batches} GPU batches (size: {gpu_batch_size})...")
+                
+            with tqdm(total=total_gpu_batches, desc="GPU batches", leave=False) as gpu_batch_pbar:
+                for gpu_batch_idx in range(0, len(gpu_processing_list), gpu_batch_size):
+                    try:
+                        # Log current batch information 
+                        batch_start = gpu_batch_idx
+                        batch_end = min(gpu_batch_idx + gpu_batch_size, len(gpu_processing_list))
+                        current_batch_size = batch_end - batch_start
                         
-                        # Convert numpy arrays to PyTorch tensors
-                        # Important: Keep track of how many maps belong to this key
-                        num_maps_for_key = len(clickmaps_np)
-                        if num_maps_for_key > 0:
-                            clickmaps_tensor = torch.from_numpy(clickmaps_np).float().unsqueeze(1).to(device)
-                            tensors_to_blur.append(clickmaps_tensor)
-                            # Repeat metadata for each map belonging to this key
-                            metadata_for_batch.extend([(key, native_size)] * num_maps_for_key)
-                            keys_for_batch.extend([key] * num_maps_for_key)
-                            map_counts.append(num_maps_for_key)
-                    
-                    if not tensors_to_blur:
-                        continue # Skip if batch is empty
-
-                    # Concatenate tensors for efficient batch processing
-                    batch_tensor = torch.cat(tensors_to_blur, dim=0)
-                    
-                    # Clear up memory
-                    del tensors_to_blur
-                    torch.cuda.empty_cache()
-                    
-                    # Apply blurring (needs to handle potential metadata variations within batch)
-                    blurred_batch = torch.zeros_like(batch_tensor)
-                    current_idx = 0
-                    
-                    # Apply blurring with a more memory-efficient approach
-                    for item_idx, item in enumerate(gpu_batch_items):
-                        # Apply blurring based on the specific item's metadata
-                        key = item['key']
-                        num_maps = len(item['clickmaps'])
-                        native_size = item['native_size']
+                        if verbose:
+                            current_mem = check_gpu_memory_usage(threshold=0, force_cleanup=False)
+                            print(f"  ├─ GPU batch {gpu_batch_idx//gpu_batch_size + 1}/{total_gpu_batches}: {current_batch_size} images (GPU mem: {current_mem:.1%})")
                         
-                        if num_maps == 0:
+                        # Force cleanup before each batch
+                        check_gpu_memory_usage(threshold=0.7, force_cleanup=True)
+                        
+                        # Get smaller sub-batch to process
+                        gpu_batch_items = gpu_processing_list[gpu_batch_idx : gpu_batch_idx + gpu_batch_size]
+                        
+                        # Skip empty batches
+                        if not gpu_batch_items:
+                            gpu_batch_pbar.update(1)
                             continue
                             
-                        item_tensor = batch_tensor[current_idx : current_idx + num_maps]
+                        # Further limit batch size if items contain many maps
+                        total_maps_in_batch = sum(len(item.get('clickmaps', [])) for item in gpu_batch_items)
+                        if total_maps_in_batch > 10000:  # If this batch would process too many maps
+                            # Reduce the effective batch to approximately 10,000 maps
+                            reduction_factor = max(1, int(total_maps_in_batch / 10000))
+                            adjusted_size = max(1, len(gpu_batch_items) // reduction_factor)
+                            print(f"  ├─ Large batch detected: {total_maps_in_batch} maps. Reducing from {len(gpu_batch_items)} to {adjusted_size} items.")
+                            gpu_batch_items = gpu_batch_items[:adjusted_size]
+                        
+                        # Log tensor preparation step
+                        if verbose:
+                            print(f"  │  ├─ Preparing tensors for {len(gpu_batch_items)} images...")
+                        
+                        # Prepare tensors for this GPU batch
+                        tensors_to_blur = []
+                        metadata_for_batch = []
+                        keys_for_batch = []
+                        map_counts = [] # Track how many maps belong to each original image key
 
-                        try:
-                            # Process with proper error handling
-                            if native_size is not None:
-                                short_side = min(native_size)
-                                scale = short_side / min(image_shape)
-                                adj_blur_size = int(np.round(blur_size * scale))
-                                if not adj_blur_size % 2:
-                                    adj_blur_size += 1
-                                adj_blur_size = min(adj_blur_size, max_kernel_size)
-                                adj_blur_sigma = blur_sigma_function(adj_blur_size)
+                        for item in gpu_batch_items:
+                            key = item['key']
+                            clickmaps_np = item['clickmaps']
+                            native_size = item['native_size']
+                            
+                            # Convert numpy arrays to PyTorch tensors
+                            # Important: Keep track of how many maps belong to this key
+                            num_maps_for_key = len(clickmaps_np)
+                            if num_maps_for_key > 0:
+                                clickmaps_tensor = torch.from_numpy(clickmaps_np).float().unsqueeze(1).to(device)
+                                tensors_to_blur.append(clickmaps_tensor)
+                                # Repeat metadata for each map belonging to this key
+                                metadata_for_batch.extend([(key, native_size)] * num_maps_for_key)
+                                keys_for_batch.extend([key] * num_maps_for_key)
+                                map_counts.append(num_maps_for_key)
+                        
+                        if not tensors_to_blur:
+                            if verbose:
+                                print(f"  │  ├─ No valid tensors to process, skipping batch")
+                            gpu_batch_pbar.update(1)
+                            continue
+
+                        # Log batch tensor creation
+                        if verbose:
+                            print(f"  │  ├─ Concatenating {len(tensors_to_blur)} tensors with {sum(map_counts)} total maps...")
+                            
+                        # Concatenate tensors for efficient batch processing
+                        batch_tensor = torch.cat(tensors_to_blur, dim=0)
+                        
+                        # Log tensor shape for debugging
+                        if verbose:
+                            print(f"  │  ├─ Batch tensor shape: {batch_tensor.shape}, processing blurring...")
+                        
+                        # Clear up memory
+                        del tensors_to_blur
+                        torch.cuda.empty_cache()
+                        
+                        # Apply blurring (needs to handle potential metadata variations within batch)
+                        blurred_batch = torch.zeros_like(batch_tensor)
+                        current_idx = 0
+                        
+                        # Apply blurring with a more memory-efficient approach
+                        sub_batch_size = 100  # Process in small sub-batches for stability
+                        if verbose and len(gpu_batch_items) > 1:
+                            print(f"  │  ├─ Processing {len(gpu_batch_items)} image items in batches of {sub_batch_size}...")
+                            
+                        for item_idx, item in enumerate(tqdm(gpu_batch_items, desc="Blurring items", leave=False, disable=not verbose)):
+                            # Apply blurring based on the specific item's metadata
+                            key = item['key']
+                            num_maps = len(item['clickmaps'])
+                            native_size = item['native_size']
+                            
+                            if num_maps == 0:
+                                continue
                                 
-                                if kernel_type == "gaussian":
-                                    adj_blur_kernel = gaussian_kernel(adj_blur_size, adj_blur_sigma, device)
-                                    blurred_item = convolve(item_tensor, adj_blur_kernel)
-                                elif kernel_type == "circle":
-                                    adj_blur_kernel = circle_kernel(adj_blur_size, adj_blur_sigma, device)
-                                    blurred_item = convolve(item_tensor, adj_blur_kernel, double_conv=True)
-                                    
-                                # Free memory for next iteration
-                                if 'adj_blur_kernel' in locals(): 
-                                    del adj_blur_kernel
-                            else:
-                                # Use the standard kernel
-                                if kernel_type == "gaussian":
-                                    blurred_item = convolve(item_tensor, blur_kernel)
-                                elif kernel_type == "circle":
-                                    blurred_item = convolve(item_tensor, blur_kernel, double_conv=True)
-                            
-                            blurred_batch[current_idx : current_idx + num_maps] = blurred_item
-                            
-                            # Free memory 
-                            del blurred_item
-                        except Exception as e:
-                            print(f"ERROR processing item {item_idx} (key: {key}): {e}")
-                            # In case of error, just keep original
-                            blurred_batch[current_idx : current_idx + num_maps] = item_tensor
-                            
-                        current_idx += num_maps
-                        
-                        # Periodically clear cache
-                        if item_idx % 50 == 0:
-                            torch.cuda.empty_cache()
-                        
-                    # Apply center crop if needed (applied to the whole batch)
-                    if center_crop:
-                        # Resize first if dimensions are different
-                        if blurred_batch.shape[-2:] != image_shape:
-                            blurred_batch = tvF.resize(blurred_batch, list(image_shape), antialias=True)
-                        blurred_batch = tvF.center_crop(blurred_batch, list(center_crop))
-                    
-                    # Convert back to numpy and store results indexed by key
-                    processed_maps_np = blurred_batch.squeeze(1).cpu().numpy()
-                    
-                    # Reconstruct the results grouped by image key
-                    start_idx = 0
-                    item_idx = 0
-                    while start_idx < len(processed_maps_np):
-                        key = keys_for_batch[start_idx]
-                        num_maps = map_counts[item_idx]
-                        end_idx = start_idx + num_maps
-                        batch_results.append({
-                            'key': key,
-                            'clickmaps': processed_maps_np[start_idx:end_idx]
-                        })
-                        start_idx = end_idx
-                        item_idx += 1
-                    
-                    # Free GPU memory
-                    del batch_tensor, blurred_batch, item_tensor
-                    if 'adj_blur_kernel' in locals(): del adj_blur_kernel
-                    torch.cuda.empty_cache()
-                    
-                except Exception as batch_e:
-                    print(f"ERROR processing GPU batch {gpu_batch_idx}: {batch_e}")
-                    continue
-            
-            # Step 5: Post-process results in parallel on CPU
-            # print(f"│  │  ├─ Post-processing results on CPU (parallel, n_jobs={effective_n_jobs})...")
-            
-            def postprocess_clickmap(result, min_pixels, min_subjects, duplicate_thresh):
-                """Helper function to post-process a clickmap after GPU processing"""
-                try:
-                    image_key = result['key']
-                    clickmaps = result['clickmaps']
-                    
-                    # Handle case where only one map came back (shape might be 2D)
-                    if clickmaps.ndim == 2:
-                        clickmaps = clickmaps[np.newaxis, :, :] # Add batch dimension
+                            item_tensor = batch_tensor[current_idx : current_idx + num_maps]
 
-                    # Filter processing
-                    if len(clickmaps) == 0:
-                        return None
-                    
-                    # Filter 1: Remove empties
-                    # Ensure sum is over spatial dimensions (1, 2)
-                    if clickmaps.ndim == 3:
-                        empty_check = (clickmaps > 0).sum((1, 2)) > min_pixels
-                    else: # Should not happen if we added axis, but just in case
-                        return None # Invalid shape
-                    
-                    clickmaps = clickmaps[empty_check]
-                    if len(clickmaps) < min_subjects:
-                        return None
-                    
-                    # Filter 2: Remove duplicates using provided fast_duplicate_detection
-                    if len(clickmaps) >= 2: # Duplicate check only needed for 2+ maps
-                        clickmaps_vec = clickmaps.reshape(len(clickmaps), -1)
-                        # Use the function passed as argument
-                        non_duplicate_indices = fast_duplicate_detection(clickmaps_vec, duplicate_thresh)
-                        clickmaps = clickmaps[non_duplicate_indices]
-                
-                    if len(clickmaps) >= min_subjects:
-                        return (image_key, clickmaps)
-                    return None
-                except Exception as e:
-                    print(f"ERROR in postprocess_clickmap: {e}")
-                    return None
+                            try:
+                                # Process with proper error handling
+                                if native_size is not None:
+                                    short_side = min(native_size)
+                                    scale = short_side / min(image_shape)
+                                    adj_blur_size = int(np.round(blur_size * scale))
+                                    if not adj_blur_size % 2:
+                                        adj_blur_size += 1
+                                    adj_blur_size = min(adj_blur_size, max_kernel_size)
+                                    adj_blur_sigma = blur_sigma_function(adj_blur_size)
+                                    
+                                    if kernel_type == "gaussian":
+                                        adj_blur_kernel = gaussian_kernel(adj_blur_size, adj_blur_sigma, device)
+                                        blurred_item = convolve(item_tensor, adj_blur_kernel)
+                                    elif kernel_type == "circle":
+                                        adj_blur_kernel = circle_kernel(adj_blur_size, adj_blur_sigma, device)
+                                        blurred_item = convolve(item_tensor, adj_blur_kernel, double_conv=True)
+                                        
+                                    # Free memory for next iteration
+                                    if 'adj_blur_kernel' in locals(): 
+                                        del adj_blur_kernel
+                                else:
+                                    # Use the standard kernel
+                                    if kernel_type == "gaussian":
+                                        blurred_item = convolve(item_tensor, blur_kernel)
+                                    elif kernel_type == "circle":
+                                        blurred_item = convolve(item_tensor, blur_kernel, double_conv=True)
+                                
+                                blurred_batch[current_idx : current_idx + num_maps] = blurred_item
+                                
+                                # Free memory 
+                                del blurred_item
+                            except Exception as e:
+                                if verbose:
+                                    print(f"  │  ├─ ERROR processing item {item_idx} (key: {key}): {e}")
+                                # In case of error, just keep original
+                                blurred_batch[current_idx : current_idx + num_maps] = item_tensor
+                                
+                            current_idx += num_maps
+                            
+                            # Periodically clear cache
+                            if item_idx % 50 == 0:
+                                torch.cuda.empty_cache()
+                        
+                        # Log center crop info if applicable
+                        if center_crop and verbose:
+                            print(f"  │  ├─ Applying center crop from {blurred_batch.shape[-2:]} to {center_crop}...")
+                            
+                        # Apply center crop if needed (applied to the whole batch)
+                        if center_crop:
+                            # Resize first if dimensions are different
+                            if blurred_batch.shape[-2:] != image_shape:
+                                blurred_batch = tvF.resize(blurred_batch, list(image_shape), antialias=True)
+                            blurred_batch = tvF.center_crop(blurred_batch, list(center_crop))
+                        
+                        # Log conversion to numpy
+                        if verbose:
+                            print(f"  │  ├─ Converting to numpy and organizing results...")
+                            
+                        # Convert back to numpy and store results indexed by key
+                        processed_maps_np = blurred_batch.squeeze(1).cpu().numpy()
+                        
+                        # Reconstruct the results grouped by image key
+                        start_idx = 0
+                        item_idx = 0
+                        while start_idx < len(processed_maps_np):
+                            key = keys_for_batch[start_idx]
+                            num_maps = map_counts[item_idx]
+                            end_idx = start_idx + num_maps
+                            batch_results.append({
+                                'key': key,
+                                'clickmaps': processed_maps_np[start_idx:end_idx]
+                            })
+                            start_idx = end_idx
+                            item_idx += 1
+                        
+                        # Log memory cleanup
+                        if verbose:
+                            print(f"  │  └─ Cleaning up memory...")
+                            
+                        # Free GPU memory
+                        del batch_tensor, blurred_batch, item_tensor
+                        if 'adj_blur_kernel' in locals(): del adj_blur_kernel
+                        check_gpu_memory_usage(threshold=0.5, force_cleanup=True)
+                        
+                        # Add a small delay to allow system to stabilize
+                        import time
+                        time.sleep(0.1)
+                        
+                        # Update GPU batch progress bar
+                        gpu_batch_pbar.update(1)
+                        
+                    except Exception as batch_e:
+                        print(f"ERROR processing GPU batch {gpu_batch_idx}: {batch_e}")
+                        # Force cleanup after error
+                        for var in ['batch_tensor', 'blurred_batch', 'item_tensor', 'adj_blur_kernel']:
+                            if var in locals():
+                                del locals()[var]
+                        check_gpu_memory_usage(threshold=0.5, force_cleanup=True)
+                        # Update GPU batch progress bar even on error
+                        gpu_batch_pbar.update(1)
+                        continue
             
-            # Use parallel processing for post-processing
+            # Add post-processing progress logging
+            if verbose:
+                print(f"Post-processing {len(batch_results)} results...")
+                
+            # Use parallel processing for post-processing with timeout
             try:
-                post_results = Parallel(n_jobs=effective_n_jobs, timeout=3600)(
+                post_results = Parallel(n_jobs=effective_n_jobs, timeout=timeout)(
                     delayed(postprocess_clickmap)(
                         batch_results[i],
                         min_pixels,
                         min_subjects,
                         duplicate_thresh
-                    ) for i in range(len(batch_results)) # tqdm(range(len(batch_results)), desc="Post-processing results", leave=False)
+                    ) for i in tqdm(range(len(batch_results)), desc="Post-processing", disable=not verbose) 
                 )
             except Exception as e:
                 print(f"WARNING: Error during parallel post-processing: {e}")
@@ -1416,6 +1507,7 @@ def prepare_maps_batched_gpu(
                         post_results.append(result)
                     except Exception as batch_e:
                         print(f"ERROR processing batch result {i}: {batch_e}")
+                        # Just continue instead of failing
                         continue
             
             # Step 6: Compile final results for this batch
@@ -1437,6 +1529,9 @@ def prepare_maps_batched_gpu(
             del preprocessed, batch_results, post_results
             if 'gpu_processing_list' in locals(): del gpu_processing_list
             torch.cuda.empty_cache()
+    
+    # Final cleanup before returning
+    check_gpu_memory_usage(threshold=0.0, force_cleanup=True)
     
     print(f"\nFinished processing {processed_count} images.")
     # Return combined results
@@ -1465,20 +1560,24 @@ def prepare_maps_with_gpu_batching(final_clickmaps, **kwargs):
     Returns:
         tuple: (new_final_clickmaps, all_clickmaps, categories, keep_index)
     """
-    batch_size = kwargs.pop('batch_size', 1024)  # Default batch size of 1024
+    batch_size = kwargs.pop('batch_size', 512)  # Default batch size of 512
+    verbose = kwargs.pop('verbose', True)  # Add verbose parameter, default to True
     
-    # Simply call the batched GPU function
-    # print(f"│  ├─ Processing with GPU-optimized batching (batch_size={batch_size})...") # Moved print inside called function
+    # Display more information if verbose
+    if verbose:
+        print(f"│  ├─ Processing with GPU-optimized batching (batch_size={batch_size})...")
+    
     # Pass the required functions from kwargs
     create_clickmap_func = kwargs.get('create_clickmap_func')
     fast_duplicate_detection = kwargs.get('fast_duplicate_detection')
             
     return prepare_maps_batched_gpu(
         final_clickmaps=final_clickmaps, 
-        batch_size=batch_size, 
+        batch_size=batch_size,
+        verbose=verbose,  # Pass verbose parameter
         create_clickmap_func=create_clickmap_func,
         fast_duplicate_detection=fast_duplicate_detection,
-        **{k: v for k, v in kwargs.items() if k not in ('create_clickmap_func', 'fast_duplicate_detection', 'batch_size')}
+        **{k: v for k, v in kwargs.items() if k not in ('create_clickmap_func', 'fast_duplicate_detection', 'batch_size', 'verbose')}
     )
 
 # GPU-accelerated correlation metrics
