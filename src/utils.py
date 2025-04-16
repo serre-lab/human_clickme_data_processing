@@ -1239,14 +1239,14 @@ def prepare_maps_batched_gpu(
                         merged_clickmaps[key], 
                         image_shape, 
                         metadata
-                    ) for key in batch_keys
+                    ) for key in tqdm(batch_keys, desc="Pre-processing", total=len(batch_keys), leave=False)
                 )
             except Exception as e:
                 print(f"WARNING: Error during parallel pre-processing: {e}")
                 print("Falling back to sequential processing for this batch...")
                 # Fall back to sequential processing
                 preprocessed = []
-                for key in tqdm(batch_keys, desc="Sequential pre-processing", leave=False):
+                for key in tqdm(batch_keys, desc="Sequential pre-processing", total=len(batch_keys), leave=False):
                     try:
                         result = preprocess_clickmap(key, merged_clickmaps[key], image_shape, metadata)
                         preprocessed.append(result)
