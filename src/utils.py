@@ -1266,7 +1266,7 @@ def prepare_maps_batched_gpu(
             # print(f"│  │  ├─ Processing blurring on GPU (batch_size={batch_size})...")
             
             # Process in smaller GPU sub-batches to prevent OOM errors
-            # gpu_batch_size = min(batch_size, 256)  # Cap at 256 to prevent OOM errors
+            gpu_batch_size = batch_size  # min(batch_size, 256)  # Cap at 256 to prevent OOM errors
             batch_results = []
             
             # Flatten the list of clickmaps for efficient GPU batching
