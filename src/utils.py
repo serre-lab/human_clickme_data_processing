@@ -504,595 +504,6 @@ def process_single_image(image_key, image_trials, image_shape, blur_size, blur_s
         return (image_key, clickmaps)
     return None
 
-def prepare_maps_parallel(
-        final_clickmaps,
-        blur_size,
-        blur_sigma,
-        image_shape,
-        min_pixels,
-        min_subjects,
-        center_crop,
-        metadata=None,
-        blur_sigma_function=None,
-        kernel_type="circle",
-        duplicate_thresh=0.01,
-        max_kernel_size=51,
-        device='cuda',
-        n_jobs=-1,
-        create_clickmap_func=None, # Add function arguments
-        fast_duplicate_detection=None):
-    """Parallelized version of prepare_maps using joblib"""
-    
-    assert blur_sigma_function is not None, "Blur sigma function not passed."
-    # Check if functions were passed
-    assert create_clickmap_func is not None, "create_clickmap function must be provided."
-    assert fast_duplicate_detection is not None, "fast_duplicate_detection function must be provided."
-
-    if kernel_type == "gaussian":
-        blur_kernel = gaussian_kernel(blur_size, blur_sigma, device)
-    elif kernel_type == "circle":
-        blur_kernel = circle_kernel(blur_size, blur_sigma, device)
-    else:
-        raise NotImplementedError(kernel_type)
-
-    # Process images in parallel
-    results = Parallel(n_jobs=n_jobs)(delayed(process_single_image)(
-            ikeys, 
-            imaps,
-            image_shape,
-            blur_size,
-            blur_sigma,
-            min_pixels,
-            min_subjects,
-            center_crop,
-            metadata,
-            blur_sigma_function,
-            kernel_type,
-            duplicate_thresh,
-            max_kernel_size,
-            blur_kernel,
-            create_clickmap_func, # Pass functions down
-            fast_duplicate_detection,
-            device
-        ) for ikeys, imaps in tqdm(final_clickmaps.items(), total=len(final_clickmaps), desc="Processing images")
-    )
-
-    # Process results
-    all_clickmaps = []
-    categories = []
-    keep_index = []
-    new_final_clickmaps = {}
-
-    for result in results:
-        if result is not None:
-            image_key, clickmaps = result
-            category = image_key.split("/")[0]
-            
-            all_clickmaps.append(clickmaps)
-            categories.append(category)
-            keep_index.append(image_key)
-            new_final_clickmaps[image_key] = final_clickmaps[image_key]
-
-    return new_final_clickmaps, all_clickmaps, categories, keep_index
-
-
-# Custom wrapper for prepare_maps_parallel to add progress bar
-def prepare_maps_with_progress(final_clickmaps, **kwargs):
-    """
-    Create a wrapper that shows progress for prepare_maps_parallel.
-    
-    Since joblib's parallel processing is difficult to track directly,
-    we'll use a simple spinner animation to show that processing is happening.
-    """
-    total_images = len(final_clickmaps[0])
-    
-    # Display information about the processing
-    print(f"│  ├─ Processing {total_images} images...")
-    
-    # Simple spinner animation characters
-    spinner = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
-    
-    # Use a context manager to handle terminal output and cleanup
-    import sys
-    import time
-    import threading
-    from contextlib import contextmanager
-    
-    @contextmanager
-    def spinner_animation():
-        # Create a flag to control the spinner animation
-        stop_spinner = threading.Event()
-        
-        # Function to animate the spinner
-        def spin():
-            i = 0
-            while not stop_spinner.is_set():
-                # Print the spinner character and processing message
-                sys.stdout.write(f"\r│  ├─ {spinner[i]} Processing images... ")
-                sys.stdout.flush()
-                time.sleep(0.1)
-                i = (i + 1) % len(spinner)
-            
-            # Clear the line when done
-            sys.stdout.write("\r" + " " * 50 + "\r")
-            sys.stdout.flush()
-        
-        # Start the spinner in a separate thread
-        spinner_thread = threading.Thread(target=spin)
-        spinner_thread.daemon = True
-        spinner_thread.start()
-        
-        try:
-            # Return control to the caller
-            yield
-        finally:
-            # Stop the spinner when the context exits
-            stop_spinner.set()
-            spinner_thread.join()
-    
-    # Extract the required functions from kwargs
-    create_clickmap_func = kwargs.get('create_clickmap_func')
-    fast_duplicate_detection = kwargs.get('fast_duplicate_detection')
-    
-    # Use the spinner animation while processing
-    with spinner_animation():
-        # Call the original function
-        for chunk in final_clickmaps:
-            result = prepare_maps_parallel(
-                final_clickmaps=chunk, 
-                create_clickmap_func=create_clickmap_func,
-                fast_duplicate_detection=fast_duplicate_detection,
-                **{k: v for k, v in kwargs.items() if k not in ('create_clickmap_func', 'fast_duplicate_detection')}
-            )
-    
-    # Print completion message
-    print(f"│  ├─ ✓ Processed {total_images} images")
-    
-    return result
-
-def compute_spearman_correlation(map1, map2):
-    """
-    Compute the Spearman correlation between two maps.
-
-    Args:
-        map1 (np.ndarray): The first map.
-        map2 (np.ndarray): The second map.
-
-    Returns:
-        float: The Spearman correlation coefficient, or NaN if computation is not possible.
-    """
-    filtered_map1 = map1.flatten()
-    filtered_map2 = map2.flatten()
-
-    if filtered_map1.size > 1 and filtered_map2.size > 1:
-        correlation, _ = spearmanr(filtered_map1, filtered_map2)
-        return correlation
-    else:
-        return float('nan')
-
-
-def fast_ious(v1, v2):
-    """
-    Compute the IoU between two images.
-
-    Args:
-        image_1 (np.ndarray): The first image.
-        image_2 (np.ndarray): The second image.
-
-    Returns:
-        float: The IoU between the two images.
-    """
-    # Compute intersection and union
-    intersection = np.logical_and(v1, v2).sum()
-    union = np.logical_or(v1, v2).sum()
-
-    # Compute IoU
-    iou = intersection / union if union != 0 else 0.0
-
-    return iou
-    
-
-def gaussian_kernel(size, sigma, device='cpu'):
-    """
-    Create a Gaussian kernel.
-
-    Args:
-        size (int): Size of the kernel.
-        sigma (float): Standard deviation of the Gaussian distribution.
-
-    Returns:
-        torch.Tensor: A 2D Gaussian kernel with added batch and channel dimensions.
-    """
-    x_range = torch.arange(-(size-1)//2, (size-1)//2 + 1, 1)
-    y_range = torch.arange((size-1)//2, -(size-1)//2 - 1, -1)
-
-    xs, ys = torch.meshgrid(x_range, y_range, indexing='ij')
-    kernel = torch.exp(-(xs**2 + ys**2) / (2 * sigma**2)) / (2 * np.pi * sigma**2)
-    
-    kernel = kernel / kernel.sum()
-    kernel = kernel.unsqueeze(0).unsqueeze(0)
-    
-    return kernel.to(device)
-
-
-def convolve(heatmap, kernel, double_conv=False, device='cpu'):
-    """
-    Apply Gaussian blur to a heatmap.
-
-    Args:
-        heatmap (torch.Tensor): The input heatmap (3D or 4D tensor).
-        kernel (torch.Tensor): The Gaussian kernel.
-
-    Returns:
-        torch.Tensor: The blurred heatmap (3D tensor).
-    """
-    # heatmap = heatmap.unsqueeze(0) if heatmap.dim() == 3 else heatmap
-    blurred_heatmap = F.conv2d(heatmap, kernel, padding='same')
-    if double_conv:
-        blurred_heatmap = F.conv2d(blurred_heatmap, kernel, padding='same')
-    return blurred_heatmap.to(device)  # [0]
-
-
-def integrate_surface(iou_scores, x, z, average_areas=True, normalize=False):
-    # Integrate along x axis (classifier thresholds)
-    if len(z) == 1:
-        return iou_scores.mean()
-
-    int_x = np.trapz(iou_scores, x, axis=1)
-    
-    if average_areas:
-        return int_x.mean()
-
-    # Integrate along z axis (label thresholds)
-    int_xz = np.trapz(int_x, z)
-
-    if normalize:
-        x_range = x[-1] - x[0]
-        z_range = z[-1] - z[0]
-        total_area = x_range * z_range
-        int_xz /= total_area
-
-    return int_xz
-
-
-def compute_AUC(
-        pred_map,
-        target_map,
-        prediction_threshs=21,
-        target_threshold_min=0.25,
-        target_threshold_max=0.75,
-        target_threshs=9):
-    """
-    We will compute IOU between pred and target over multiple threshodls of the target map.
-
-    Args:
-        map1 (np.ndarray): The first map.
-        map2 (np.ndarray): The second map.  
-
-    Returns:
-        float: The AUC between the two maps.
-    """
-    # Make sure both maps are probability distributions
-    # if normalize:
-    #     map1 = map1 / map1.sum()
-    #     map2 = map2 / map2.sum()
-    inner_thresholds = np.linspace(0, 1, prediction_threshs)
-    target_thresholds = np.linspace(target_threshold_min, target_threshold_max, target_threshs)
-    # thresholds = [0.25, 0.5, 0.75, 1]
-    thresh_ious = []
-    for outer_t in target_thresholds:
-        thresh_target_map = (target_map >= outer_t).astype(int).ravel()
-        ious = []
-        for t in inner_thresholds:
-            thresh_pred_map = (pred_map >= t).astype(int).ravel()
-            iou = fast_ious(thresh_target_map, thresh_pred_map)
-            ious.append(iou)
-        thresh_ious.append(np.asarray(ious))
-    thresh_ious = np.stack(thresh_ious, 0)
-    return integrate_surface(thresh_ious, inner_thresholds, target_thresholds, normalize=True)
-
-
-def compute_crossentropy(map1, map2):
-    """
-    Compute the cross-entropy between two maps.
-
-    Args:
-        map1 (np.ndarray): The first map.
-        map2 (np.ndarray): The second map.  
-
-    Returns:
-        float: The cross-entropy between the two maps.
-    """
-    map1 = torch.from_numpy(map1).float().ravel()
-    map2 = torch.from_numpy(map2).float().ravel()
-    return F.cross_entropy(map1, map2).numpy()
-
-
-def create_clickmap(point_lists, image_shape, exponential_decay=False, tau=0.5):
-    """
-    Create a clickmap from click points.
-
-    Args:
-        click_points (list of tuples): List of (x, y) coordinates where clicks occurred.
-        image_shape (tuple): Shape of the image (height, width).
-        blur_kernel (torch.Tensor, optional): Gaussian kernel for blurring. Default is None.
-        tau (float, optional): Decay rate for exponential decay. Default is 0.5 but this needs to be tuned.
-
-    Returns:
-        np.ndarray: A 2D array representing the clickmap, blurred if kernel provided.
-    """
-    heatmap = np.zeros(image_shape, dtype=np.uint8)
-    for click_points in point_lists:
-        if exponential_decay:
-            for idx, point in enumerate(click_points):
-
-                if 0 <= point[1] < image_shape[0] and 0 <= point[0] < image_shape[1]:
-                    heatmap[point[1], point[0]] += np.exp(-idx / tau)
-        else:
-            for point in click_points:
-                if 0 <= point[1] < image_shape[0] and 0 <= point[0] < image_shape[1]:
-                    heatmap[point[1], point[0]] += 1
-    return heatmap
-
-
-def save_clickmaps_to_hdf5(all_clickmaps, final_keep_index, hdf5_path, n_jobs=-1, compression="gzip", compression_opts=4):
-    """
-    Save clickmaps to an HDF5 file in parallel with optimized compression.
-    
-    Parameters:
-    -----------
-    all_clickmaps : list
-        List of clickmaps to save
-    final_keep_index : list
-        List of image names corresponding to the clickmaps
-    hdf5_path : str
-        Path to the HDF5 file to save to
-    n_jobs : int
-        Number of parallel jobs to run
-    compression : str
-        Compression algorithm to use (default: gzip)
-    compression_opts : int
-        Compression level (1-9, where 9 is highest compression but slowest)
-        
-    Returns:
-    --------
-    int
-        Number of successfully saved datasets
-    """
-    from joblib import Parallel, delayed
-    import h5py
-    import numpy as np
-    from tqdm import tqdm
-    import os
-    
-    # Function to process a batch of clickmaps
-    def save_batch_to_hdf5(batch_indices, batch_img_names, hdf5_path, compression, compression_opts):
-        """Save a batch of clickmaps to the HDF5 file"""
-        saved_count = 0
-        
-        # Open the HDF5 file
-        with h5py.File(hdf5_path, 'a') as f:
-            # Process each clickmap in the batch
-            for i, img_name in zip(batch_indices, batch_img_names):
-                dataset_name = img_name.replace('/', '_')
-                
-                # Get the clickmap
-                hmp = all_clickmaps[i]
-                
-                # Skip if dataset already exists
-                if dataset_name in f["clickmaps"]:
-                    continue
-                
-                # Create dataset with compression
-                try:
-                    f["clickmaps"].create_dataset(
-                        dataset_name, 
-                        data=hmp,
-                        compression=compression,
-                        compression_opts=compression_opts,
-                        # Add some helpful attributes
-                        attrs={
-                            "original_path": img_name,
-                            "shape": hmp.shape
-                        }
-                    )
-                    saved_count += 1
-                except Exception as e:
-                    print(f"Error saving {dataset_name}: {e}")
-        
-        return saved_count
-    
-    # Determine optimal batch size based on dataset characteristics
-    total_maps = len(final_keep_index)
-    
-    # Check if any maps exist
-    if total_maps == 0:
-        print("No clickmaps to save")
-        return 0
-    
-    # Check average clickmap size to adjust batch size
-    sample_size = min(10, len(all_clickmaps))
-    avg_size = np.mean([clickmap.nbytes for clickmap in all_clickmaps[:sample_size]])
-    
-    # Adjust batch size based on average clickmap size
-    # Larger clickmaps = smaller batches to avoid memory issues
-    if avg_size > 100_000_000:  # > 100MB
-        batch_size = 10
-    elif avg_size > 10_000_000:  # > 10MB
-        batch_size = 100
-    else:
-        batch_size = 1000
-    
-    print(f"Saving {total_maps} clickmaps to HDF5 file (avg size: {avg_size/1_000_000:.2f}MB, batch size: {batch_size})...")
-    
-    # Process in batches for better progress reporting and memory management
-    total_saved = 0
-    
-    # Use tqdm to show progress
-    with tqdm(total=total_maps, desc="Saving to HDF5") as pbar:
-        for batch_start in range(0, total_maps, batch_size):
-            batch_end = min(batch_start + batch_size, total_maps)
-            batch_size_actual = batch_end - batch_start
-            
-            # Prepare batch data
-            batch_indices = list(range(batch_start, batch_end))
-            batch_img_names = [final_keep_index[i] for i in batch_indices]
-            
-            # Process this batch in parallel workers if multiple jobs
-            if n_jobs != 1 and batch_size_actual > 10:
-                # Split the batch for parallel processing
-                sub_batch_size = max(1, batch_size_actual // max(1, n_jobs))
-                sub_batches = [(
-                    batch_indices[i:i+sub_batch_size],
-                    batch_img_names[i:i+sub_batch_size]
-                ) for i in range(0, batch_size_actual, sub_batch_size)]
-                
-                # Process sub-batches in parallel
-                results = Parallel(n_jobs=n_jobs)(
-                    delayed(save_batch_to_hdf5)(
-                        sub_batch_indices,
-                        sub_batch_names,
-                        hdf5_path,
-                        compression,
-                        compression_opts
-                    ) 
-                    for sub_batch_indices, sub_batch_names in sub_batches
-                )
-                
-                # Sum results
-                batch_saved = sum(results)
-            else:
-                # Process batch sequentially
-                batch_saved = save_batch_to_hdf5(
-                    batch_indices,
-                    batch_img_names,
-                    hdf5_path,
-                    compression,
-                    compression_opts
-                )
-            
-            # Update counters and progress
-            total_saved += batch_saved
-            pbar.update(batch_size_actual)
-            
-    # Update metadata in the HDF5 file
-    with h5py.File(hdf5_path, 'a') as f:
-        if "metadata" in f:
-            f["metadata"].attrs["total_saved"] = total_saved
-            f["metadata"].attrs["last_updated"] = np.bytes_(pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"))
-    
-    return total_saved
-
-def save_clickmaps_parallel(all_clickmaps, final_keep_index, output_dir, experiment_name, image_path, n_jobs=-1):
-    """
-    Save clickmaps to disk in parallel.
-    
-    Parameters:
-    -----------
-    all_clickmaps : list
-        List of clickmaps to save
-    final_keep_index : list
-        List of image names corresponding to the clickmaps
-    output_dir : str
-        Directory to save the clickmaps
-    experiment_name : str
-        Name of the experiment (used for creating subdirectory)
-    image_path : str
-        Path to the original images (used for checking existence)
-    n_jobs : int
-        Number of parallel jobs to run
-        
-    Returns:
-    --------
-    int
-        Number of successfully saved files
-    """
-    from joblib import Parallel, delayed
-    import os
-    import numpy as np
-    from tqdm import tqdm
-    
-    # Create output directory if it doesn't exist
-    save_dir = os.path.join(output_dir, experiment_name)
-    os.makedirs(save_dir, exist_ok=True)
-    
-    def save_single_clickmap(idx, img_name):
-        """Helper function to save a single clickmap"""
-        if not os.path.exists(os.path.join(image_path, img_name)):
-            return 0
-            
-        hmp = all_clickmaps[idx]
-        # Save to disk
-        np.save(
-            os.path.join(save_dir, f"{img_name.replace('/', '_')}.npy"), 
-            hmp
-        )
-        return 1
-    
-    # Use tqdm to show progress
-    with tqdm(total=len(final_keep_index), desc="Saving files in parallel", 
-             colour="cyan") as save_pbar:
-        
-        # Process in smaller batches to update progress bar more frequently
-        batch_size = max(1, min(100, len(final_keep_index) // 10))
-        saved_count = 0
-        
-        for i in range(0, len(final_keep_index), batch_size):
-            batch_indices = list(range(i, min(i + batch_size, len(final_keep_index))))
-            batch_img_names = [final_keep_index[j] for j in batch_indices]
-            
-            # Save batch in parallel
-            results = Parallel(n_jobs=n_jobs)(
-                delayed(save_single_clickmap)(j, img_name) 
-                for j, img_name in zip(batch_indices, batch_img_names)
-            )
-            
-            # Update progress bar
-            batch_saved = sum(results)
-            saved_count += batch_saved
-            save_pbar.update(len(batch_indices))
-    
-    return saved_count
-
-# Add a function to monitor GPU memory and force cleanup (around line 800)
-def check_gpu_memory_usage(threshold=0.9, force_cleanup=False):
-    """
-    Check GPU memory usage and optionally force cleanup if it exceeds threshold
-    
-    Args:
-        threshold (float): Memory usage threshold (0.0-1.0) to trigger cleanup
-        force_cleanup (bool): Whether to force cleanup regardless of threshold
-        
-    Returns:
-        float: Current GPU memory usage ratio (0.0-1.0)
-    """
-    if not torch.cuda.is_available():
-        return 0.0
-        
-    # Get current memory usage
-    try:
-        current = torch.cuda.memory_allocated()
-        total = torch.cuda.get_device_properties(0).total_memory
-        usage_ratio = float(current) / float(total)
-        
-        # Force cleanup if memory usage exceeds threshold or if explicitly requested
-        if force_cleanup or usage_ratio > threshold:
-            # First try regular empty cache
-            torch.cuda.empty_cache()
-            # Then force Python garbage collection
-            gc.collect()
-            # Empty cache again
-            torch.cuda.empty_cache()
-            
-            # Check memory again after cleanup
-            current = torch.cuda.memory_allocated()
-            usage_ratio = float(current) / float(total)
-            
-        return usage_ratio
-    except Exception as e:
-        print(f"Error checking GPU memory: {e}")
-        return 0.0
-
 def prepare_maps_batched_gpu(
         final_clickmaps,
         blur_size,
@@ -1172,11 +583,54 @@ def prepare_maps_batched_gpu(
         'new_final_clickmaps': {}
     }
     
-    # FIX: Flatten all dictionaries in the list into a single dictionary for processing
-    # Only process once per unique image
+    # FIX: More carefully merge dictionaries to avoid mixing maps from different images
+    # We use a dict to track the source of each clickmap to ensure we're not mixing maps
     merged_clickmaps = {}
-    for clickmap_dict in final_clickmaps:
-        merged_clickmaps.update(clickmap_dict)
+    image_sources = {}  # Track which dict each image came from
+    map_counts_before = {}  # Track number of maps before merging
+    map_counts_after = {}   # Track number of maps after merging
+
+    for dict_idx, clickmap_dict in enumerate(final_clickmaps):
+        # Count maps in this dictionary
+        for image_key, maps in clickmap_dict.items():
+            if image_key not in map_counts_before:
+                map_counts_before[image_key] = 0
+            map_counts_before[image_key] += len(maps)
+        
+        for image_key, maps in clickmap_dict.items():
+            if image_key in merged_clickmaps:
+                # If this image already exists, we need to make sure we're not 
+                # accidentally mixing maps from different images
+                print(f"Warning: Image {image_key} found in multiple dictionaries. Combining maps.")
+                # Append maps while preserving the source tracking
+                merged_clickmaps[image_key].extend(maps)
+                if isinstance(image_sources[image_key], list):
+                    image_sources[image_key].append(dict_idx)
+                else:
+                    image_sources[image_key] = [image_sources[image_key], dict_idx]
+            else:
+                # First occurrence of this image
+                merged_clickmaps[image_key] = maps
+                image_sources[image_key] = dict_idx
+
+    # Count maps after merging
+    for image_key, maps in merged_clickmaps.items():
+        map_counts_after[image_key] = len(maps)
+
+    # Log if we found any duplicate keys across dictionaries
+    duplicate_keys = [k for k, v in image_sources.items() if isinstance(v, list)]
+    if duplicate_keys:
+        print(f"Found {len(duplicate_keys)} images with maps in multiple dictionaries. These have been properly combined.")
+        
+        # Extra verification in verbose mode
+        if verbose:
+            print("\nVerification of map combining:")
+            for key in duplicate_keys:
+                if map_counts_before[key] != map_counts_after[key]:
+                    print(f"  ERROR: Map count mismatch for {key}: Before={map_counts_before[key]}, After={map_counts_after[key]}")
+                else:
+                    print(f"  OK: Successfully combined {map_counts_after[key]} maps for {key}")
+            print("")
     
     # Step 2: Get all keys and prepare for batch processing
     all_keys = list(merged_clickmaps.keys())
@@ -1763,3 +1217,94 @@ def batch_compute_correlations_gpu(test_maps, reference_maps, metric='auc', devi
         results.append(score)
     
     return results
+
+def save_single_clickmap(idx, img_name, image_path, file_inclusion_filter=None):
+    """Helper function to save a single clickmap"""
+    # Check multiple possible paths for the image
+    image_exists = False
+    possible_paths = [
+        os.path.join(image_path, img_name)  # Standard path
+    ]
+    
+    # Add paths with filter variations if a filter is specified
+    if file_inclusion_filter:
+        possible_paths.extend([
+            os.path.join(image_path.replace(file_inclusion_filter + os.path.sep, ""), img_name),  # Filter removed from middle
+            os.path.join(image_path.replace(file_inclusion_filter, ""), img_name)  # Filter removed from beginning
+        ])
+    
+    for path in possible_paths:
+        if os.path.exists(path):
+            image_exists = True
+            break
+    
+    if not image_exists:
+        return 0
+            
+    hmp = all_clickmaps[idx]
+    # Save to disk
+    np.save(
+        os.path.join(save_dir, f"{img_name.replace('/', '_')}.npy"), 
+        hmp
+    )
+    return 1
+
+def save_clickmaps_parallel(all_clickmaps, final_keep_index, output_dir, experiment_name, image_path, n_jobs=-1, file_inclusion_filter=None):
+    """
+    Save clickmaps to disk in parallel.
+    
+    Parameters:
+    -----------
+    all_clickmaps : list
+        List of clickmaps to save
+    final_keep_index : list
+        List of image names corresponding to the clickmaps
+    output_dir : str
+        Directory to save the clickmaps
+    experiment_name : str
+        Name of the experiment (used for creating subdirectory)
+    image_path : str
+        Path to the original images (used for checking existence)
+    n_jobs : int
+        Number of parallel jobs to run
+    file_inclusion_filter : str, optional
+        Filter to identify included files, used for path checking
+        
+    Returns:
+    --------
+    int
+        Number of successfully saved files
+    """
+    from joblib import Parallel, delayed
+    import os
+    import numpy as np
+    from tqdm import tqdm
+    
+    # Create output directory if it doesn't exist
+    save_dir = os.path.join(output_dir, experiment_name)
+    os.makedirs(save_dir, exist_ok=True)
+    
+    # Use tqdm to show progress
+    with tqdm(total=len(final_keep_index), desc="Saving files in parallel", 
+             colour="cyan") as save_pbar:
+        
+        # Process in smaller batches to update progress bar more frequently
+        batch_size = max(1, min(100, len(final_keep_index) // 10))
+        saved_count = 0
+        
+        for i in range(0, len(final_keep_index), batch_size):
+            batch_indices = list(range(i, min(i + batch_size, len(final_keep_index))))
+            batch_img_names = [final_keep_index[j] for j in batch_indices]
+            
+            # Save batch in parallel
+            results = Parallel(n_jobs=n_jobs)(
+                delayed(save_single_clickmap)(j, img_name, image_path, file_inclusion_filter) 
+                for j, img_name in zip(batch_indices, batch_img_names)
+            )
+            
+            # Update progress bar
+            batch_saved = sum(results)
+            saved_count += batch_saved
+            save_pbar.update(len(batch_indices))
+    
+    return saved_count

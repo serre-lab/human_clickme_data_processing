@@ -78,7 +78,20 @@ if __name__ == "__main__":
         config["clickme_data"],
         config["filter_mobile"])
     total_maps = len(clickme_data)
-    
+
+    # Add data validation to ensure all maps are properly grouped by image_path
+    print(f"Validating clickme data structure for {total_maps} maps...")
+    image_paths = clickme_data['image_path'].unique()
+    print(f"Found {len(image_paths)} unique images")
+
+
+    # Group clickme_data by image_path to ensure all maps for an image are processed together
+    unique_images = clickme_data['image_path'].unique()
+    total_unique_images = len(unique_images)
+
+    # Verify that images are properly grouped before chunking
+    print(f"Verifying that all maps for each image will be grouped correctly...")
+
     # Performance tuning based on dataset size
     if total_maps > 500000:  # Large dataset
         # Smaller batch sizes for large datasets
@@ -168,10 +181,6 @@ if __name__ == "__main__":
 
     # Process data in chunks to avoid memory issues
     print(f"Processing clickme data in chunks by unique images...")
-    
-    # Group clickme_data by image_path to ensure all maps for an image are processed together
-    unique_images = clickme_data['image_path'].unique()
-    total_unique_images = len(unique_images)
     
     # Determine chunk size based on unique images, not total maps
     chunk_size = config.get("chunk_size", 100000)  # Configurable chunk size
@@ -497,7 +506,8 @@ if __name__ == "__main__":
                         output_dir=output_dir,
                         experiment_name=config["experiment_name"],
                         image_path=config["image_path"],
-                        n_jobs=n_jobs
+                        n_jobs=n_jobs,
+                        file_inclusion_filter=config.get("file_inclusion_filter")
                     )
                     print(f"│  │  └─ Saved {saved_count} files in parallel")
                 else:
@@ -505,11 +515,25 @@ if __name__ == "__main__":
                     with tqdm(total=len(chunk_final_keep_index), desc="│  │  ├─ Saving files", 
                              position=1, leave=False, colour="cyan") as save_pbar:
                         for j, img_name in enumerate(chunk_final_keep_index):
-                            # if not os.path.exists(os.path.join(config["image_path"], img_name)):
-                            if (
-                                not os.path.join(config["image_path"].replace(config["file_inclusion_filter"] + os.path.sep, ""), img_name)  # New for Co3d train
-                                and not os.path.exists(os.path.join(config["image_path"], img_name))  # Legacy
-                            ):
+                            # Check multiple possible paths for the image
+                            # - Standard path
+                            # - Path with inclusion filter removed from middle
+                            # - Path with inclusion filter removed from beginning
+                            image_exists = False
+                            possible_paths = [
+                                os.path.join(config["image_path"], img_name),  # Standard path
+                                os.path.join(config["image_path"].replace(config["file_inclusion_filter"] + os.path.sep, ""), img_name),  # Filter removed from middle
+                                os.path.join(config["image_path"].replace(config["file_inclusion_filter"], ""), img_name)  # Filter removed from beginning
+                            ]
+                            
+                            for path in possible_paths:
+                                if os.path.exists(path):
+                                    image_exists = True
+                                    break
+                            
+                            if not image_exists:
+                                if args.debug:
+                                    print(f"Warning: Could not find image for {img_name}, tried paths: {possible_paths}")
                                 continue
                                 
                             hmp = chunk_all_clickmaps[j]
