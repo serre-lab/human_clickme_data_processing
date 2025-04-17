@@ -1184,7 +1184,7 @@ def prepare_maps_batched_gpu(
     
     # Calculate number of batches based on total unique images
     # Set more conservative batch sizes for stability
-    cpu_batch_size = min(batch_size, 5000)  # Cap at 5000 for stability 
+    # cpu_batch_size = min(batch_size, 5000)  # Cap at 5000 for stability 
     num_cpu_batches = (total_images + cpu_batch_size - 1) // cpu_batch_size
     effective_n_jobs = min(n_jobs if n_jobs > 0 else os.cpu_count(), os.cpu_count(), 16)  # Cap at 16 workers
 
