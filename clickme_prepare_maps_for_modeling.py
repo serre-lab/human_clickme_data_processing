@@ -8,6 +8,9 @@ from matplotlib import pyplot as plt
 from src import utils
 from tqdm import tqdm
 import h5py  # Add h5py for HDF5 support
+import gc
+import psutil
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 
 
 def get_medians(point_lists, mode='image', thresh=50):
@@ -51,6 +54,13 @@ def get_medians(point_lists, mode='image', thresh=50):
     return medians
 
 
+def get_memory_usage():
+    """Return current memory usage in MB"""
+    process = psutil.Process(os.getpid())
+    mem_info = process.memory_info()
+    return mem_info.rss / (1024 * 1024)  # Convert to MB
+
+
 if __name__ == "__main__":
     # Add command line arguments
     parser = argparse.ArgumentParser(description="Process clickme data for modeling")
@@ -62,7 +72,16 @@ if __name__ == "__main__":
     parser.add_argument('--cpu-only', action='store_true', help='Force CPU-only processing regardless of config')
     parser.add_argument('--gpu-batch-size', type=int, default=None, help='Override GPU batch size')
     parser.add_argument('--max-workers', type=int, default=None, help='Maximum number of CPU workers')
+    parser.add_argument('--chunk-size', type=int, default=None, help='Override chunk size')
+    parser.add_argument('--save-interval', type=int, default=50, help='Save results every N images to avoid memory buildup')
+    parser.add_argument('--profile', action='store_true', help='Enable performance profiling')
     args = parser.parse_args()
+    
+    # Start profiling if requested
+    if args.profile:
+        import cProfile
+        profiler = cProfile.Profile()
+        profiler.enable()
     
     # Load config file
     if args.config:
@@ -74,6 +93,7 @@ if __name__ == "__main__":
         config = utils.process_config(config_file)
     
     # Load clickme data first to assess dataset size
+    print(f"Loading clickme data...")
     clickme_data = utils.process_clickme_data(
         config["clickme_data"],
         config["filter_mobile"])
@@ -82,46 +102,81 @@ if __name__ == "__main__":
     # Add data validation to ensure all maps are properly grouped by image_path
     print(f"Validating clickme data structure for {total_maps} maps...")
     image_paths = clickme_data['image_path'].unique()
-    print(f"Found {len(image_paths)} unique images")
-
-
-    # Group clickme_data by image_path to ensure all maps for an image are processed together
-    unique_images = clickme_data['image_path'].unique()
-    total_unique_images = len(unique_images)
-
-    # Verify that images are properly grouped before chunking
-    print(f"Verifying that all maps for each image will be grouped correctly...")
-
-    # Performance tuning based on dataset size
-    if total_maps > 500000:  # Large dataset
-        # Smaller batch sizes for large datasets
-        if args.gpu_batch_size:
-            config["gpu_batch_size"] = args.gpu_batch_size
+    total_unique_images = len(image_paths)
+    print(f"Found {total_unique_images} unique images")
+    
+    # Determine optimal parameters for dataset size
+    # For a dataset with 300k maps and 4581 images
+    
+    # Override chunk size if specified
+    if args.chunk_size:
+        config["chunk_size"] = args.chunk_size
+    elif "chunk_size" not in config or total_unique_images < 5000:
+        # Optimize chunk size - for 4581 images, use larger chunks
+        config["chunk_size"] = min(1000, total_unique_images // 5)
+    
+    # Set optimal GPU batch size for better throughput
+    if args.gpu_batch_size:
+        config["gpu_batch_size"] = args.gpu_batch_size
+    else:
+        # Determine best batch size based on dataset characteristics
+        # For 300k maps, smaller batches usually process faster
+        if total_maps > 200000:
+            config["gpu_batch_size"] = 512
         else:
-            config["gpu_batch_size"] = 1024  # Significantly smaller batch size for better throughput
-        
-        # Limit CPU workers
-        if args.max_workers:
-            config["n_jobs"] = min(args.max_workers, os.cpu_count())
-        else:
-            config["n_jobs"] = min(8, os.cpu_count())  # Limit CPU workers
-        
-        config["parallel_clickmap_processing"] = True  # Enable parallel processing
-        
-        # Force CPU-only if requested
-        if args.cpu_only:
+            config["gpu_batch_size"] = 1024
+    
+    # Optimize number of workers based on CPU count
+    cpu_count = os.cpu_count()
+    if args.max_workers:
+        config["n_jobs"] = min(args.max_workers, cpu_count)
+    else:
+        # Leave some cores free for system operations
+        config["n_jobs"] = max(1, min(cpu_count - 1, 8))
+    
+    # Always enable parallel processing for large datasets
+    config["parallel_clickmap_processing"] = True
+    
+    # Use HDF5 for datasets > 100k maps
+    if "output_format" not in config or config["output_format"] == "auto":
+        config["output_format"] = "hdf5" if total_maps > 100000 else "numpy"
+    
+    # Force CPU-only if requested
+    if args.cpu_only:
+        config["use_gpu_blurring"] = False
+    elif "use_gpu_blurring" not in config:
+        # Default to GPU if available
+        try:
+            import torch
+            config["use_gpu_blurring"] = torch.cuda.is_available()
+            if config["use_gpu_blurring"]:
+                # Print GPU info
+                gpu_name = torch.cuda.get_device_name(0)
+                gpu_memory = torch.cuda.get_device_properties(0).total_memory / (1024**3)  # GB
+                print(f"Using GPU: {gpu_name} with {gpu_memory:.2f} GB memory")
+        except ImportError:
             config["use_gpu_blurring"] = False
-        else:
-            config["use_gpu_blurring"] = True  # Keep GPU acceleration
-        
-        # Add more aggressive chunking
-        config["chunk_size"] = min(50000, config.get("chunk_size", 100000))  # Smaller chunks for large datasets
-        
-        print(f"Large dataset detected ({total_maps} maps). Using optimized settings:")
-        print(f"- GPU batch size: {config['gpu_batch_size']}")
-        print(f"- CPU workers: {config['n_jobs']}")
-        print(f"- Using GPU: {config['use_gpu_blurring']}")
-        print(f"- Chunk size: {config['chunk_size']}")
+    
+    # Enable HDF5 compression for better I/O performance
+    config["hdf5_compression"] = "gzip"
+    config["hdf5_compression_level"] = 4  # Balance between speed and size
+    
+    # Ensure all directories exist
+    output_dir = config["assets"]
+    image_output_dir = config["example_image_output_dir"]
+    os.makedirs(output_dir, exist_ok=True)
+    os.makedirs(image_output_dir, exist_ok=True)
+    os.makedirs(os.path.join(output_dir, config["experiment_name"]), exist_ok=True)
+    
+    # Print optimization settings
+    print("\nOptimized settings for processing:")
+    print(f"- Dataset size: {total_maps} maps, {total_unique_images} images")
+    print(f"- Chunk size: {config['chunk_size']} images per chunk")
+    print(f"- GPU batch size: {config['gpu_batch_size']}")
+    print(f"- CPU workers: {config['n_jobs']}")
+    print(f"- Using GPU: {config.get('use_gpu_blurring', False)}")
+    print(f"- Output format: {config['output_format']}")
+    print(f"- Memory usage at start: {get_memory_usage():.2f} MB\n")
 
     # Other Args
     # blur_sigma_function = lambda x: np.sqrt(x)
@@ -129,21 +184,12 @@ if __name__ == "__main__":
     blur_sigma_function = lambda x: x
 
     # Load config
-    output_dir = config["assets"]
-    image_output_dir = config["example_image_output_dir"]
     blur_size = config["blur_size"]
     blur_sigma = blur_sigma_function(blur_size)
     min_pixels = (2 * blur_size) ** 2  # Minimum number of pixels for a map to be included following filtering
     
     # Set output format (HDF5 by default for large datasets)
-    output_format = config.get("output_format", "auto")
-    if output_format == "auto":
-        # Automatically choose format based on dataset size
-        large_dataset_threshold = 100000  # If more than 100K images, use HDF5
-        if total_maps > large_dataset_threshold:
-            output_format = "hdf5"
-        else:
-            output_format = "numpy"
+    output_format = config["output_format"]
     
     # Choose processing method (compiled Cython vs. Python)
     use_cython = config.get("use_cython", True)
@@ -174,24 +220,6 @@ if __name__ == "__main__":
     else:
         metadata = None
 
-    # Start processing
-    os.makedirs(image_output_dir, exist_ok=True)
-    os.makedirs(output_dir, exist_ok=True)
-    os.makedirs(os.path.join(output_dir, config["experiment_name"]), exist_ok=True)
-
-    # Process data in chunks to avoid memory issues
-    print(f"Processing clickme data in chunks by unique images...")
-    
-    # Determine chunk size based on unique images, not total maps
-    chunk_size = config.get("chunk_size", 100000)  # Configurable chunk size
-    
-    # Calculate number of chunks based on unique images
-    num_chunks = (total_unique_images + chunk_size - 1) // chunk_size
-    
-    # Process all data in chunks
-    all_final_clickmaps = {}
-    all_final_keep_index = []
-    
     # Prepare HDF5 file if using HDF5 format
     hdf5_path = None
     if output_format == "hdf5":
@@ -205,8 +233,13 @@ if __name__ == "__main__":
             meta_grp = f.create_group("metadata")
             # Add some useful metadata
             meta_grp.attrs["total_unique_images"] = total_unique_images
+            meta_grp.attrs["total_maps"] = total_maps
             meta_grp.attrs["creation_date"] = np.bytes_(pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"))
             meta_grp.attrs["chunks_completed"] = 0  # Track progress
+    
+    # Calculate number of chunks based on unique images and chunk size
+    chunk_size = config["chunk_size"]
+    num_chunks = (total_unique_images + chunk_size - 1) // chunk_size
     
     # Determine start and end chunks based on command line arguments
     start_chunk = max(0, args.start_chunk - 1)  # Convert to 0-indexed
@@ -216,89 +249,74 @@ if __name__ == "__main__":
     if start_chunk > 0:
         print(f"\nRestarting from chunk {start_chunk + 1} (skipping chunks 1-{start_chunk})")
     
+    # Process all data in chunks
+    all_final_clickmaps = {}
+    all_final_keep_index = []
+    
     # Use a simple progress tracking system with tqdm - prettier hierarchy
     print(f"\nProcessing {total_unique_images} unique images in {num_chunks} chunks (processing chunks {start_chunk + 1}-{end_chunk})...")
     with tqdm(total=end_chunk-start_chunk, desc="├─ Processing chunks", position=0, leave=True, colour="blue") as pbar:
         for chunk_idx in range(start_chunk, end_chunk):
+            # Report memory usage at the start of each chunk
+            mem_usage = get_memory_usage()
+            print(f"\n├─ Memory usage: {mem_usage:.2f} MB")
+            
             chunk_start = chunk_idx * chunk_size
             chunk_end = min(chunk_start + chunk_size, total_unique_images)
             
             # Use a clear, hierarchical format for chunk info
-            print(f"\n├─ Chunk {chunk_idx + 1}/{num_chunks} ({chunk_start}-{chunk_end})")
+            print(f"├─ Chunk {chunk_idx + 1}/{num_chunks} ({chunk_start}-{chunk_end})")
             
             # Get the image_paths for this chunk
-            chunk_image_paths = unique_images[chunk_start:chunk_end]
+            chunk_image_paths = image_paths[chunk_start:chunk_end]
             
             # Filter clickme_data to only include maps for images in this chunk
             chunk_data = clickme_data[clickme_data['image_path'].isin(chunk_image_paths)]
             
             l = len(chunk_data)       
-            print(f"│  ├─ Debug: Chunk has {l} maps for {len(chunk_image_paths)} unique images")
+            print(f"│  ├─ Processing {l} maps for {len(chunk_image_paths)} unique images")
 
-            # Process chunk data
+            # Process clickmap files in parallel
             print(f"│  ├─ Processing clickmap files...")
             
-            # Choose the appropriate method based on dataset size
-            parallel_clickmap_processing = config.get("parallel_clickmap_processing", True)
+            # Always use parallel processing for large datasets
+            clickmaps, ccounts = utils.process_clickmap_files_parallel(
+                clickme_data=chunk_data,
+                image_path=config["image_path"],
+                file_inclusion_filter=config["file_inclusion_filter"],
+                file_exclusion_filter=config["file_exclusion_filter"],
+                min_clicks=config["min_clicks"],
+                max_clicks=config["max_clicks"],
+                n_jobs=config["n_jobs"])
             
-            if parallel_clickmap_processing and l > 10000:
-                # Use parallel processing for large chunks
-                clickmaps, ccounts = utils.process_clickmap_files_parallel(
-                    clickme_data=chunk_data,
-                    image_path=config["image_path"],
-                    file_inclusion_filter=config["file_inclusion_filter"],
-                    file_exclusion_filter=config["file_exclusion_filter"],
-                    min_clicks=config["min_clicks"],
-                    max_clicks=config["max_clicks"],
-                    n_jobs=config.get("n_jobs", -1))
-            else:
-                # Use regular processing for smaller chunks
-                clickmaps, ccounts = utils.process_clickmap_files(
-                    clickme_data=chunk_data,
-                    image_path=config["image_path"],
-                    file_inclusion_filter=config["file_inclusion_filter"],
-                    file_exclusion_filter=config["file_exclusion_filter"],
-                    min_clicks=config["min_clicks"],
-                    max_clicks=config["max_clicks"])
-            
-            print(f"│  ├─ Debug: After processing clickmap files: {len(clickmaps)} unique images with clickmaps")
-                
-            # Apply all filters to the chunk
+            # Apply filters in parallel if possible
             if config["class_filter_file"]:
                 print(f"│  ├─ Filtering classes...")
                 clickmaps = utils.filter_classes(
                     clickmaps=clickmaps,
                     class_filter_file=config["class_filter_file"])
-                print(f"│  ├─ Debug: After class filtering: {len(clickmaps)} images")
-
+            
             if config["participant_filter"]:
                 print(f"│  ├─ Filtering participants...")
                 clickmaps = utils.filter_participants(clickmaps)
-                print(f"│  ├─ Debug: After participant filtering: {len(clickmaps)} images")
             
-            # Get GPU batch size and workers from config or command line args
-            gpu_batch_size = args.gpu_batch_size or config.get("gpu_batch_size", 1024)
-            n_jobs = args.max_workers or config.get("n_jobs", min(8, os.cpu_count()))
+            # Get GPU batch size and workers from config
+            gpu_batch_size = config.get("gpu_batch_size", 512)
+            n_jobs = config.get("n_jobs", 8)
+            gpu_timeout = config.get("gpu_timeout", 900)  # 15 minutes timeout
             
-            # Add max processing time for GPU batching 
-            gpu_timeout = config.get("gpu_timeout", 900)  # 15 minutes timeout for parallel jobs
+            # Process using optimized method based on available resources
+            use_gpu_blurring = config.get("use_gpu_blurring", False)
             
-            # Add a safety exit mechanism
-            retry_count = 0
-            max_retries = config.get("max_retries", 2)
-            
-            # Use GPU optimized blurring by default, can be disabled with use_gpu_blurring=False
-            use_gpu_blurring = False if args.cpu_only else config.get("use_gpu_blurring", True)
-            
-            # Try different strategies for smaller subsets if dataset is very large
-            if len(clickmaps) > 10000 and use_gpu_blurring:
-                # Process in smaller sub-chunks for very large datasets
-                sub_chunk_size = config.get("sub_chunk_size", 10000)  # Process 10k images at a time
-                print(f"│  ├─ Dataset is large, processing in {(len(clickmaps) + sub_chunk_size - 1) // sub_chunk_size} sub-chunks of max {sub_chunk_size} images")
+            if use_gpu_blurring:
+                # Use optimized sub-chunking for better GPU utilization
+                sub_chunk_size = min(1000, max(100, len(clickmaps) // 10))
+                print(f"│  ├─ Processing with GPU in {(len(clickmaps) + sub_chunk_size - 1) // sub_chunk_size} sub-chunks of {sub_chunk_size} images")
                 
                 # Initialize sub-chunk results
                 all_sub_clickmaps = []
                 all_sub_keep_index = []
+                chunk_final_clickmaps = {}
                 
                 # Create list of image keys
                 img_keys = list(clickmaps.keys())
@@ -308,18 +326,12 @@ if __name__ == "__main__":
                     sub_keys = img_keys[i:i+sub_chunk_size]
                     sub_clickmaps = {k: clickmaps[k] for k in sub_keys}
                     
-                    print(f"│  ├─ Processing sub-chunk {i//sub_chunk_size + 1}/{(len(clickmaps) + sub_chunk_size - 1) // sub_chunk_size} ({len(sub_clickmaps)} images)")
+                    print(f"│  │  ├─ Sub-chunk {i//sub_chunk_size + 1}/{(len(clickmaps) + sub_chunk_size - 1) // sub_chunk_size}")
                     
-                    if use_gpu_blurring:
-                        print(f"│  ├─ Preparing maps with GPU-optimized blurring (batch_size={gpu_batch_size}, n_jobs={n_jobs})...")
-                    else:
-                        print(f"│  ├─ Preparing maps with CPU processing (n_jobs={n_jobs})...")
-                    
-                    # Process sub-chunk
+                    # Try GPU processing first
                     try:
-                        # Use GPU-optimized batched processing with smaller batch size for better throughput
                         sub_final_clickmaps, sub_all_clickmaps, sub_categories, sub_final_keep_index = utils.prepare_maps_with_gpu_batching(
-                            final_clickmaps=[sub_clickmaps],  # Wrap in a list as the function expects a list of dictionaries
+                            final_clickmaps=[sub_clickmaps],
                             blur_size=blur_size,
                             blur_sigma=blur_sigma,
                             image_shape=config["image_shape"],
@@ -340,114 +352,80 @@ if __name__ == "__main__":
                         all_sub_keep_index.extend(sub_final_keep_index)
                         
                         # Update main chunk results
-                        all_final_clickmaps.update(sub_final_clickmaps)
+                        chunk_final_clickmaps.update(sub_final_clickmaps)
                     
                     except Exception as e:
-                        print(f"│  ├─ ERROR: Failed to process sub-chunk: {e}")
-                        if retry_count < max_retries:
-                            retry_count += 1
-                            print(f"│  ├─ Trying again with CPU processing...")
-                            try:
-                                # Fall back to CPU processing
-                                sub_final_clickmaps, sub_all_clickmaps, sub_categories, sub_final_keep_index = utils.prepare_maps_with_progress(
-                                    final_clickmaps=[sub_clickmaps],  # Wrap in a list as the function expects a list of dictionaries
-                                    blur_size=blur_size,
-                                    blur_sigma=blur_sigma,
-                                    image_shape=config["image_shape"],
-                                    min_pixels=min_pixels,
-                                    min_subjects=config["min_subjects"],
-                                    metadata=metadata,
-                                    blur_sigma_function=blur_sigma_function,
-                                    center_crop=False,
-                                    n_jobs=n_jobs,
-                                    create_clickmap_func=create_clickmap_func,
-                                    fast_duplicate_detection=fast_duplicate_detection)
-                                
-                                # Collect results
-                                all_sub_clickmaps.extend(sub_all_clickmaps)
-                                all_sub_keep_index.extend(sub_final_keep_index)
-                                
-                                # Update main chunk results
-                                all_final_clickmaps.update(sub_final_clickmaps)
-                            except Exception as e:
-                                print(f"│  ├─ ERROR: CPU processing also failed: {e}")
-                                continue
-                        else:
-                            print(f"│  ├─ Skipping this sub-chunk after {max_retries} retries")
+                        print(f"│  │  ├─ GPU processing failed: {e}")
+                        print(f"│  │  ├─ Falling back to CPU...")
+                        
+                        try:
+                            # Fall back to CPU processing
+                            sub_final_clickmaps, sub_all_clickmaps, sub_categories, sub_final_keep_index = utils.prepare_maps_with_progress(
+                                final_clickmaps=[sub_clickmaps],
+                                blur_size=blur_size,
+                                blur_sigma=blur_sigma,
+                                image_shape=config["image_shape"],
+                                min_pixels=min_pixels,
+                                min_subjects=config["min_subjects"],
+                                metadata=metadata,
+                                blur_sigma_function=blur_sigma_function,
+                                center_crop=False,
+                                n_jobs=n_jobs,
+                                create_clickmap_func=create_clickmap_func,
+                                fast_duplicate_detection=fast_duplicate_detection)
+                            
+                            # Collect results
+                            all_sub_clickmaps.extend(sub_all_clickmaps)
+                            all_sub_keep_index.extend(sub_final_keep_index)
+                            
+                            # Update main chunk results
+                            chunk_final_clickmaps.update(sub_final_clickmaps)
+                        except Exception as e:
+                            print(f"│  │  ├─ CPU processing also failed: {e}")
                             continue
+                    
+                    # Save results periodically to free memory if many images
+                    if len(all_sub_clickmaps) > args.save_interval:
+                        print(f"│  │  ├─ Intermediate save to free memory...")
+                        
+                        if output_format == "hdf5":
+                            # Save to HDF5 file
+                            utils.save_clickmaps_to_hdf5(
+                                all_clickmaps=all_sub_clickmaps,
+                                final_keep_index=all_sub_keep_index,
+                                hdf5_path=hdf5_path,
+                                n_jobs=n_jobs,
+                                compression=config.get("hdf5_compression"),
+                                compression_level=config.get("hdf5_compression_level", 4)
+                            )
+                        else:
+                            # Save to numpy files
+                            utils.save_clickmaps_parallel(
+                                all_clickmaps=all_sub_clickmaps,
+                                final_keep_index=all_sub_keep_index,
+                                output_dir=output_dir,
+                                experiment_name=config["experiment_name"],
+                                image_path=config["image_path"],
+                                n_jobs=n_jobs,
+                                file_inclusion_filter=config.get("file_inclusion_filter")
+                            )
+                        
+                        # Clear memory
+                        all_sub_clickmaps = []
+                        all_sub_keep_index = []
+                        gc.collect()
                 
-                # Set results for saving
+                # Set results for final saving
                 chunk_all_clickmaps = all_sub_clickmaps
                 chunk_final_keep_index = all_sub_keep_index
-                chunk_final_clickmaps = all_final_clickmaps  # This is accumulated from sub-chunks
                 chunk_categories = []  # Not used for saving
                 
-            elif use_gpu_blurring:
-                print(f"│  ├─ Preparing maps with GPU-optimized blurring (batch_size={gpu_batch_size}, n_jobs={n_jobs})...")
-                
-                # Add retry mechanism for GPU batched processing
-                while retry_count <= max_retries:
-                    try:
-                        # Use GPU-optimized batched processing
-                        chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = utils.prepare_maps_with_gpu_batching(
-                            final_clickmaps=[clickmaps],  # Wrap in a list as the function expects a list of dictionaries
-                            blur_size=blur_size,
-                            blur_sigma=blur_sigma,
-                            image_shape=config["image_shape"],
-                            min_pixels=min_pixels,
-                            min_subjects=config["min_subjects"],
-                            metadata=metadata,
-                            blur_sigma_function=blur_sigma_function,
-                            center_crop=False,
-                            n_jobs=n_jobs,
-                            batch_size=gpu_batch_size,
-                            timeout=gpu_timeout,
-                            verbose=args.verbose or args.debug,  # Use verbose if --verbose or --debug flag is set
-                            create_clickmap_func=create_clickmap_func,
-                            fast_duplicate_detection=fast_duplicate_detection)
-                        # If we get here, processing succeeded
-                        break
-                    except Exception as e:
-                        retry_count += 1
-                        if retry_count > max_retries:
-                            print(f"│  ├─ ERROR: Failed to process chunk after {max_retries} retries: {e}")
-                            print(f"│  ├─ Trying CPU processing as a last resort...")
-                            try:
-                                # Fall back to CPU processing
-                                chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = utils.prepare_maps_with_progress(
-                                    final_clickmaps=[clickmaps],  # Wrap in a list as the function expects a list of dictionaries
-                                    blur_size=blur_size,
-                                    blur_sigma=blur_sigma,
-                                    image_shape=config["image_shape"],
-                                    min_pixels=min_pixels,
-                                    min_subjects=config["min_subjects"],
-                                    metadata=metadata,
-                                    blur_sigma_function=blur_sigma_function,
-                                    center_crop=False,
-                                    n_jobs=n_jobs,
-                                    create_clickmap_func=create_clickmap_func,
-                                    fast_duplicate_detection=fast_duplicate_detection)
-                            except Exception as e:
-                                print(f"│  ├─ ERROR: CPU processing also failed: {e}")
-                                print(f"│  ├─ Skipping this chunk and continuing to the next one...")
-                                # Initialize with empty results to avoid errors in subsequent code
-                                chunk_final_clickmaps = {}
-                                chunk_all_clickmaps = []
-                                chunk_categories = []
-                                chunk_final_keep_index = []
-                            break
-                        else:
-                            print(f"│  ├─ WARNING: Error processing chunk: {e}")
-                            print(f"│  ├─ Retry {retry_count}/{max_retries} with smaller batch size...")
-                            # Reduce batch size for retry
-                            gpu_batch_size = max(256, gpu_batch_size // 2)
-                            # Continue to retry
             else:
-                # Use the original CPU-based processing with better error handling
-                print(f"│  ├─ Preparing maps with CPU processing (n_jobs={n_jobs})...")
+                # Use the CPU-based processing
+                print(f"│  ├─ Processing with CPU (n_jobs={n_jobs})...")
                 try:
                     chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index = utils.prepare_maps_with_progress(
-                        final_clickmaps=[clickmaps],  # Wrap in a list as the function expects a list of dictionaries
+                        final_clickmaps=[clickmaps],
                         blur_size=blur_size,
                         blur_sigma=blur_sigma,
                         image_shape=config["image_shape"],
@@ -461,14 +439,14 @@ if __name__ == "__main__":
                         fast_duplicate_detection=fast_duplicate_detection)
                 except Exception as e:
                     print(f"│  ├─ ERROR: Failed to process chunk: {e}")
-                    print(f"│  ├─ Skipping this chunk and continuing to the next one...")
-                    # Initialize with empty results to avoid errors in subsequent code
+                    print(f"│  ├─ Skipping this chunk...")
+                    # Initialize with empty results
                     chunk_final_clickmaps = {}
                     chunk_all_clickmaps = []
                     chunk_categories = []
                     chunk_final_keep_index = []
 
-            # Apply mask filtering if needed and if chunk was processed successfully
+            # Apply mask filtering if needed
             if chunk_final_keep_index and config["mask_dir"]:
                 print(f"│  ├─ Applying mask filtering...")
                 masks = utils.load_masks(config["mask_dir"])
@@ -481,24 +459,19 @@ if __name__ == "__main__":
             
             # Save results if we have any
             if chunk_final_keep_index:
-                print(f"│  ├─ Saving processed maps ({len(chunk_final_keep_index)} images)...")
-            
-            # Save results
-            print(f"│  ├─ Saving processed maps...")
-            
-            if output_format == "hdf5":
-                # Save to HDF5 file
-                saved_count = utils.save_clickmaps_to_hdf5(
-                    all_clickmaps=chunk_all_clickmaps,
-                    final_keep_index=chunk_final_keep_index,
-                    hdf5_path=hdf5_path,
-                    n_jobs=n_jobs
-                )
-                print(f"│  │  └─ Saved {saved_count} datasets to HDF5 file")
-            else:
-                # Check if parallel saving is enabled (default to True if not specified)
-                use_parallel_save = config.get("parallel_save", True)
-                if use_parallel_save:
+                print(f"│  ├─ Saving {len(chunk_final_keep_index)} processed maps...")
+                
+                if output_format == "hdf5":
+                    # Use optimized HDF5 saving with compression
+                    saved_count = utils.save_clickmaps_to_hdf5(
+                        all_clickmaps=chunk_all_clickmaps,
+                        final_keep_index=chunk_final_keep_index,
+                        hdf5_path=hdf5_path,
+                        n_jobs=n_jobs,
+                        compression=config.get("hdf5_compression"),
+                        compression_level=config.get("hdf5_compression_level", 4)
+                    )
+                else:
                     # Use parallel saving
                     saved_count = utils.save_clickmaps_parallel(
                         all_clickmaps=chunk_all_clickmaps,
@@ -509,54 +482,23 @@ if __name__ == "__main__":
                         n_jobs=n_jobs,
                         file_inclusion_filter=config.get("file_inclusion_filter")
                     )
-                    print(f"│  │  └─ Saved {saved_count} files in parallel")
-                else:
-                    # Use sequential saving with tqdm
-                    with tqdm(total=len(chunk_final_keep_index), desc="│  │  ├─ Saving files", 
-                             position=1, leave=False, colour="cyan") as save_pbar:
-                        for j, img_name in enumerate(chunk_final_keep_index):
-                            # Check multiple possible paths for the image
-                            # - Standard path
-                            # - Path with inclusion filter removed from middle
-                            # - Path with inclusion filter removed from beginning
-                            image_exists = False
-                            possible_paths = [
-                                os.path.join(config["image_path"], img_name),  # Standard path
-                                os.path.join(config["image_path"].replace(config["file_inclusion_filter"] + os.path.sep, ""), img_name),  # Filter removed from middle
-                                os.path.join(config["image_path"].replace(config["file_inclusion_filter"], ""), img_name)  # Filter removed from beginning
-                            ]
-                            
-                            for path in possible_paths:
-                                if os.path.exists(path):
-                                    image_exists = True
-                                    break
-                            
-                            if not image_exists:
-                                if args.debug:
-                                    print(f"Warning: Could not find image for {img_name}, tried paths: {possible_paths}")
-                                continue
-                                
-                            hmp = chunk_all_clickmaps[j]
-                            # Save directly to disk - don't accumulate in memory
-                            np.save(
-                                os.path.join(output_dir, config["experiment_name"], f"{img_name.replace('/', '_')}.npy"), 
-                                hmp
-                            )
-                            save_pbar.update(1)
+                print(f"│  ├─ Saved {saved_count} files")
             
-            # Merge results (keeping minimal data in memory)
-            all_final_clickmaps.update(chunk_final_clickmaps)
+            # Merge minimal results for final statistics
+            # Just keep references to image names instead of full data
+            for name in chunk_final_clickmaps:
+                all_final_clickmaps[name] = chunk_final_clickmaps[name]
             all_final_keep_index.extend(chunk_final_keep_index)
             
             # Free memory
             del chunk_data, clickmaps, ccounts
-            del chunk_final_clickmaps, chunk_all_clickmaps, chunk_categories, chunk_final_keep_index
+            del chunk_all_clickmaps, chunk_categories, chunk_final_keep_index
+            # Don't delete chunk_final_clickmaps as we need the references
             
-            # Force Python garbage collection
-            import gc
+            # Force garbage collection
             gc.collect()
             
-            # Update progress in HDF5 file if using HDF5
+            # Update progress in HDF5 file
             if output_format == "hdf5":
                 try:
                     with h5py.File(hdf5_path, 'a') as f:
@@ -567,9 +509,13 @@ if __name__ == "__main__":
             
             # Update main progress bar
             pbar.update(1)
-            print(f"│  └─ Chunk {chunk_idx + 1} complete.\n")
+            
+            # Report memory after chunk processing
+            mem_usage_after = get_memory_usage()
+            print(f"│  └─ Chunk {chunk_idx + 1} complete. Memory: {mem_usage_after:.2f} MB (delta: {mem_usage_after - mem_usage:.2f} MB)\n")
     
     # Get median number of clicks from the combined results
+    print("Calculating medians...")
     percentile_thresh = config["percentile_thresh"]
     medians = get_medians(all_final_clickmaps, 'image', thresh=percentile_thresh)
     medians.update(get_medians(all_final_clickmaps, 'category', thresh=percentile_thresh))
@@ -615,7 +561,9 @@ if __name__ == "__main__":
             elif os.path.exists(os.path.join(config["image_path"].replace(config["file_inclusion_filter"], ""), img_name)):
                 img = Image.open(os.path.join(config["image_path"].replace(config["file_inclusion_filter"], ""), img_name))
             else:
-                raise ValueError(f"Image not found for {img_name}")
+                print(f"Image not found for {img_name}")
+                continue
+                
             if metadata:
                 click_match = [k_ for k_ in all_final_clickmaps.keys() if img_name in k_]
                 if click_match:
@@ -632,3 +580,19 @@ if __name__ == "__main__":
             plt.axis("off")
             plt.savefig(os.path.join(image_output_dir, img_name.replace('/', '_')))
             plt.close()
+    
+    # End profiling if it was enabled
+    if args.profile:
+        profiler.disable()
+        import pstats
+        from io import StringIO
+        s = StringIO()
+        ps = pstats.Stats(profiler, stream=s).sort_stats('cumulative')
+        ps.print_stats(30)  # Print top 30 functions by time
+        print(s.getvalue())
+        
+        # Save profile results to file
+        ps.dump_stats(os.path.join(output_dir, "profile_results.prof"))
+        print(f"Profile results saved to {os.path.join(output_dir, 'profile_results.prof')}")
+    
+    print(f"\nProcessing complete! Final memory usage: {get_memory_usage():.2f} MB")
