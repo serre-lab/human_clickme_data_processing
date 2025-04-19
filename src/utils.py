@@ -1281,7 +1281,7 @@ def save_clickmaps_parallel(all_clickmaps, final_keep_index, output_dir, experim
     
     return saved_count
 
-def save_clickmaps_to_hdf5(all_clickmaps, final_keep_index, hdf5_path, n_jobs=1, compression="gzip", compression_level=4):
+def save_clickmaps_to_hdf5(all_clickmaps, final_keep_index, hdf5_path, n_jobs=1, compression="gzip", compression_level=0):
     """
     Save clickmaps to HDF5 file safely without running into "Too many open files" error.
     
@@ -1314,17 +1314,9 @@ def save_clickmaps_to_hdf5(all_clickmaps, final_keep_index, hdf5_path, n_jobs=1,
     # Ensure the directory exists
     os.makedirs(os.path.dirname(hdf5_path), exist_ok=True)
     
-    # Validate compression parameters
-    valid_compression = compression is not None and isinstance(compression, str) and compression.strip() != ""
-    if not valid_compression:
-        print(f"Warning: Invalid compression method '{compression}'. Disabling compression.")
-        compression = None
-        compression_kwargs = {}
-    else:
-        compression_kwargs = {
-            'compression': compression,
-            'compression_opts': compression_level
-        }
+    # Validate compression parameters -- disable for now
+    compression = None
+    compression_kwargs = {}
     
     # Process all clickmaps in batches
     batch_size = 100
@@ -1346,39 +1338,36 @@ def save_clickmaps_to_hdf5(all_clickmaps, final_keep_index, hdf5_path, n_jobs=1,
                 
             # Process each clickmap in the batch
             for i in range(start_idx, end_idx):
-                try:
-                    # Get image name and clean it for HDF5
-                    img_name = final_keep_index[i]
-                    dataset_name = img_name.replace('/', '_')
+                # Get image name and clean it for HDF5
+                img_name = final_keep_index[i]
+                dataset_name = img_name.replace('/', '_')
+                
+                # Get the clickmap
+                hmp = all_clickmaps[i]
+                
+                # Check if dataset already exists and delete it if it does
+                if dataset_name in f["clickmaps"]:
+                    del f["clickmaps"][dataset_name]
+                
+                # Create the dataset with or without compression
+                if valid_compression:
+                    f["clickmaps"].create_dataset(
+                        dataset_name,
+                        data=hmp,
+                        **compression_kwargs
+                    )
+                else:
+                    f["clickmaps"].create_dataset(
+                        dataset_name,
+                        data=hmp
+                    )
+                
+                # Add metadata about the dataset
+                ds = f["clickmaps"][dataset_name]
+                ds.attrs["shape"] = hmp.shape
+                ds.attrs["original_path"] = img_name
                     
-                    # Get the clickmap
-                    hmp = all_clickmaps[i]
-                    
-                    # Check if dataset already exists and delete it if it does
-                    if dataset_name in f["clickmaps"]:
-                        del f["clickmaps"][dataset_name]
-                    
-                    # Create the dataset with or without compression
-                    if valid_compression:
-                        f["clickmaps"].create_dataset(
-                            dataset_name,
-                            data=hmp,
-                            **compression_kwargs
-                        )
-                    else:
-                        f["clickmaps"].create_dataset(
-                            dataset_name,
-                            data=hmp
-                        )
-                    
-                    # Add metadata about the dataset
-                    ds = f["clickmaps"][dataset_name]
-                    ds.attrs["shape"] = hmp.shape
-                    ds.attrs["original_path"] = img_name
-                    
-                    saved_count += 1
-                except Exception as e:
-                    print(f"Error saving {img_name}: {e}")
+                saved_count += 1
             
             # Update metadata after each batch
             if "metadata" not in f:

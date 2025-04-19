@@ -342,7 +342,7 @@ if __name__ == "__main__":
                 hdf5_path=hdf5_path,
                 n_jobs=config["n_jobs"],
                 compression=config.get("hdf5_compression"),
-                compression_level=config.get("hdf5_compression_level", 4)
+                compression_level=config.get("hdf5_compression_level", 0)
             )
         else:
             # Use parallel saving
@@ -379,52 +379,55 @@ if __name__ == "__main__":
         print("Generating visualizations for display images...")
         for img_name in config["display_image_keys"]:
             # Find the corresponding heatmap
-            if output_format == "hdf5":
-                # Read from HDF5 file
-                with h5py.File(hdf5_path, 'r') as f:
-                    dataset_name = img_name.replace('/', '_')
-                    if dataset_name in f["clickmaps"]:
-                        hmp = f["clickmaps"][dataset_name][:]
-                    else:
+            try:
+                if output_format == "hdf5":
+                    # Read from HDF5 file
+                    with h5py.File(hdf5_path, 'r') as f:
+                        dataset_name = img_name.replace('/', '_')
+                        if dataset_name in f["clickmaps"]:
+                            hmp = f["clickmaps"][dataset_name][:]
+                        else:
+                            print(f"Heatmap not found for {img_name}")
+                            continue
+                else:
+                    # Read from numpy file
+                    heatmap_path = os.path.join(output_dir, config["experiment_name"], f"{img_name.replace('/', '_')}.npy")
+                    if not os.path.exists(heatmap_path):
                         print(f"Heatmap not found for {img_name}")
                         continue
-            else:
-                # Read from numpy file
-                heatmap_path = os.path.join(output_dir, config["experiment_name"], f"{img_name.replace('/', '_')}.npy")
-                if not os.path.exists(heatmap_path):
-                    print(f"Heatmap not found for {img_name}")
+                        
+                    hmp = np.load(heatmap_path)
+                    
+                # Load image
+                if os.path.exists(os.path.join(config["image_path"], img_name)):
+                    img = Image.open(os.path.join(config["image_path"], img_name))
+                elif os.path.exists(os.path.join(config["image_path"].replace(config["file_inclusion_filter"] + os.path.sep, ""), img_name)):
+                    img = Image.open(os.path.join(config["image_path"].replace(config["file_inclusion_filter"] + os.path.sep, ""), img_name))
+                elif os.path.exists(os.path.join(config["image_path"].replace(config["file_inclusion_filter"], ""), img_name)):
+                    img = Image.open(os.path.join(config["image_path"].replace(config["file_inclusion_filter"], ""), img_name))
+                else:
+                    print(f"Image not found for {img_name}")
                     continue
                     
-                hmp = np.load(heatmap_path)
+                if metadata:
+                    click_match = [k_ for k_ in final_clickmaps.keys() if img_name in k_]
+                    if click_match:
+                        metadata_size = metadata[click_match[0]]
+                        img = img.resize(metadata_size)
                 
-            # Load image
-            if os.path.exists(os.path.join(config["image_path"], img_name)):
-                img = Image.open(os.path.join(config["image_path"], img_name))
-            elif os.path.exists(os.path.join(config["image_path"].replace(config["file_inclusion_filter"] + os.path.sep, ""), img_name)):
-                img = Image.open(os.path.join(config["image_path"].replace(config["file_inclusion_filter"] + os.path.sep, ""), img_name))
-            elif os.path.exists(os.path.join(config["image_path"].replace(config["file_inclusion_filter"], ""), img_name)):
-                img = Image.open(os.path.join(config["image_path"].replace(config["file_inclusion_filter"], ""), img_name))
-            else:
-                print(f"Image not found for {img_name}")
+                # Save visualization
+                f = plt.figure()
+                plt.subplot(1, 2, 1)
+                plt.imshow(np.asarray(img))
+                plt.axis("off")
+                plt.subplot(1, 2, 2)
+                plt.imshow(hmp.mean(0))
+                plt.axis("off")
+                plt.savefig(os.path.join(image_output_dir, img_name.replace('/', '_')))
+                plt.close()
+            except Exception as e:
+                print(f"Error processing {img_name}: {str(e)}")
                 continue
-                
-            if metadata:
-                click_match = [k_ for k_ in final_clickmaps.keys() if img_name in k_]
-                if click_match:
-                    metadata_size = metadata[click_match[0]]
-                    img = img.resize(metadata_size)
-            
-            # Save visualization
-            f = plt.figure()
-            plt.subplot(1, 2, 1)
-            plt.imshow(np.asarray(img))
-            plt.axis("off")
-            plt.subplot(1, 2, 2)
-            plt.imshow(hmp.mean(0))
-            plt.axis("off")
-            plt.savefig(os.path.join(image_output_dir, img_name.replace('/', '_')))
-            plt.close()
-    
     # End profiling if it was enabled
     if args.profile:
         profiler.disable()
