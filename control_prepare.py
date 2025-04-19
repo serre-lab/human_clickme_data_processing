@@ -198,7 +198,7 @@ def process_all_maps_gpu(clickmaps, config, metadata=None, create_clickmap_func=
     
     # Reconstruct the results by image key
     final_clickmaps = {}
-    all_clickmaps = []
+    final_all_clickmaps = []  # Renamed from all_clickmaps to avoid confusion
     categories = []
     keep_index = []
     
@@ -220,7 +220,7 @@ def process_all_maps_gpu(clickmaps, config, metadata=None, create_clickmap_func=
             
             # If we still have enough maps after filtering
             if len(valid_maps) >= min_subjects:
-                all_clickmaps.append(np.array(valid_maps))
+                final_all_clickmaps.append(np.array(valid_maps))  # Use renamed variable
                 category = key.split("/")[0]
                 categories.append(category)
                 keep_index.append(key)
@@ -229,7 +229,7 @@ def process_all_maps_gpu(clickmaps, config, metadata=None, create_clickmap_func=
         start_idx = end_idx
     
     print(f"Finished processing with GPU. Kept {len(keep_index)}/{total_images} images.")
-    return final_clickmaps, all_clickmaps, categories, keep_index
+    return final_clickmaps, final_all_clickmaps, categories, keep_index  # Return the renamed variable
 
 
 if __name__ == "__main__":
@@ -382,7 +382,7 @@ if __name__ == "__main__":
     # Process all maps with our new single-batch GPU function
     print(f"Processing with GPU (batch size: {config['gpu_batch_size']})...")
     
-    final_clickmaps, all_clickmaps, categories, final_keep_index = process_all_maps_gpu(
+    final_clickmaps, final_all_clickmaps, categories, final_keep_index = process_all_maps_gpu(
         clickmaps=clickmaps,
         config=config,
         metadata=metadata,
@@ -394,9 +394,9 @@ if __name__ == "__main__":
     if final_keep_index and config["mask_dir"]:
         print("Applying mask filtering...")
         masks = utils.load_masks(config["mask_dir"])
-        final_clickmaps, all_clickmaps, categories, final_keep_index = utils.filter_for_foreground_masks(
+        final_clickmaps, final_all_clickmaps, categories, final_keep_index = utils.filter_for_foreground_masks(
             final_clickmaps=final_clickmaps,
-            all_clickmaps=all_clickmaps,
+            all_clickmaps=final_all_clickmaps,
             categories=categories,
             masks=masks,
             mask_threshold=config["mask_threshold"])
@@ -408,7 +408,7 @@ if __name__ == "__main__":
         if output_format == "hdf5":
             # Use optimized HDF5 saving with compression
             saved_count = utils.save_clickmaps_to_hdf5(
-                all_clickmaps=all_clickmaps,
+                all_clickmaps=final_all_clickmaps,
                 final_keep_index=final_keep_index,
                 hdf5_path=hdf5_path,
                 n_jobs=config["n_jobs"],
@@ -418,7 +418,7 @@ if __name__ == "__main__":
         else:
             # Use parallel saving
             saved_count = utils.save_clickmaps_parallel(
-                all_clickmaps=all_clickmaps,
+                all_clickmaps=final_all_clickmaps,
                 final_keep_index=final_keep_index,
                 output_dir=output_dir,
                 experiment_name=config["experiment_name"],
