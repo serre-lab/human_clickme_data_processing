@@ -327,12 +327,14 @@ def process_clickmap_files_parallel(
         image_file_name = os.path.sep.join(row['image_path'].split(os.path.sep)[-2:])
         
         # Handle CO3D_ClickmeV2 special case
-        if file_inclusion_filter == "CO3D_ClickmeV2" or file_inclusion_filter == "CO3D_ClickMe2":
-            import pdb;pdb.set_trace()
-            image_files = glob(os.path.join(image_path, "**", "*.png"))
-            if not np.any([image_file_name in x for x in image_files]):
-                return None
-        elif file_inclusion_filter and file_inclusion_filter not in image_file_name:
+        # if file_inclusion_filter == "CO3D_ClickmeV2" or file_inclusion_filter == "CO3D_ClickMe2":
+        #     import pdb;pdb.set_trace()
+        #     image_files = glob(os.path.join(image_path, "**", "*.png"))
+        #     if not np.any([image_file_name in x for x in image_files]):
+        #         return None
+        # elif file_inclusion_filter and file_inclusion_filter not in image_file_name:
+        #     return None
+        if file_inclusion_filter and file_inclusion_filter not in image_file_name:
             return None
 
         if isinstance(file_exclusion_filter, list):
@@ -367,16 +369,11 @@ def process_clickmap_files_parallel(
 
         return (image_file_name, tuples_list)
 
-    # Process rows in parallel
-    # results = Parallel(n_jobs=-1)(
-    #     delayed(process_single_row)(row) 
-    #     for _, row in tqdm(clickme_data.iterrows(), total=len(clickme_data), desc="Processing clickmaps")
-    # )
-
-    results = []
-    for _, row in tqdm(clickme_data.iterrows(), total=len(clickme_data), desc="Processing clickmaps"):
-        results.append(process_single_row(row))
-    import pdb;pdb.set_trace()
+    Process rows in parallel
+    results = Parallel(n_jobs=-1)(
+        delayed(process_single_row)(row) 
+        for _, row in tqdm(clickme_data.iterrows(), total=len(clickme_data), desc="Processing clickmaps")
+    )
 
     # Combine results
     proc_clickmaps = {}

@@ -207,27 +207,24 @@ if __name__ == "__main__":
     gpu_timeout = config.get("gpu_timeout", 900)  # 15 minutes timeout
     
     print(f"Processing with GPU (batch size: {gpu_batch_size})...")
-    try:
-        final_clickmaps, all_clickmaps, categories, final_keep_index = utils.prepare_maps_with_gpu_batching(
-            final_clickmaps=[clickmaps],
-            blur_size=blur_size,
-            blur_sigma=blur_sigma,
-            image_shape=config["image_shape"],
-            min_pixels=min_pixels,
-            min_subjects=config["min_subjects"],
-            metadata=metadata,
-            blur_sigma_function=blur_sigma_function,
-            center_crop=False,
-            n_jobs=n_jobs,
-            batch_size=gpu_batch_size,
-            timeout=gpu_timeout,
-            verbose=args.verbose or args.debug,
-            create_clickmap_func=create_clickmap_func,
-            fast_duplicate_detection=fast_duplicate_detection)
-    except Exception as e:
-        print(f"GPU processing failed: {e}")
-        print("Exiting...")
-        sys.exit(1)
+    final_clickmaps, all_clickmaps, categories, final_keep_index = utils.prepare_maps_with_gpu_batching(
+        final_clickmaps=[clickmaps],
+        blur_size=blur_size,
+        blur_sigma=blur_sigma,
+        image_shape=config["image_shape"],
+        min_pixels=min_pixels,
+        min_subjects=config["min_subjects"],
+        metadata=metadata,
+        blur_sigma_function=blur_sigma_function,
+        center_crop=False,
+        n_jobs=n_jobs,
+        batch_size=gpu_batch_size,
+        timeout=gpu_timeout,
+        verbose=args.verbose or args.debug,
+        create_clickmap_func=create_clickmap_func,
+        fast_duplicate_detection=fast_duplicate_detection)
+    import pdb;pdb.set_trace()
+    final_clickmaps, clickmaps
 
     # Apply mask filtering if needed
     if final_keep_index and config["mask_dir"]:
