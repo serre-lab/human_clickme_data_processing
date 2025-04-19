@@ -78,6 +78,7 @@ def process_all_maps_gpu(clickmaps, config, metadata=None, create_clickmap_func=
             continue
             
         # Create binary clickmaps
+        import pdb;pdb.set_trace()
         if metadata and key in metadata:
             native_size = metadata[key]
             binary_maps = np.asarray([create_clickmap_func([trial], native_size[::-1]) for trial in trials])
