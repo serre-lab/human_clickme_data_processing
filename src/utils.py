@@ -963,8 +963,8 @@ def prepare_maps_batched_gpu(
             if 'gpu_processing_list' in locals(): del gpu_processing_list
             torch.cuda.empty_cache()
     
-    # Final cleanup before returning
-    check_gpu_memory_usage(threshold=0.0, force_cleanup=True)
+    # # Final cleanup before returning
+    # check_gpu_memory_usage(threshold=0.0, force_cleanup=True)
     
     print(f"\nFinished processing {processed_count} images.")
     # Return combined results
