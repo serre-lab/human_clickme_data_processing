@@ -118,10 +118,14 @@ def process_all_maps_gpu(clickmaps, config, metadata=None, create_clickmap_func=
     kernel = utils.circle_kernel(adjusted_blur_size, blur_sigma, 'cuda')
     
     # Process in batches based on the GPU batch size
-    num_batches = (total_maps + gpu_batch_size - 1) // gpu_batch_size
+    try:
+        torch.cat(all_tensors[:100])
+        num_batches = (total_maps + gpu_batch_size - 1) // gpu_batch_size
+    except Exception as e:
+        num_batches = len(total_maps)
+        import pdb; pdb.set_trace()
     
     print(f"Processing in {num_batches} batches of up to {gpu_batch_size} maps each...")
-    
     for batch_idx in tqdm(range(num_batches), desc="Processing GPU batches"):
         # Get batch indices
         start_idx = batch_idx * gpu_batch_size
