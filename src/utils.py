@@ -1295,8 +1295,8 @@ def save_clickmaps_to_hdf5(all_clickmaps, final_keep_index, hdf5_path, n_jobs=1,
         Path to the HDF5 file
     n_jobs : int
         Number of parallel jobs to run (not used for HDF5 file access)
-    compression : str
-        Compression algorithm to use ("gzip", "lzf", etc.)
+    compression : str or None
+        Compression algorithm to use ("gzip", "lzf", etc.). If None, no compression is used.
     compression_level : int
         Compression level (1-9, higher = more compression but slower)
         
@@ -1313,6 +1313,18 @@ def save_clickmaps_to_hdf5(all_clickmaps, final_keep_index, hdf5_path, n_jobs=1,
     
     # Ensure the directory exists
     os.makedirs(os.path.dirname(hdf5_path), exist_ok=True)
+    
+    # Validate compression parameters
+    valid_compression = compression is not None and isinstance(compression, str) and compression.strip() != ""
+    if not valid_compression:
+        print(f"Warning: Invalid compression method '{compression}'. Disabling compression.")
+        compression = None
+        compression_kwargs = {}
+    else:
+        compression_kwargs = {
+            'compression': compression,
+            'compression_opts': compression_level
+        }
     
     # Process all clickmaps in batches
     batch_size = 100
@@ -1346,13 +1358,18 @@ def save_clickmaps_to_hdf5(all_clickmaps, final_keep_index, hdf5_path, n_jobs=1,
                     if dataset_name in f["clickmaps"]:
                         del f["clickmaps"][dataset_name]
                     
-                    # Create the dataset with compression
-                    f["clickmaps"].create_dataset(
-                        dataset_name,
-                        data=hmp,
-                        compression=compression,
-                        compression_opts=compression_level
-                    )
+                    # Create the dataset with or without compression
+                    if valid_compression:
+                        f["clickmaps"].create_dataset(
+                            dataset_name,
+                            data=hmp,
+                            **compression_kwargs
+                        )
+                    else:
+                        f["clickmaps"].create_dataset(
+                            dataset_name,
+                            data=hmp
+                        )
                     
                     # Add metadata about the dataset
                     ds = f["clickmaps"][dataset_name]
@@ -1369,6 +1386,11 @@ def save_clickmaps_to_hdf5(all_clickmaps, final_keep_index, hdf5_path, n_jobs=1,
             
             f["metadata"].attrs["total_clickmaps_so_far"] = saved_count
             f["metadata"].attrs["last_updated"] = np.bytes_(pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"))
+            if valid_compression:
+                f["metadata"].attrs["compression"] = np.bytes_(compression)
+                f["metadata"].attrs["compression_level"] = compression_level
+            else:
+                f["metadata"].attrs["compression"] = np.bytes_("none")
             
             # Explicit flush to ensure data is written
             f.flush()
