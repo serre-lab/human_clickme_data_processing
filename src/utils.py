@@ -1317,6 +1317,7 @@ def save_clickmaps_to_hdf5(all_clickmaps, final_keep_index, hdf5_path, n_jobs=1,
     # Validate compression parameters -- disable for now
     compression = None
     compression_kwargs = {}
+    valid_compression = False
     
     # Process all clickmaps in batches
     batch_size = 100
