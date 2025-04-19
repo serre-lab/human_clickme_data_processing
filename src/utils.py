@@ -334,6 +334,7 @@ def process_clickmap_files_parallel(
         #         return None
         # elif file_inclusion_filter and file_inclusion_filter not in image_file_name:
         #     return None
+        import pdb;pdb.set_trace()
         if file_inclusion_filter and file_inclusion_filter not in image_file_name:
             return None
 
@@ -370,7 +371,7 @@ def process_clickmap_files_parallel(
         return (image_file_name, tuples_list)
 
     # Process rows in parallel
-    results = Parallel(n_jobs=-1)(
+    results = Parallel(n_jobs=1)(
         delayed(process_single_row)(row) 
         for _, row in tqdm(clickme_data.iterrows(), total=len(clickme_data), desc="Processing clickmaps")
     )
