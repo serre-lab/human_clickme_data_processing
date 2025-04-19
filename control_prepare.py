@@ -85,7 +85,6 @@ def process_all_maps_gpu(clickmaps, config, metadata=None, create_clickmap_func=
             binary_maps = np.asarray([create_clickmap_func([trial], tuple(image_shape)) for trial in trials])
         
         # Only keep maps with enough valid pixels
-        import pdb;pdb.set_trace()
         mask = binary_maps.sum((-2, -1)) >= min_clicks
         binary_maps = binary_maps[mask]
         
@@ -107,6 +106,7 @@ def process_all_maps_gpu(clickmaps, config, metadata=None, create_clickmap_func=
     for i in tqdm(range(len(all_clickmaps)), desc="Blurring clickmaps"):
         # Convert to tensor
         maps = all_clickmaps[i]
+        import pdb;pdb.set_trace()
         maps_tensor = torch.from_numpy(maps).float().unsqueeze(1).to('cuda')
         
         # Create kernel
