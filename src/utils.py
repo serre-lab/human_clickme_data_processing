@@ -334,7 +334,6 @@ def process_clickmap_files_parallel(
         #         return None
         # elif file_inclusion_filter and file_inclusion_filter not in image_file_name:
         #     return None
-        import pdb;pdb.set_trace()
         if file_inclusion_filter and file_inclusion_filter not in image_file_name:
             return None
 
