@@ -78,7 +78,6 @@ def process_all_maps_gpu(clickmaps, config, metadata=None, create_clickmap_func=
             continue
             
         # Create binary clickmaps
-        import pdb;pdb.set_trace()
         if metadata and key in metadata:
             native_size = metadata[key]
             binary_maps = np.asarray([create_clickmap_func([trial], native_size[::-1]) for trial in trials])
@@ -86,14 +85,13 @@ def process_all_maps_gpu(clickmaps, config, metadata=None, create_clickmap_func=
             binary_maps = np.asarray([create_clickmap_func([trial], tuple(image_shape)) for trial in trials])
         
         # Only keep maps with enough valid pixels
-        valid_maps = []
-        for cmap in binary_maps:
-            if np.sum(cmap > 0) >= min_pixels:
-                valid_maps.append(cmap)
+        mask = binary_maps.sum((-2, -1)) >= min_pixels
+        binary_maps = binary_maps[mask]
         
         # If we have enough valid maps, keep this image
-        if len(valid_maps) >= min_subjects:
-            all_clickmaps.append(np.array(valid_maps))
+        import pdb;pdb.set_trace()
+        if len(binary_maps) >= min_subjects:
+            all_clickmaps.append(np.array(binary_maps).mean(0, keepdims=True))
             categories.append(key.split("/")[0])
             keep_index.append(key)
             final_clickmaps[key] = trials
@@ -101,10 +99,6 @@ def process_all_maps_gpu(clickmaps, config, metadata=None, create_clickmap_func=
     if not all_clickmaps:
         print("No valid clickmaps to process")
         return {}, [], [], []
-        
-    # Combine all clickmaps into single images
-    import pdb;pdb.set_trace()
-    all_clickmaps = np.asarray([x.sum(0, keepdims=True) for x in all_clickmaps])
 
     # Step 2: Blur the clickmaps on GPU
     print(f"Blurring {len(all_clickmaps)} clickmap sets on GPU...")
