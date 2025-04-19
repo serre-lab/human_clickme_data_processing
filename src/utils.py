@@ -1283,7 +1283,7 @@ def save_clickmaps_parallel(all_clickmaps, final_keep_index, output_dir, experim
 
 def save_clickmaps_to_hdf5(all_clickmaps, final_keep_index, hdf5_path, n_jobs=1, compression="gzip", compression_level=4):
     """
-    Save clickmaps to HDF5 file in parallel.
+    Save clickmaps to HDF5 file safely without running into "Too many open files" error.
     
     Parameters:
     -----------
@@ -1294,7 +1294,7 @@ def save_clickmaps_to_hdf5(all_clickmaps, final_keep_index, hdf5_path, n_jobs=1,
     hdf5_path : str
         Path to the HDF5 file
     n_jobs : int
-        Number of parallel jobs to run
+        Number of parallel jobs to run (not used for HDF5 file access)
     compression : str
         Compression algorithm to use ("gzip", "lzf", etc.)
     compression_level : int
@@ -1309,78 +1309,83 @@ def save_clickmaps_to_hdf5(all_clickmaps, final_keep_index, hdf5_path, n_jobs=1,
     import numpy as np
     from tqdm import tqdm
     import h5py
-    from joblib import Parallel, delayed
+    import time
     
     # Ensure the directory exists
     os.makedirs(os.path.dirname(hdf5_path), exist_ok=True)
     
-    def save_single_clickmap_to_hdf5(idx, img_name):
-        """Helper function to save a single clickmap to HDF5"""
-        try:
-            # Clean up the image name for use as a dataset name
-            dataset_name = img_name.replace('/', '_')
-            
-            # Get the clickmap
-            hmp = all_clickmaps[idx]
-            
-            # Open the HDF5 file in append mode
-            with h5py.File(hdf5_path, 'a') as f:
-                # Check if dataset already exists and delete it if it does
-                if dataset_name in f["clickmaps"]:
-                    del f["clickmaps"][dataset_name]
-                
-                # Create the dataset with compression
-                f["clickmaps"].create_dataset(
-                    dataset_name,
-                    data=hmp,
-                    compression=compression,
-                    compression_opts=compression_level
-                )
-                
-                # Add metadata about the dataset
-                ds = f["clickmaps"][dataset_name]
-                ds.attrs["shape"] = hmp.shape
-                ds.attrs["original_path"] = img_name
-            
-            return 1
-        except Exception as e:
-            print(f"Error saving {img_name}: {e}")
-            return 0
-    
-    # Prepare batches for parallel processing
-    # We'll process in smaller batches to avoid too many open file handles
+    # Process all clickmaps in batches
     batch_size = 100
     total_items = len(final_keep_index)
     total_batches = (total_items + batch_size - 1) // batch_size
     saved_count = 0
     
-    # Process in batches
+    # Process in batches using a single file handle
     for batch_idx in tqdm(range(total_batches), desc="Saving to HDF5", unit="batch"):
         start_idx = batch_idx * batch_size
         end_idx = min(start_idx + batch_size, total_items)
+        batch_size_actual = end_idx - start_idx
         
-        # Get indices and image names for this batch
-        batch_indices = list(range(start_idx, end_idx))
-        batch_img_names = [final_keep_index[i] for i in batch_indices]
+        # Open HDF5 file once per batch
+        with h5py.File(hdf5_path, 'a') as f:
+            # Ensure the clickmaps group exists
+            if "clickmaps" not in f:
+                f.create_group("clickmaps")
+                
+            # Process each clickmap in the batch
+            for i in range(start_idx, end_idx):
+                try:
+                    # Get image name and clean it for HDF5
+                    img_name = final_keep_index[i]
+                    dataset_name = img_name.replace('/', '_')
+                    
+                    # Get the clickmap
+                    hmp = all_clickmaps[i]
+                    
+                    # Check if dataset already exists and delete it if it does
+                    if dataset_name in f["clickmaps"]:
+                        del f["clickmaps"][dataset_name]
+                    
+                    # Create the dataset with compression
+                    f["clickmaps"].create_dataset(
+                        dataset_name,
+                        data=hmp,
+                        compression=compression,
+                        compression_opts=compression_level
+                    )
+                    
+                    # Add metadata about the dataset
+                    ds = f["clickmaps"][dataset_name]
+                    ds.attrs["shape"] = hmp.shape
+                    ds.attrs["original_path"] = img_name
+                    
+                    saved_count += 1
+                except Exception as e:
+                    print(f"Error saving {img_name}: {e}")
+            
+            # Update metadata after each batch
+            if "metadata" not in f:
+                f.create_group("metadata")
+            
+            f["metadata"].attrs["total_clickmaps_so_far"] = saved_count
+            f["metadata"].attrs["last_updated"] = np.bytes_(pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"))
+            
+            # Explicit flush to ensure data is written
+            f.flush()
         
-        # Save batch in parallel
-        results = Parallel(n_jobs=n_jobs)(
-            delayed(save_single_clickmap_to_hdf5)(idx, img_name)
-            for idx, img_name in zip(batch_indices, batch_img_names)
-        )
-        
-        # Count successful saves
-        saved_count += sum(results)
+        # Add a small delay to ensure file is properly closed
+        time.sleep(0.1)
     
-    # Update metadata
+    # Final update to metadata
     try:
         with h5py.File(hdf5_path, 'a') as f:
             if "metadata" not in f:
                 f.create_group("metadata")
             
             f["metadata"].attrs["total_clickmaps"] = saved_count
+            f["metadata"].attrs["completed"] = True
             f["metadata"].attrs["last_updated"] = np.bytes_(pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"))
     except Exception as e:
-        print(f"Warning: Could not update HDF5 metadata: {e}")
+        print(f"Warning: Could not update final HDF5 metadata: {e}")
     
     return saved_count
