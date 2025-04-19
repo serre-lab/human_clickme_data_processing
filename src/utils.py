@@ -701,9 +701,6 @@ def prepare_maps_batched_gpu(
             
             # Only keep non-empty preprocessed data
             preprocessed = [p for p in preprocessed if p is not None and len(p['clickmaps']) > 0]
-            if not preprocessed:
-                pbar.update(len(batch_keys))
-                continue # Skip if batch is empty after pre-processing
 
             # Step 4: Process GPU blurring
             # print(f"│  │  ├─ Processing blurring on GPU (batch_size={batch_size})...")
@@ -714,6 +711,7 @@ def prepare_maps_batched_gpu(
             
             # Flatten the list of clickmaps for efficient GPU batching
             gpu_processing_list = []
+            import pdb;pdb.set_trace()
             for item in preprocessed:
                 # Each item in preprocessed has a list of clickmaps for one image
                 # We need to process each clickmap individually on the GPU eventually
@@ -727,193 +725,184 @@ def prepare_maps_batched_gpu(
                 
             with tqdm(total=total_gpu_batches, desc="GPU batches", leave=False) as gpu_batch_pbar:
                 for gpu_batch_idx in range(0, len(gpu_processing_list), gpu_batch_size):
-                    try:
-                        # Log current batch information 
-                        batch_start = gpu_batch_idx
-                        batch_end = min(gpu_batch_idx + gpu_batch_size, len(gpu_processing_list))
-                        current_batch_size = batch_end - batch_start
-                        
-                        if verbose:
-                            current_mem = check_gpu_memory_usage(threshold=0, force_cleanup=False)
-                            print(f"  ├─ GPU batch {gpu_batch_idx//gpu_batch_size + 1}/{total_gpu_batches}: {current_batch_size} images (GPU mem: {current_mem:.1%})")
-                                                
-                        # Get smaller sub-batch to process
-                        gpu_batch_items = gpu_processing_list[gpu_batch_idx : gpu_batch_idx + gpu_batch_size]
-                        
-                        # Skip empty batches
-                        if not gpu_batch_items:
-                            gpu_batch_pbar.update(1)
-                            continue
-                          
-                        # Log tensor preparation step
-                        if verbose:
-                            print(f"  │  ├─ Preparing tensors for {len(gpu_batch_items)} images...")
-                        
-                        # Prepare tensors for this GPU batch
-                        tensors_to_blur = []
-                        metadata_for_batch = []
-                        keys_for_batch = []
-                        map_counts = [] # Track how many maps belong to each original image key
 
-                        for item in gpu_batch_items:
-                            key = item['key']
-                            clickmaps_np = item['clickmaps']
-                            native_size = item['native_size']
-                            
-                            # Convert numpy arrays to PyTorch tensors
-                            # Important: Keep track of how many maps belong to this key
-                            num_maps_for_key = len(clickmaps_np)
-                            if num_maps_for_key > 0:
-                                clickmaps_tensor = torch.from_numpy(clickmaps_np).float().unsqueeze(1).to(device)
-                                tensors_to_blur.append(clickmaps_tensor)
-                                # Repeat metadata for each map belonging to this key
-                                metadata_for_batch.extend([(key, native_size)] * num_maps_for_key)
-                                keys_for_batch.extend([key] * num_maps_for_key)
-                                map_counts.append(num_maps_for_key)
-                        
-                        if not tensors_to_blur:
-                            if verbose:
-                                print(f"  │  ├─ No valid tensors to process, skipping batch")
-                            gpu_batch_pbar.update(1)
-                            continue
-
-                        # Log batch tensor creation
-                        if verbose:
-                            print(f"  │  ├─ Concatenating {len(tensors_to_blur)} tensors with {sum(map_counts)} total maps...")
-                            
-                        # Concatenate tensors for efficient batch processing
-                        batch_tensor = torch.cat(tensors_to_blur, dim=0)
-                        
-                        # Log tensor shape for debugging
-                        if verbose:
-                            print(f"  │  ├─ Batch tensor shape: {batch_tensor.shape}, processing blurring...")
-                        
-                        # Clear up memory
-                        del tensors_to_blur
-                        torch.cuda.empty_cache()
-                        
-                        # Apply blurring (needs to handle potential metadata variations within batch)
-                        blurred_batch = torch.zeros_like(batch_tensor)
-                        current_idx = 0
-                        
-                        # Apply blurring with a more memory-efficient approach
-                        sub_batch_size = 100  # Process in small sub-batches for stability
-                        if verbose and len(gpu_batch_items) > 1:
-                            print(f"  │  ├─ Processing {len(gpu_batch_items)} image items in batches of {sub_batch_size}...")
-                            
-                        for item_idx, item in enumerate(tqdm(gpu_batch_items, desc="Blurring items", leave=False, disable=not verbose)):
-                            # Apply blurring based on the specific item's metadata
-                            key = item['key']
-                            num_maps = len(item['clickmaps'])
-                            native_size = item['native_size']
-                            
-                            if num_maps == 0:
-                                continue
-                                
-                            item_tensor = batch_tensor[current_idx : current_idx + num_maps]
-
-                            try:
-                                # Process with proper error handling
-                                if native_size is not None:
-                                    short_side = min(native_size)
-                                    scale = short_side / min(image_shape)
-                                    adj_blur_size = int(np.round(blur_size * scale))
-                                    if not adj_blur_size % 2:
-                                        adj_blur_size += 1
-                                    adj_blur_size = min(adj_blur_size, max_kernel_size)
-                                    adj_blur_sigma = blur_sigma_function(adj_blur_size)
-                                    
-                                    if kernel_type == "gaussian":
-                                        adj_blur_kernel = gaussian_kernel(adj_blur_size, adj_blur_sigma, device)
-                                        blurred_item = convolve(item_tensor, adj_blur_kernel)
-                                    elif kernel_type == "circle":
-                                        adj_blur_kernel = circle_kernel(adj_blur_size, adj_blur_sigma, device)
-                                        blurred_item = convolve(item_tensor, adj_blur_kernel, double_conv=True)
-                                        
-                                    # Free memory for next iteration
-                                    if 'adj_blur_kernel' in locals(): 
-                                        del adj_blur_kernel
-                                else:
-                                    # Use the standard kernel
-                                    if kernel_type == "gaussian":
-                                        blurred_item = convolve(item_tensor, blur_kernel)
-                                    elif kernel_type == "circle":
-                                        blurred_item = convolve(item_tensor, blur_kernel, double_conv=True)
-                                
-                                blurred_batch[current_idx : current_idx + num_maps] = blurred_item
-                                
-                                # Free memory 
-                                del blurred_item
-                            except Exception as e:
-                                if verbose:
-                                    print(f"  │  ├─ ERROR processing item {item_idx} (key: {key}): {e}")
-                                # In case of error, just keep original
-                                blurred_batch[current_idx : current_idx + num_maps] = item_tensor
-                                
-                            current_idx += num_maps
-                            
-                            # Periodically clear cache
-                            if item_idx % 50 == 0:
-                                torch.cuda.empty_cache()
-                        
-                        # Log center crop info if applicable
-                        if center_crop and verbose:
-                            print(f"  │  ├─ Applying center crop from {blurred_batch.shape[-2:]} to {center_crop}...")
-                            
-                        # Apply center crop if needed (applied to the whole batch)
-                        if center_crop:
-                            # Resize first if dimensions are different
-                            if blurred_batch.shape[-2:] != image_shape:
-                                blurred_batch = tvF.resize(blurred_batch, list(image_shape), antialias=True)
-                            blurred_batch = tvF.center_crop(blurred_batch, list(center_crop))
-                        
-                        # Log conversion to numpy
-                        if verbose:
-                            print(f"  │  ├─ Converting to numpy and organizing results...")
-                            
-                        # Convert back to numpy and store results indexed by key
-                        processed_maps_np = blurred_batch.squeeze(1).cpu().numpy()
-                        
-                        # Reconstruct the results grouped by image key
-                        start_idx = 0
-                        item_idx = 0
-                        while start_idx < len(processed_maps_np):
-                            key = keys_for_batch[start_idx]
-                            num_maps = map_counts[item_idx]
-                            end_idx = start_idx + num_maps
-                            batch_results.append({
-                                'key': key,
-                                'clickmaps': processed_maps_np[start_idx:end_idx]
-                            })
-                            start_idx = end_idx
-                            item_idx += 1
-                        
-                        # Log memory cleanup
-                        if verbose:
-                            print(f"  │  └─ Cleaning up memory...")
-                            
-                        # Free GPU memory
-                        del batch_tensor, blurred_batch, item_tensor
-                        if 'adj_blur_kernel' in locals(): del adj_blur_kernel
-                        check_gpu_memory_usage(threshold=0.5, force_cleanup=True)
-                        
-                        # Add a small delay to allow system to stabilize
-                        import time
-                        time.sleep(0.1)
-                        
-                        # Update GPU batch progress bar
-                        gpu_batch_pbar.update(1)
-                        
-                    except Exception as batch_e:
-                        print(f"ERROR processing GPU batch {gpu_batch_idx}: {batch_e}")
-                        # Force cleanup after error
-                        for var in ['batch_tensor', 'blurred_batch', 'item_tensor', 'adj_blur_kernel']:
-                            if var in locals():
-                                del locals()[var]
-                        check_gpu_memory_usage(threshold=0.5, force_cleanup=True)
-                        # Update GPU batch progress bar even on error
+                    # Log current batch information 
+                    batch_start = gpu_batch_idx
+                    batch_end = min(gpu_batch_idx + gpu_batch_size, len(gpu_processing_list))
+                    current_batch_size = batch_end - batch_start
+                    
+                    if verbose:
+                        current_mem = check_gpu_memory_usage(threshold=0, force_cleanup=False)
+                        print(f"  ├─ GPU batch {gpu_batch_idx//gpu_batch_size + 1}/{total_gpu_batches}: {current_batch_size} images (GPU mem: {current_mem:.1%})")
+                                            
+                    # Get smaller sub-batch to process
+                    gpu_batch_items = gpu_processing_list[gpu_batch_idx : gpu_batch_idx + gpu_batch_size]
+                    
+                    # Skip empty batches
+                    if not gpu_batch_items:
                         gpu_batch_pbar.update(1)
                         continue
+                        
+                    # Log tensor preparation step
+                    if verbose:
+                        print(f"  │  ├─ Preparing tensors for {len(gpu_batch_items)} images...")
+                    
+                    # Prepare tensors for this GPU batch
+                    tensors_to_blur = []
+                    metadata_for_batch = []
+                    keys_for_batch = []
+                    map_counts = [] # Track how many maps belong to each original image key
+
+                    for item in gpu_batch_items:
+                        key = item['key']
+                        clickmaps_np = item['clickmaps']
+                        native_size = item['native_size']
+                        
+                        # Convert numpy arrays to PyTorch tensors
+                        # Important: Keep track of how many maps belong to this key
+                        num_maps_for_key = len(clickmaps_np)
+                        if num_maps_for_key > 0:
+                            clickmaps_tensor = torch.from_numpy(clickmaps_np).float().unsqueeze(1).to(device)
+                            tensors_to_blur.append(clickmaps_tensor)
+                            # Repeat metadata for each map belonging to this key
+                            metadata_for_batch.extend([(key, native_size)] * num_maps_for_key)
+                            keys_for_batch.extend([key] * num_maps_for_key)
+                            map_counts.append(num_maps_for_key)
+                    
+                    if not tensors_to_blur:
+                        if verbose:
+                            print(f"  │  ├─ No valid tensors to process, skipping batch")
+                        gpu_batch_pbar.update(1)
+                        continue
+
+                    # Log batch tensor creation
+                    if verbose:
+                        print(f"  │  ├─ Concatenating {len(tensors_to_blur)} tensors with {sum(map_counts)} total maps...")
+                        
+                    # Concatenate tensors for efficient batch processing
+                    batch_tensor = torch.cat(tensors_to_blur, dim=0)
+                    
+                    # Log tensor shape for debugging
+                    if verbose:
+                        print(f"  │  ├─ Batch tensor shape: {batch_tensor.shape}, processing blurring...")
+                    
+                    # Clear up memory
+                    del tensors_to_blur
+                    torch.cuda.empty_cache()
+                    
+                    # Apply blurring (needs to handle potential metadata variations within batch)
+                    blurred_batch = torch.zeros_like(batch_tensor)
+                    current_idx = 0
+                    
+                    # Apply blurring with a more memory-efficient approach
+                    sub_batch_size = 100  # Process in small sub-batches for stability
+                    if verbose and len(gpu_batch_items) > 1:
+                        print(f"  │  ├─ Processing {len(gpu_batch_items)} image items in batches of {sub_batch_size}...")
+                        
+                    for item_idx, item in enumerate(tqdm(gpu_batch_items, desc="Blurring items", leave=False, disable=not verbose)):
+                        # Apply blurring based on the specific item's metadata
+                        key = item['key']
+                        num_maps = len(item['clickmaps'])
+                        native_size = item['native_size']
+                        
+                        if num_maps == 0:
+                            continue
+                            
+                        item_tensor = batch_tensor[current_idx : current_idx + num_maps]
+
+                        try:
+                            # Process with proper error handling
+                            if native_size is not None:
+                                short_side = min(native_size)
+                                scale = short_side / min(image_shape)
+                                adj_blur_size = int(np.round(blur_size * scale))
+                                if not adj_blur_size % 2:
+                                    adj_blur_size += 1
+                                adj_blur_size = min(adj_blur_size, max_kernel_size)
+                                adj_blur_sigma = blur_sigma_function(adj_blur_size)
+                                
+                                if kernel_type == "gaussian":
+                                    adj_blur_kernel = gaussian_kernel(adj_blur_size, adj_blur_sigma, device)
+                                    blurred_item = convolve(item_tensor, adj_blur_kernel)
+                                elif kernel_type == "circle":
+                                    adj_blur_kernel = circle_kernel(adj_blur_size, adj_blur_sigma, device)
+                                    blurred_item = convolve(item_tensor, adj_blur_kernel, double_conv=True)
+                                    
+                                # Free memory for next iteration
+                                if 'adj_blur_kernel' in locals(): 
+                                    del adj_blur_kernel
+                            else:
+                                # Use the standard kernel
+                                if kernel_type == "gaussian":
+                                    blurred_item = convolve(item_tensor, blur_kernel)
+                                elif kernel_type == "circle":
+                                    blurred_item = convolve(item_tensor, blur_kernel, double_conv=True)
+                            
+                            blurred_batch[current_idx : current_idx + num_maps] = blurred_item
+                            
+                            # Free memory 
+                            del blurred_item
+                        except Exception as e:
+                            if verbose:
+                                print(f"  │  ├─ ERROR processing item {item_idx} (key: {key}): {e}")
+                            # In case of error, just keep original
+                            blurred_batch[current_idx : current_idx + num_maps] = item_tensor
+                            
+                        current_idx += num_maps
+                        
+                        # Periodically clear cache
+                        if item_idx % 50 == 0:
+                            torch.cuda.empty_cache()
+                    
+                    # Log center crop info if applicable
+                    if center_crop and verbose:
+                        print(f"  │  ├─ Applying center crop from {blurred_batch.shape[-2:]} to {center_crop}...")
+                        
+                    # Apply center crop if needed (applied to the whole batch)
+                    if center_crop:
+                        # Resize first if dimensions are different
+                        if blurred_batch.shape[-2:] != image_shape:
+                            blurred_batch = tvF.resize(blurred_batch, list(image_shape), antialias=True)
+                        blurred_batch = tvF.center_crop(blurred_batch, list(center_crop))
+                    
+                    # Log conversion to numpy
+                    if verbose:
+                        print(f"  │  ├─ Converting to numpy and organizing results...")
+                        
+                    # Convert back to numpy and store results indexed by key
+                    processed_maps_np = blurred_batch.squeeze(1).cpu().numpy()
+                    
+                    # Reconstruct the results grouped by image key
+                    start_idx = 0
+                    item_idx = 0
+                    while start_idx < len(processed_maps_np):
+                        key = keys_for_batch[start_idx]
+                        num_maps = map_counts[item_idx]
+                        end_idx = start_idx + num_maps
+                        batch_results.append({
+                            'key': key,
+                            'clickmaps': processed_maps_np[start_idx:end_idx]
+                        })
+                        start_idx = end_idx
+                        item_idx += 1
+                    
+                    # Log memory cleanup
+                    if verbose:
+                        print(f"  │  └─ Cleaning up memory...")
+                        
+                    # Free GPU memory
+                    del batch_tensor, blurred_batch, item_tensor
+                    if 'adj_blur_kernel' in locals(): del adj_blur_kernel
+                    check_gpu_memory_usage(threshold=0.5, force_cleanup=True)
+                    
+                    # Add a small delay to allow system to stabilize
+                    import time
+                    time.sleep(0.1)
+                    
+                    # Update GPU batch progress bar
+                    gpu_batch_pbar.update(1)
+                    
+
             
             # Add post-processing progress logging
             if verbose:

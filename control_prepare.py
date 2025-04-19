@@ -46,6 +46,192 @@ def get_medians(clickmaps, mode, thresh=95):
     return medians
 
 
+def process_all_maps_gpu(clickmaps, config, metadata=None, create_clickmap_func=None, fast_duplicate_detection=None):
+    """
+    Process all clickmaps in a single GPU batch operation
+    
+    Args:
+        clickmaps: Dictionary mapping image keys to clickmap trials
+        config: Configuration dictionary with processing parameters
+        metadata: Metadata dictionary (optional)
+        create_clickmap_func: Function to create the initial clickmap
+        fast_duplicate_detection: Function for duplicate detection
+        
+    Returns:
+        tuple: (final_clickmaps, all_clickmaps, categories, final_keep_index)
+    """
+    import torch
+    from tqdm import tqdm
+    from joblib import Parallel, delayed
+    
+    # Extract parameters from config
+    blur_size = config["blur_size"]
+    blur_sigma = config.get("blur_sigma", blur_size)  # Default to blur_size if not specified
+    image_shape = config["image_shape"]
+    min_pixels = (2 * blur_size) ** 2
+    min_subjects = config["min_subjects"]
+    gpu_batch_size = config["gpu_batch_size"]
+    n_jobs = config["n_jobs"]
+    
+    # Define blur sigma function
+    blur_sigma_function = lambda x: x
+    
+    print(f"Processing {len(clickmaps)} unique images with GPU...")
+    
+    # Step 1: Preprocess all clickmaps in parallel on CPU
+    print("Pre-processing clickmaps on CPU...")
+    
+    def preprocess_clickmap(image_key, image_trials, image_shape, metadata=None):
+        """Helper function to pre-process a clickmap before GPU processing"""
+        # Process metadata and create clickmaps (creates binary maps, no blurring)
+        image_shape_tuple = tuple(image_shape) if isinstance(image_shape, list) else image_shape
+        
+        if metadata is not None and image_key in metadata:
+            native_size = metadata[image_key]
+            # Use provided create_clickmap_func
+            clickmaps = np.asarray([create_clickmap_func([trials], native_size[::-1]) for trials in image_trials])
+            return {
+                'key': image_key,
+                'clickmaps': clickmaps,
+                'native_size': native_size
+            }
+        else:
+            # Use provided create_clickmap_func
+            clickmaps = np.asarray([create_clickmap_func([trials], image_shape_tuple) for trials in image_trials])
+            return {
+                'key': image_key,
+                'clickmaps': clickmaps,
+                'native_size': None
+            }
+    
+    # Get all keys
+    all_keys = list(clickmaps.keys())
+    total_images = len(all_keys)
+    
+    # Use parallel processing for pre-processing
+    preprocessed = Parallel(n_jobs=n_jobs)(
+        delayed(preprocess_clickmap)(
+            key, 
+            clickmaps[key], 
+            image_shape, 
+            metadata
+        ) for key in tqdm(all_keys, desc="Pre-processing", total=total_images)
+    )
+    
+    # Only keep non-empty preprocessed data
+    preprocessed = [p for p in preprocessed if p is not None and len(p['clickmaps']) > 0]
+    
+    # Step 2: Combine all maps for all images into a single batch
+    print("Combining all maps into a single GPU batch...")
+    
+    # Prepare batch data
+    all_tensors = []
+    all_metadata = []
+    all_keys = []
+    map_counts = []
+    
+    for item in preprocessed:
+        key = item['key']
+        clickmaps_np = item['clickmaps']
+        native_size = item['native_size']
+        
+        # Convert numpy arrays to PyTorch tensors
+        num_maps = len(clickmaps_np)
+        if num_maps > 0:
+            clickmaps_tensor = torch.from_numpy(clickmaps_np).float().unsqueeze(1).to('cuda')
+            all_tensors.append(clickmaps_tensor)
+            all_metadata.extend([(key, native_size)] * num_maps)
+            all_keys.extend([key] * num_maps)
+            map_counts.append(num_maps)
+    
+    # Concatenate all tensors into a single big batch
+    print(f"Concatenating {len(all_tensors)} tensors with {sum(map_counts)} total maps...")
+    combined_batch = torch.cat(all_tensors, dim=0)
+    print(f"Combined batch shape: {combined_batch.shape}")
+    
+    # Free individual tensors to save memory
+    del all_tensors
+    torch.cuda.empty_cache()
+    
+    # Step 3: Process blurring on the entire batch in smaller sub-batches
+    print("Processing blurring on GPU...")
+    
+    # Create blur kernel
+    kernel_type = "circle"  # Default to circle kernel
+    if kernel_type == "gaussian":
+        blur_kernel = utils.gaussian_kernel(blur_size, blur_sigma, 'cuda')
+    elif kernel_type == "circle":
+        blur_kernel = utils.circle_kernel(blur_size, blur_sigma, 'cuda')
+    
+    # Process in sub-batches to prevent OOM
+    blurred_batch = torch.zeros_like(combined_batch)
+    total_maps = combined_batch.shape[0]
+    
+    # Process in optimal sub-batch sizes based on GPU memory
+    sub_batch_size = min(gpu_batch_size, 1000)  # Reasonable default
+    
+    for i in tqdm(range(0, total_maps, sub_batch_size), desc="GPU Blurring"):
+        end_idx = min(i + sub_batch_size, total_maps)
+        sub_batch = combined_batch[i:end_idx]
+        
+        # Apply blurring
+        if kernel_type == "gaussian":
+            blurred_sub = utils.convolve(sub_batch, blur_kernel)
+        elif kernel_type == "circle":
+            blurred_sub = utils.convolve(sub_batch, blur_kernel, double_conv=True)
+        
+        blurred_batch[i:end_idx] = blurred_sub
+        
+        # Free memory
+        del sub_batch, blurred_sub
+        torch.cuda.empty_cache()
+    
+    # Convert back to numpy
+    processed_maps_np = blurred_batch.squeeze(1).cpu().numpy()
+    
+    # Free GPU memory
+    del combined_batch, blurred_batch, blur_kernel
+    torch.cuda.empty_cache()
+    
+    # Step 4: Post-process results
+    print("Post-processing results...")
+    
+    # Reconstruct the results by image key
+    final_clickmaps = {}
+    all_clickmaps = []
+    categories = []
+    keep_index = []
+    
+    start_idx = 0
+    for item_idx, item_count in enumerate(map_counts):
+        key = all_keys[start_idx]
+        end_idx = start_idx + item_count
+        
+        # Get the processed maps for this image
+        img_maps = processed_maps_np[start_idx:end_idx]
+        
+        # Check if this image meets minimum criteria
+        if len(img_maps) >= min_subjects:
+            # Filter out maps with too few pixels
+            valid_maps = []
+            for map_idx, cmap in enumerate(img_maps):
+                if np.sum(cmap > 0) >= min_pixels:
+                    valid_maps.append(cmap)
+            
+            # If we still have enough maps after filtering
+            if len(valid_maps) >= min_subjects:
+                all_clickmaps.append(np.array(valid_maps))
+                category = key.split("/")[0]
+                categories.append(category)
+                keep_index.append(key)
+                final_clickmaps[key] = clickmaps[key]
+        
+        start_idx = end_idx
+    
+    print(f"Finished processing with GPU. Kept {len(keep_index)}/{total_images} images.")
+    return final_clickmaps, all_clickmaps, categories, keep_index
+
+
 if __name__ == "__main__":
     # Add command line arguments
     parser = argparse.ArgumentParser(description="Process clickme data for modeling")
@@ -89,7 +275,6 @@ if __name__ == "__main__":
     if args.gpu_batch_size:
         config["gpu_batch_size"] = args.gpu_batch_size
     else:
-        # Determine best batch size based on dataset characteristics
         config["gpu_batch_size"] = 4096
     
     # Optimize number of workers based on CPU count
@@ -142,12 +327,6 @@ if __name__ == "__main__":
     print(f"- CPU workers: {config['n_jobs']}")
     print(f"- Output format: {config['output_format']}")
     print(f"- Memory usage at start: {get_memory_usage():.2f} MB\n")
-
-    # Processing parameters
-    blur_sigma_function = lambda x: x
-    blur_size = config["blur_size"]
-    blur_sigma = blur_sigma_function(blur_size)
-    min_pixels = (2 * blur_size) ** 2
     
     # Choose processing method (compiled Cython vs. Python)
     use_cython = config.get("use_cython", True)
@@ -188,7 +367,6 @@ if __name__ == "__main__":
         min_clicks=config["min_clicks"],
         max_clicks=config["max_clicks"],
         n_jobs=config["n_jobs"])
-    import pdb; pdb.set_trace()
     
     # Apply filters if necessary
     if config["class_filter_file"]:
@@ -201,30 +379,16 @@ if __name__ == "__main__":
         print("Filtering participants...")
         clickmaps = utils.filter_participants(clickmaps)
     
-    # GPU processing parameters
-    gpu_batch_size = config.get("gpu_batch_size", 512)
-    n_jobs = config.get("n_jobs", 8)
-    gpu_timeout = config.get("gpu_timeout", 900)  # 15 minutes timeout
+    # Process all maps with our new single-batch GPU function
+    print(f"Processing with GPU (batch size: {config['gpu_batch_size']})...")
     
-    print(f"Processing with GPU (batch size: {gpu_batch_size})...")
-    final_clickmaps, all_clickmaps, categories, final_keep_index = utils.prepare_maps_with_gpu_batching(
-        final_clickmaps=[clickmaps],
-        blur_size=blur_size,
-        blur_sigma=blur_sigma,
-        image_shape=config["image_shape"],
-        min_pixels=min_pixels,
-        min_subjects=config["min_subjects"],
+    final_clickmaps, all_clickmaps, categories, final_keep_index = process_all_maps_gpu(
+        clickmaps=clickmaps,
+        config=config,
         metadata=metadata,
-        blur_sigma_function=blur_sigma_function,
-        center_crop=False,
-        n_jobs=n_jobs,
-        batch_size=gpu_batch_size,
-        timeout=gpu_timeout,
-        verbose=args.verbose or args.debug,
         create_clickmap_func=create_clickmap_func,
-        fast_duplicate_detection=fast_duplicate_detection)
-    import pdb;pdb.set_trace()
-    final_clickmaps, clickmaps
+        fast_duplicate_detection=fast_duplicate_detection
+    )
 
     # Apply mask filtering if needed
     if final_keep_index and config["mask_dir"]:
@@ -247,7 +411,7 @@ if __name__ == "__main__":
                 all_clickmaps=all_clickmaps,
                 final_keep_index=final_keep_index,
                 hdf5_path=hdf5_path,
-                n_jobs=n_jobs,
+                n_jobs=config["n_jobs"],
                 compression=config.get("hdf5_compression"),
                 compression_level=config.get("hdf5_compression_level", 4)
             )
@@ -259,7 +423,7 @@ if __name__ == "__main__":
                 output_dir=output_dir,
                 experiment_name=config["experiment_name"],
                 image_path=config["image_path"],
-                n_jobs=n_jobs,
+                n_jobs=config["n_jobs"],
                 file_inclusion_filter=config.get("file_inclusion_filter")
             )
         print(f"Saved {saved_count} files")
