@@ -85,11 +85,11 @@ def process_all_maps_gpu(clickmaps, config, metadata=None, create_clickmap_func=
             binary_maps = np.asarray([create_clickmap_func([trial], tuple(image_shape)) for trial in trials])
         
         # Only keep maps with enough valid pixels
+        import pdb;pdb.set_trace()
         mask = binary_maps.sum((-2, -1)) >= min_pixels
         binary_maps = binary_maps[mask]
         
         # If we have enough valid maps, keep this image
-        import pdb;pdb.set_trace()
         if len(binary_maps) >= min_subjects:
             all_clickmaps.append(np.array(binary_maps).mean(0, keepdims=True))
             categories.append(key.split("/")[0])
