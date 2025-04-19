@@ -1229,6 +1229,14 @@ def save_single_clickmap(idx, img_name, image_path, file_inclusion_filter=None):
     )
     return 1
 
+
+def combine_clickmaps(examples):
+    """Combine all clickmaps into single images"""
+    for idx, example in enumerate(examples):
+        examples[idx]['clickmaps'] = examples[idx]['clickmaps'].sum(0)
+    return examples
+
+
 def save_clickmaps_parallel(all_clickmaps, final_keep_index, output_dir, experiment_name, image_path, n_jobs=-1, file_inclusion_filter=None):
     """
     Save clickmaps to disk in parallel.

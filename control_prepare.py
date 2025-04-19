@@ -121,6 +121,9 @@ def process_all_maps_gpu(clickmaps, config, metadata=None, create_clickmap_func=
     # Only keep non-empty preprocessed data
     preprocessed = [p for p in preprocessed if p is not None and len(p['clickmaps']) > 0]
     
+    # Combine all clickmaps into single images
+    preprocessed = utils.combine_clickmaps(preprocessed)
+
     # Step 2: Combine all maps for all images into a single batch
     print("Combining all maps into a single GPU batch...")
     
