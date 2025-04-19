@@ -920,28 +920,14 @@ def prepare_maps_batched_gpu(
                 print(f"Post-processing {len(batch_results)} results...")
                 
             # Use parallel processing for post-processing with timeout
-            try:
-                post_results = Parallel(n_jobs=effective_n_jobs, timeout=timeout)(
-                    delayed(postprocess_clickmap)(
-                        batch_results[i],
-                        min_pixels,
-                        min_subjects,
-                        duplicate_thresh
-                    ) for i in tqdm(range(len(batch_results)), desc="Post-processing", disable=not verbose) 
-                )
-            except Exception as e:
-                print(f"WARNING: Error during parallel post-processing: {e}")
-                print("Falling back to sequential processing for this batch...")
-                # Fall back to sequential processing
-                post_results = []
-                for i in tqdm(range(len(batch_results)), desc="Sequential post-processing", leave=False):
-                    try:
-                        result = postprocess_clickmap(batch_results[i], min_pixels, min_subjects, duplicate_thresh)
-                        post_results.append(result)
-                    except Exception as batch_e:
-                        print(f"ERROR processing batch result {i}: {batch_e}")
-                        # Just continue instead of failing
-                        continue
+            post_results = Parallel(n_jobs=effective_n_jobs, timeout=timeout)(
+                delayed(postprocess_clickmap)(
+                    batch_results[i],
+                    min_pixels,
+                    min_subjects,
+                    duplicate_thresh
+                ) for i in tqdm(range(len(batch_results)), desc="Post-processing", disable=not verbose) 
+            )
             
             # Step 6: Compile final results for this batch
             for result in post_results:
@@ -1283,7 +1269,7 @@ def save_clickmaps_parallel(all_clickmaps, final_keep_index, output_dir, experim
             batch_img_names = [final_keep_index[j] for j in batch_indices]
             
             # Save batch in parallel
-            results = Parallel(n_jobs=n_jobs)(
+            results = Parallel(n_jobs=1)(  # Force sequential
                 delayed(save_single_clickmap)(j, img_name, image_path, file_inclusion_filter) 
                 for j, img_name in zip(batch_indices, batch_img_names)
             )
