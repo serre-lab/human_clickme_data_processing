@@ -689,29 +689,15 @@ def prepare_maps_batched_gpu(
                     }
             
             # Use parallel processing for pre-processing only this batch
-            try:
-                # Set a timeout for workers to avoid indefinite hanging
-                preprocessed = Parallel(n_jobs=effective_n_jobs, timeout=timeout)(
-                    delayed(preprocess_clickmap)(
-                        key, 
-                        merged_clickmaps[key], 
-                        image_shape, 
-                        metadata
-                    ) for key in tqdm(batch_keys, desc="Pre-processing", total=len(batch_keys), leave=False)
-                )
-            except Exception as e:
-                print(f"WARNING: Error during parallel pre-processing: {e}")
-                print("Falling back to sequential processing for this batch...")
-                # Fall back to sequential processing
-                preprocessed = []
-                for key in tqdm(batch_keys, desc="Sequential pre-processing", total=len(batch_keys), leave=False):
-                    try:
-                        result = preprocess_clickmap(key, merged_clickmaps[key], image_shape, metadata)
-                        preprocessed.append(result)
-                    except Exception as batch_e:
-                        print(f"ERROR processing key {key}: {batch_e}")
-                        # Continue instead of raising exception
-                        continue
+            # Set a timeout for workers to avoid indefinite hanging
+            preprocessed = Parallel(n_jobs=effective_n_jobs, timeout=timeout)(
+                delayed(preprocess_clickmap)(
+                    key, 
+                    merged_clickmaps[key], 
+                    image_shape, 
+                    metadata
+                ) for key in tqdm(batch_keys, desc="Pre-processing", total=len(batch_keys), leave=False)
+            )
             
             # Only keep non-empty preprocessed data
             preprocessed = [p for p in preprocessed if p is not None and len(p['clickmaps']) > 0]
@@ -735,6 +721,7 @@ def prepare_maps_batched_gpu(
 
             # Process GPU batches with a progress bar 
             total_gpu_batches = (len(gpu_processing_list) + gpu_batch_size - 1) // gpu_batch_size
+            import pdb;pdb.set_trace()
             if verbose:
                 print(f"Processing {len(gpu_processing_list)} images in {total_gpu_batches} GPU batches (size: {gpu_batch_size})...")
                 
@@ -749,10 +736,7 @@ def prepare_maps_batched_gpu(
                         if verbose:
                             current_mem = check_gpu_memory_usage(threshold=0, force_cleanup=False)
                             print(f"  ├─ GPU batch {gpu_batch_idx//gpu_batch_size + 1}/{total_gpu_batches}: {current_batch_size} images (GPU mem: {current_mem:.1%})")
-                        
-                        # Force cleanup before each batch
-                        check_gpu_memory_usage(threshold=0.7, force_cleanup=True)
-                        
+                                                
                         # Get smaller sub-batch to process
                         gpu_batch_items = gpu_processing_list[gpu_batch_idx : gpu_batch_idx + gpu_batch_size]
                         
@@ -760,16 +744,7 @@ def prepare_maps_batched_gpu(
                         if not gpu_batch_items:
                             gpu_batch_pbar.update(1)
                             continue
-                            
-                        # Further limit batch size if items contain many maps
-                        total_maps_in_batch = sum(len(item.get('clickmaps', [])) for item in gpu_batch_items)
-                        if total_maps_in_batch > 10000:  # If this batch would process too many maps
-                            # Reduce the effective batch to approximately 10,000 maps
-                            reduction_factor = max(1, int(total_maps_in_batch / 10000))
-                            adjusted_size = max(1, len(gpu_batch_items) // reduction_factor)
-                            print(f"  ├─ Large batch detected: {total_maps_in_batch} maps. Reducing from {len(gpu_batch_items)} to {adjusted_size} items.")
-                            gpu_batch_items = gpu_batch_items[:adjusted_size]
-                        
+                          
                         # Log tensor preparation step
                         if verbose:
                             print(f"  │  ├─ Preparing tensors for {len(gpu_batch_items)} images...")
