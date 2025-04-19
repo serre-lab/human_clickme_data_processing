@@ -729,7 +729,6 @@ def prepare_maps_batched_gpu(
             
             # Flatten the list of clickmaps for efficient GPU batching
             gpu_processing_list = []
-            import pdb;pdb.set_trace()
             for item in preprocessed:
                 # Each item in preprocessed has a list of clickmaps for one image
                 # We need to process each clickmap individually on the GPU eventually
@@ -737,7 +736,6 @@ def prepare_maps_batched_gpu(
 
             # Process GPU batches with a progress bar 
             total_gpu_batches = (len(gpu_processing_list) + gpu_batch_size - 1) // gpu_batch_size
-            import pdb;pdb.set_trace()
             if verbose:
                 print(f"Processing {len(gpu_processing_list)} images in {total_gpu_batches} GPU batches (size: {gpu_batch_size})...")
                 
