@@ -129,6 +129,7 @@ def process_all_maps_gpu(clickmaps, config, metadata=None, create_clickmap_func=
     all_metadata = []
     all_keys = []
     map_counts = []
+    key_to_index = {}  # Map keys to their index in all_keys for reconstruction
     
     for item in preprocessed:
         key = item['key']
@@ -141,7 +142,12 @@ def process_all_maps_gpu(clickmaps, config, metadata=None, create_clickmap_func=
             clickmaps_tensor = torch.from_numpy(clickmaps_np).float().unsqueeze(1).to('cuda')
             all_tensors.append(clickmaps_tensor)
             all_metadata.extend([(key, native_size)] * num_maps)
-            all_keys.extend([key] * num_maps)
+            
+            # Keep track of the key and its index
+            if key not in key_to_index:
+                key_to_index[key] = len(all_keys)
+                all_keys.append(key)
+            
             map_counts.append(num_maps)
     
     # Concatenate all tensors into a single big batch
@@ -196,40 +202,49 @@ def process_all_maps_gpu(clickmaps, config, metadata=None, create_clickmap_func=
     # Step 4: Post-process results
     print("Post-processing results...")
     
-    # Reconstruct the results by image key
-    final_clickmaps = {}
-    final_all_clickmaps = []  # Renamed from all_clickmaps to avoid confusion
-    categories = []
-    keep_index = []
+    # This is where we need to restructure the data to match what the util functions expect
+    # The util functions expect all_clickmaps to be a list where all_clickmaps[idx] gives
+    # the maps for the image at keep_index[idx]
     
+    # Restructure data by original keys
+    key_to_maps = {}
     start_idx = 0
+    
     for item_idx, item_count in enumerate(map_counts):
-        key = all_keys[start_idx]
+        key = all_metadata[start_idx][0]  # Get the key from metadata
         end_idx = start_idx + item_count
         
         # Get the processed maps for this image
         img_maps = processed_maps_np[start_idx:end_idx]
         
-        # Check if this image meets minimum criteria
-        if len(img_maps) >= min_subjects:
-            # Filter out maps with too few pixels
-            valid_maps = []
-            for map_idx, cmap in enumerate(img_maps):
-                if np.sum(cmap > 0) >= min_pixels:
-                    valid_maps.append(cmap)
-            
-            # If we still have enough maps after filtering
-            if len(valid_maps) >= min_subjects:
-                final_all_clickmaps.append(np.array(valid_maps))  # Use renamed variable
-                category = key.split("/")[0]
-                categories.append(category)
-                keep_index.append(key)
-                final_clickmaps[key] = clickmaps[key]
+        # Group maps by key
+        if key not in key_to_maps:
+            key_to_maps[key] = []
+        
+        for map_idx, cmap in enumerate(img_maps):
+            # Only add maps with sufficient pixels
+            if np.sum(cmap > 0) >= min_pixels:
+                key_to_maps[key].append(cmap)
         
         start_idx = end_idx
     
+    # Now create the final data structures in the expected format
+    final_clickmaps = {}
+    all_clickmaps = []  # This needs to be a list where each element corresponds to keep_index
+    categories = []
+    keep_index = []
+    
+    # Process each key that has enough maps
+    for key, maps in key_to_maps.items():
+        if len(maps) >= min_subjects:
+            all_clickmaps.append(np.array(maps))
+            category = key.split("/")[0]
+            categories.append(category)
+            keep_index.append(key)
+            final_clickmaps[key] = clickmaps[key]  # Original clickmap data
+    
     print(f"Finished processing with GPU. Kept {len(keep_index)}/{total_images} images.")
-    return final_clickmaps, final_all_clickmaps, categories, keep_index  # Return the renamed variable
+    return final_clickmaps, all_clickmaps, categories, keep_index
 
 
 if __name__ == "__main__":
@@ -382,7 +397,7 @@ if __name__ == "__main__":
     # Process all maps with our new single-batch GPU function
     print(f"Processing with GPU (batch size: {config['gpu_batch_size']})...")
     
-    final_clickmaps, final_all_clickmaps, categories, final_keep_index = process_all_maps_gpu(
+    final_clickmaps, all_clickmaps, categories, final_keep_index = process_all_maps_gpu(
         clickmaps=clickmaps,
         config=config,
         metadata=metadata,
@@ -394,9 +409,9 @@ if __name__ == "__main__":
     if final_keep_index and config["mask_dir"]:
         print("Applying mask filtering...")
         masks = utils.load_masks(config["mask_dir"])
-        final_clickmaps, final_all_clickmaps, categories, final_keep_index = utils.filter_for_foreground_masks(
+        final_clickmaps, all_clickmaps, categories, final_keep_index = utils.filter_for_foreground_masks(
             final_clickmaps=final_clickmaps,
-            all_clickmaps=final_all_clickmaps,
+            all_clickmaps=all_clickmaps,
             categories=categories,
             masks=masks,
             mask_threshold=config["mask_threshold"])
@@ -408,7 +423,7 @@ if __name__ == "__main__":
         if output_format == "hdf5":
             # Use optimized HDF5 saving with compression
             saved_count = utils.save_clickmaps_to_hdf5(
-                all_clickmaps=final_all_clickmaps,
+                all_clickmaps=all_clickmaps,
                 final_keep_index=final_keep_index,
                 hdf5_path=hdf5_path,
                 n_jobs=config["n_jobs"],
@@ -418,7 +433,7 @@ if __name__ == "__main__":
         else:
             # Use parallel saving
             saved_count = utils.save_clickmaps_parallel(
-                all_clickmaps=final_all_clickmaps,
+                all_clickmaps=all_clickmaps,
                 final_keep_index=final_keep_index,
                 output_dir=output_dir,
                 experiment_name=config["experiment_name"],
