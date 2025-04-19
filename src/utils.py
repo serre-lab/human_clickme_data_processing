@@ -429,6 +429,24 @@ def circle_kernel(size, sigma=None, device='cpu'):
     return kernel.to(device)
 
 
+def convolve(heatmap, kernel, double_conv=False, device='cpu'):
+    """
+    Apply Gaussian blur to a heatmap.
+
+    Args:
+        heatmap (torch.Tensor): The input heatmap (3D or 4D tensor).
+        kernel (torch.Tensor): The Gaussian kernel.
+
+    Returns:
+        torch.Tensor: The blurred heatmap (3D tensor).
+    """
+    # heatmap = heatmap.unsqueeze(0) if heatmap.dim() == 3 else heatmap
+    blurred_heatmap = F.conv2d(heatmap, kernel, padding='same')
+    if double_conv:
+        blurred_heatmap = F.conv2d(blurred_heatmap, kernel, padding='same')
+    return blurred_heatmap.to(device)  # [0]
+
+
 def process_single_image(image_key, image_trials, image_shape, blur_size, blur_sigma, 
                         min_pixels, min_subjects, center_crop, metadata, blur_sigma_function,
                         kernel_type, duplicate_thresh, max_kernel_size, blur_kernel, 
@@ -730,11 +748,7 @@ def prepare_maps_batched_gpu(
                     batch_start = gpu_batch_idx
                     batch_end = min(gpu_batch_idx + gpu_batch_size, len(gpu_processing_list))
                     current_batch_size = batch_end - batch_start
-                    
-                    if verbose:
-                        current_mem = check_gpu_memory_usage(threshold=0, force_cleanup=False)
-                        print(f"  ├─ GPU batch {gpu_batch_idx//gpu_batch_size + 1}/{total_gpu_batches}: {current_batch_size} images (GPU mem: {current_mem:.1%})")
-                                            
+                                                                
                     # Get smaller sub-batch to process
                     gpu_batch_items = gpu_processing_list[gpu_batch_idx : gpu_batch_idx + gpu_batch_size]
                     
@@ -893,7 +907,7 @@ def prepare_maps_batched_gpu(
                     # Free GPU memory
                     del batch_tensor, blurred_batch, item_tensor
                     if 'adj_blur_kernel' in locals(): del adj_blur_kernel
-                    check_gpu_memory_usage(threshold=0.5, force_cleanup=True)
+                    # check_gpu_memory_usage(threshold=0.5, force_cleanup=True)
                     
                     # Add a small delay to allow system to stabilize
                     import time
@@ -903,7 +917,6 @@ def prepare_maps_batched_gpu(
                     gpu_batch_pbar.update(1)
                     
 
-            
             # Add post-processing progress logging
             if verbose:
                 print(f"Post-processing {len(batch_results)} results...")
