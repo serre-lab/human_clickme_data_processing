@@ -125,6 +125,7 @@ def process_all_maps_gpu(clickmaps, config, metadata=None, create_clickmap_func=
     print("Combining all maps into a single GPU batch...")
     
     # Prepare batch data
+    import pdb;pdb.set_trace()
     all_tensors = []
     all_metadata = []
     all_keys = []
