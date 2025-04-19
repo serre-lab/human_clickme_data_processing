@@ -58,8 +58,8 @@ def process_all_maps_gpu(clickmaps, config, metadata=None, create_clickmap_func=
     blur_size = config["blur_size"]
     blur_sigma = config.get("blur_sigma", blur_size)
     image_shape = config["image_shape"]
-    min_pixels = (2 * blur_size) ** 2
     min_subjects = config["min_subjects"]
+    min_clicks = config["min_clicks"]
     
     print(f"Processing {len(clickmaps)} unique images with GPU...")
     
@@ -86,7 +86,7 @@ def process_all_maps_gpu(clickmaps, config, metadata=None, create_clickmap_func=
         
         # Only keep maps with enough valid pixels
         import pdb;pdb.set_trace()
-        mask = binary_maps.sum((-2, -1)) >= min_pixels
+        mask = binary_maps.sum((-2, -1)) >= min_clicks
         binary_maps = binary_maps[mask]
         
         # If we have enough valid maps, keep this image
