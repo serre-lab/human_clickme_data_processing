@@ -1270,7 +1270,7 @@ def save_clickmaps_parallel(all_clickmaps, final_keep_index, output_dir, experim
             
             # Save batch in parallel
             results = Parallel(n_jobs=1)(  # Force sequential
-                delayed(save_single_clickmap)(all_clickmaps, j, img_name, image_path, file_inclusion_filter, output_dir) 
+                delayed(save_single_clickmap)(all_clickmaps, j, img_name, image_path, file_inclusion_filter, save_dir) 
                 for j, img_name in zip(batch_indices, batch_img_names)
             )
             
