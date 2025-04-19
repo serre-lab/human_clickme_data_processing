@@ -130,6 +130,7 @@ def process_all_maps_gpu(clickmaps, config, metadata=None, create_clickmap_func=
         
         # Create batch tensor
         batch_tensors = all_tensors[start_idx:end_idx]
+        import pdb; pdb.set_trace()
         batch_tensor = torch.cat(batch_tensors, dim=0).unsqueeze(1).to('cuda')
         
         # Apply blurring to this batch
