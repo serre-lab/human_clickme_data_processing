@@ -367,11 +367,15 @@ def process_clickmap_files_parallel(
         return (image_file_name, tuples_list)
 
     # Process rows in parallel
+    # results = Parallel(n_jobs=-1)(
+    #     delayed(process_single_row)(row) 
+    #     for _, row in tqdm(clickme_data.iterrows(), total=len(clickme_data), desc="Processing clickmaps")
+    # )
+
+    results = []
+    for _, row in tqdm(clickme_data.iterrows(), total=len(clickme_data), desc="Processing clickmaps"):
+        results.append(process_single_row(row))
     import pdb;pdb.set_trace()
-    results = Parallel(n_jobs=n_jobs)(
-        delayed(process_single_row)(row) 
-        for _, row in tqdm(clickme_data.iterrows(), total=len(clickme_data), desc="Processing clickmaps")
-    )
 
     # Combine results
     proc_clickmaps = {}
