@@ -94,6 +94,7 @@ def process_all_maps_gpu(clickmaps, config, metadata=None, create_clickmap_func=
         # If we have enough valid maps, average them and keep this image
         if len(binary_maps) >= min_subjects:
             all_clickmaps.append(np.array(binary_maps).mean(0, keepdims=True))
+            # Note that if we are measuring ceiling we need to keep all maps ^^ change above.
             categories.append(key.split("/")[0])
             keep_index.append(key)
             final_clickmaps[key] = trials

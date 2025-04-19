@@ -1280,3 +1280,107 @@ def save_clickmaps_parallel(all_clickmaps, final_keep_index, output_dir, experim
             save_pbar.update(len(batch_indices))
     
     return saved_count
+
+def save_clickmaps_to_hdf5(all_clickmaps, final_keep_index, hdf5_path, n_jobs=1, compression="gzip", compression_level=4):
+    """
+    Save clickmaps to HDF5 file in parallel.
+    
+    Parameters:
+    -----------
+    all_clickmaps : list
+        List of clickmaps to save
+    final_keep_index : list
+        List of image names corresponding to the clickmaps
+    hdf5_path : str
+        Path to the HDF5 file
+    n_jobs : int
+        Number of parallel jobs to run
+    compression : str
+        Compression algorithm to use ("gzip", "lzf", etc.)
+    compression_level : int
+        Compression level (1-9, higher = more compression but slower)
+        
+    Returns:
+    --------
+    int
+        Number of successfully saved files
+    """
+    import os
+    import numpy as np
+    from tqdm import tqdm
+    import h5py
+    from joblib import Parallel, delayed
+    
+    # Ensure the directory exists
+    os.makedirs(os.path.dirname(hdf5_path), exist_ok=True)
+    
+    def save_single_clickmap_to_hdf5(idx, img_name):
+        """Helper function to save a single clickmap to HDF5"""
+        try:
+            # Clean up the image name for use as a dataset name
+            dataset_name = img_name.replace('/', '_')
+            
+            # Get the clickmap
+            hmp = all_clickmaps[idx]
+            
+            # Open the HDF5 file in append mode
+            with h5py.File(hdf5_path, 'a') as f:
+                # Check if dataset already exists and delete it if it does
+                if dataset_name in f["clickmaps"]:
+                    del f["clickmaps"][dataset_name]
+                
+                # Create the dataset with compression
+                f["clickmaps"].create_dataset(
+                    dataset_name,
+                    data=hmp,
+                    compression=compression,
+                    compression_opts=compression_level
+                )
+                
+                # Add metadata about the dataset
+                ds = f["clickmaps"][dataset_name]
+                ds.attrs["shape"] = hmp.shape
+                ds.attrs["original_path"] = img_name
+            
+            return 1
+        except Exception as e:
+            print(f"Error saving {img_name}: {e}")
+            return 0
+    
+    # Prepare batches for parallel processing
+    # We'll process in smaller batches to avoid too many open file handles
+    batch_size = 100
+    total_items = len(final_keep_index)
+    total_batches = (total_items + batch_size - 1) // batch_size
+    saved_count = 0
+    
+    # Process in batches
+    for batch_idx in tqdm(range(total_batches), desc="Saving to HDF5", unit="batch"):
+        start_idx = batch_idx * batch_size
+        end_idx = min(start_idx + batch_size, total_items)
+        
+        # Get indices and image names for this batch
+        batch_indices = list(range(start_idx, end_idx))
+        batch_img_names = [final_keep_index[i] for i in batch_indices]
+        
+        # Save batch in parallel
+        results = Parallel(n_jobs=n_jobs)(
+            delayed(save_single_clickmap_to_hdf5)(idx, img_name)
+            for idx, img_name in zip(batch_indices, batch_img_names)
+        )
+        
+        # Count successful saves
+        saved_count += sum(results)
+    
+    # Update metadata
+    try:
+        with h5py.File(hdf5_path, 'a') as f:
+            if "metadata" not in f:
+                f.create_group("metadata")
+            
+            f["metadata"].attrs["total_clickmaps"] = saved_count
+            f["metadata"].attrs["last_updated"] = np.bytes_(pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"))
+    except Exception as e:
+        print(f"Warning: Could not update HDF5 metadata: {e}")
+    
+    return saved_count
