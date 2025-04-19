@@ -119,10 +119,11 @@ def process_all_maps_gpu(clickmaps, config, metadata=None, create_clickmap_func=
     
     # Process in batches based on the GPU batch size
     try:
-        torch.cat(all_tensors[:100])
+        torch.cat(all_tensors[:1000])
         num_batches = (total_maps + gpu_batch_size - 1) // gpu_batch_size
     except Exception as e:
         num_batches = total_maps
+        gpu_batch_size = 1
     
     print(f"Processing in {num_batches} batches of up to {gpu_batch_size} maps each...")
     for batch_idx in tqdm(range(num_batches), desc="Processing GPU batches"):
