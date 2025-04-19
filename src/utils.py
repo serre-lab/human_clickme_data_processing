@@ -328,6 +328,7 @@ def process_clickmap_files_parallel(
         
         # Handle CO3D_ClickmeV2 special case
         if file_inclusion_filter == "CO3D_ClickmeV2" or file_inclusion_filter == "CO3D_ClickMe2":
+            import pdb;pdb.set_trace()
             image_files = glob(os.path.join(image_path, "**", "*.png"))
             if not np.any([image_file_name in x for x in image_files]):
                 return None
