@@ -38,3 +38,4 @@ remove_string: imagenet/train/
 output_format: "hdf5"
 use_cython: true
 chunk_size: 100000
+batch_size: 50000

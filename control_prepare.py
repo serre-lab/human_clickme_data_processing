@@ -240,14 +240,78 @@ if __name__ == "__main__":
     # Setup HDF5 file if needed
     hdf5_path = None
     if output_format == "hdf5":
+        # Print optimization settings
+        print("\nProcessing settings:")
+        print(f"- Dataset size: {total_maps} maps, {total_unique_images} images")
+        print(f"- GPU batch size: {config['gpu_batch_size']}")
+        print(f"- CPU workers: {config['n_jobs']}")
+        print(f"- Output format: {config['output_format']}")
+        print(f"- Memory usage at start: {get_memory_usage():.2f} MB\n")
+        
+        # Choose processing method (compiled Cython vs. Python)
+        use_cython = config.get("use_cython", True)
+        if use_cython:
+            try:
+                from src import cython_utils
+                create_clickmap_func = cython_utils.create_clickmap_fast
+                fast_duplicate_detection = cython_utils.fast_duplicate_detection
+                fast_ious_binary = cython_utils.fast_ious_binary
+                print("Using Cython-optimized functions")
+            except (ImportError, ModuleNotFoundError) as e:
+                use_cython = False
+                from src import python_utils
+                create_clickmap_func = python_utils.create_clickmap_fast
+                fast_duplicate_detection = python_utils.fast_duplicate_detection
+                fast_ious_binary = python_utils.fast_ious_binary
+                print(f"Cython modules not available: {e}")
+                print("Falling back to Python implementation. For best performance, run 'python compile_cython.py build_ext --inplace' first.")
+        else:
+            from src import python_utils
+            create_clickmap_func = python_utils.create_clickmap_fast
+            fast_duplicate_detection = python_utils.fast_duplicate_detection
+            fast_ious_binary = python_utils.fast_ious_binary
+
+        # Load metadata
+        if config["metadata_file"]:
+            metadata = np.load(config["metadata_file"], allow_pickle=True).item()
+        else:
+            metadata = None
+
+        print("Processing clickme data...")
+        # Always use parallel processing for large datasets
+        clickmaps, ccounts = utils.process_clickmap_files_parallel(
+            clickme_data=clickme_data,
+            image_path=config["image_path"],
+            file_inclusion_filter=config["file_inclusion_filter"],
+            file_exclusion_filter=config["file_exclusion_filter"],
+            min_clicks=config["min_clicks"],
+            max_clicks=config["max_clicks"],
+            n_jobs=config["n_jobs"])
+        
+        # Apply filters if necessary
+        if config["class_filter_file"]:
+            print("Filtering classes...")
+            clickmaps = utils.filter_classes(
+                clickmaps=clickmaps,
+                class_filter_file=config["class_filter_file"])
+        
+        if config["participant_filter"]:
+            print("Filtering participants...")
+            clickmaps = utils.filter_participants(clickmaps)
+        
         # Process in batches to avoid memory issues
         max_batch_size = config.get("batch_size", 50000)  # Default to 50k images per batch
+        
+        # Get list of all image keys
+        all_keys = list(clickmaps.keys())
+        total_unique_images = len(all_keys)
         num_batches = (total_unique_images + max_batch_size - 1) // max_batch_size
         
         print(f"Processing dataset in {num_batches} batches of up to {max_batch_size} images each")
         
-        # Split clickmaps into batches
-        all_keys = list(clickme_data.keys())
+        # Store final results
+        all_medians = {'image': {}, 'category': {}, 'all': {}}
+        processed_images_count = 0
         
         for batch_num in range(num_batches):
             print(f"\n--- Processing batch {batch_num+1}/{num_batches} ---")
@@ -258,7 +322,7 @@ if __name__ == "__main__":
             batch_keys = all_keys[start_idx:end_idx]
             
             # Create batch-specific clickmaps dictionary
-            batch_clickmaps = {k: clickme_data[k] for k in batch_keys}
+            batch_clickmaps = {k: clickmaps[k] for k in batch_keys}
             batch_size = len(batch_clickmaps)
             
             # Create batch-specific HDF5 file with suffix
@@ -277,7 +341,7 @@ if __name__ == "__main__":
                 meta_grp.attrs["creation_date"] = np.bytes_(pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"))
             
             # Process this batch of clickmaps
-            print(f"Processing with GPU (batch size: {config['gpu_batch_size']})...")
+            print(f"Processing batch with GPU (batch size: {config['gpu_batch_size']})...")
             
             batch_final_clickmaps, batch_all_clickmaps, batch_categories, batch_final_keep_index = process_all_maps_gpu(
                 clickmaps=batch_clickmaps,
@@ -301,6 +365,7 @@ if __name__ == "__main__":
             # Save results for this batch
             if batch_final_keep_index:
                 print(f"Saving {len(batch_final_keep_index)} processed maps for batch {batch_num+1}...")
+                processed_images_count += len(batch_final_keep_index)
                 
                 # Use optimized HDF5 saving with compression
                 saved_count = utils.save_clickmaps_to_hdf5(
@@ -312,6 +377,22 @@ if __name__ == "__main__":
                     compression_level=config.get("hdf5_compression_level", 0)
                 )
                 print(f"Saved {saved_count} files in batch {batch_num+1}")
+                
+                # Calculate batch medians and update global medians
+                batch_medians = get_medians(batch_final_clickmaps, 'image', thresh=config["percentile_thresh"])
+                all_medians['image'].update(batch_medians.get('image', {}))
+                
+                batch_cat_medians = get_medians(batch_final_clickmaps, 'category', thresh=config["percentile_thresh"])
+                for cat, val in batch_cat_medians.get('category', {}).items():
+                    if cat not in all_medians['category']:
+                        all_medians['category'][cat] = []
+                    all_medians['category'][cat].append(val)
+                
+                batch_all_medians = get_medians(batch_final_clickmaps, 'all', thresh=config["percentile_thresh"])
+                for k, v in batch_all_medians.items():
+                    if k not in all_medians['all']:
+                        all_medians['all'][k] = []
+                    all_medians['all'][k].append(v)
             
             # Free memory after each batch
             del batch_clickmaps, batch_final_clickmaps, batch_all_clickmaps, batch_categories, batch_final_keep_index
@@ -320,30 +401,153 @@ if __name__ == "__main__":
                 torch.cuda.empty_cache()
             
             print(f"Memory usage after batch {batch_num+1}: {get_memory_usage():.2f} MB")
+        
+        # Finalize global medians
+        print("Calculating global medians...")
+        final_medians = {'image': all_medians['image']}
+        
+        # Aggregate category medians
+        final_medians['category'] = {}
+        for cat, values in all_medians['category'].items():
+            final_medians['category'][cat] = int(np.median(values))
+        
+        # Aggregate overall medians
+        final_medians['all'] = {}
+        for k, values in all_medians['all'].items():
+            if k in ['median', 'threshold']:
+                final_medians['all'][k] = int(np.median(values))
+            elif k == 'mean':
+                final_medians['all'][k] = float(np.mean(values))
+        
+        # Save final medians
+        medians_json = json.dumps(final_medians, indent=4)
+        with open(os.path.join(output_dir, config["processed_medians"]), 'w') as f:
+            f.write(medians_json)
+        
+        print(f"Processed and saved a total of {processed_images_count} images across {num_batches} batches")
+        
+        # Set finals for visualization
+        final_clickmaps = batch_final_clickmaps if 'batch_final_clickmaps' in locals() else {}
+        
     else:
-        # Use parallel saving
-        saved_count = utils.save_clickmaps_parallel(
-            all_clickmaps=all_clickmaps,
-            final_keep_index=final_keep_index,
-            output_dir=output_dir,
-            experiment_name=config["experiment_name"],
-            image_path=config["image_path"],
-            n_jobs=config["n_jobs"],
-            file_inclusion_filter=config.get("file_inclusion_filter")
-        )
-        print(f"Saved {saved_count} files")
+        # Original code for non-HDF5 format
+        hdf5_path = os.path.join(output_dir, f"{config['experiment_name']}.h5")
+        print(f"Saving results to file: {hdf5_path}")
+        with h5py.File(hdf5_path, 'w') as f:
+            f.create_group("clickmaps")
+            meta_grp = f.create_group("metadata")
+            meta_grp.attrs["total_unique_images"] = total_unique_images
+            meta_grp.attrs["total_maps"] = total_maps
+            meta_grp.attrs["creation_date"] = np.bytes_(pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"))
     
-    # Get median number of clicks from the results
-    print("Calculating medians...")
-    percentile_thresh = config["percentile_thresh"]
-    medians = get_medians(final_clickmaps, 'image', thresh=percentile_thresh)
-    medians.update(get_medians(final_clickmaps, 'category', thresh=percentile_thresh))
-    medians.update(get_medians(final_clickmaps, 'all', thresh=percentile_thresh))
-    medians_json = json.dumps(medians, indent=4)
+        # Print optimization settings
+        print("\nProcessing settings:")
+        print(f"- Dataset size: {total_maps} maps, {total_unique_images} images")
+        print(f"- GPU batch size: {config['gpu_batch_size']}")
+        print(f"- CPU workers: {config['n_jobs']}")
+        print(f"- Output format: {config['output_format']}")
+        print(f"- Memory usage at start: {get_memory_usage():.2f} MB\n")
+        
+        # Choose processing method (compiled Cython vs. Python)
+        use_cython = config.get("use_cython", True)
+        if use_cython:
+            try:
+                from src import cython_utils
+                create_clickmap_func = cython_utils.create_clickmap_fast
+                fast_duplicate_detection = cython_utils.fast_duplicate_detection
+                fast_ious_binary = cython_utils.fast_ious_binary
+                print("Using Cython-optimized functions")
+            except (ImportError, ModuleNotFoundError) as e:
+                use_cython = False
+                from src import python_utils
+                create_clickmap_func = python_utils.create_clickmap_fast
+                fast_duplicate_detection = python_utils.fast_duplicate_detection
+                fast_ious_binary = python_utils.fast_ious_binary
+                print(f"Cython modules not available: {e}")
+                print("Falling back to Python implementation. For best performance, run 'python compile_cython.py build_ext --inplace' first.")
+        else:
+            from src import python_utils
+            create_clickmap_func = python_utils.create_clickmap_fast
+            fast_duplicate_detection = python_utils.fast_duplicate_detection
+            fast_ious_binary = python_utils.fast_ious_binary
 
-    # Save medians
-    with open(os.path.join(output_dir, config["processed_medians"]), 'w') as f:
-        f.write(medians_json)
+        # Load metadata
+        if config["metadata_file"]:
+            metadata = np.load(config["metadata_file"], allow_pickle=True).item()
+        else:
+            metadata = None
+
+        print("Processing clickme data...")
+        # Always use parallel processing for large datasets
+        clickmaps, ccounts = utils.process_clickmap_files_parallel(
+            clickme_data=clickme_data,
+            image_path=config["image_path"],
+            file_inclusion_filter=config["file_inclusion_filter"],
+            file_exclusion_filter=config["file_exclusion_filter"],
+            min_clicks=config["min_clicks"],
+            max_clicks=config["max_clicks"],
+            n_jobs=config["n_jobs"])
+        
+        # Apply filters if necessary
+        if config["class_filter_file"]:
+            print("Filtering classes...")
+            clickmaps = utils.filter_classes(
+                clickmaps=clickmaps,
+                class_filter_file=config["class_filter_file"])
+        
+        if config["participant_filter"]:
+            print("Filtering participants...")
+            clickmaps = utils.filter_participants(clickmaps)
+        
+        # Process all maps with our new single-batch GPU function
+        print(f"Processing with GPU (batch size: {config['gpu_batch_size']})...")
+        
+        final_clickmaps, all_clickmaps, categories, final_keep_index = process_all_maps_gpu(
+            clickmaps=clickmaps,
+            config=config,
+            metadata=metadata,
+            create_clickmap_func=create_clickmap_func,
+            fast_duplicate_detection=fast_duplicate_detection
+        )
+
+        # Apply mask filtering if needed
+        if final_keep_index and config["mask_dir"]:
+            print("Applying mask filtering...")
+            masks = utils.load_masks(config["mask_dir"])
+            final_clickmaps, all_clickmaps, categories, final_keep_index = utils.filter_for_foreground_masks(
+                final_clickmaps=final_clickmaps,
+                all_clickmaps=all_clickmaps,
+                categories=categories,
+                masks=masks,
+                mask_threshold=config["mask_threshold"])
+        
+        # Save results
+        if final_keep_index:
+            print(f"Saving {len(final_keep_index)} processed maps...")
+            
+            # Use parallel saving
+            saved_count = utils.save_clickmaps_parallel(
+                all_clickmaps=all_clickmaps,
+                final_keep_index=final_keep_index,
+                output_dir=output_dir,
+                experiment_name=config["experiment_name"],
+                image_path=config["image_path"],
+                n_jobs=config["n_jobs"],
+                file_inclusion_filter=config.get("file_inclusion_filter")
+            )
+            print(f"Saved {saved_count} files")
+        
+        # Get median number of clicks from the results
+        print("Calculating medians...")
+        percentile_thresh = config["percentile_thresh"]
+        medians = get_medians(final_clickmaps, 'image', thresh=percentile_thresh)
+        medians.update(get_medians(final_clickmaps, 'category', thresh=percentile_thresh))
+        medians.update(get_medians(final_clickmaps, 'all', thresh=percentile_thresh))
+        medians_json = json.dumps(medians, indent=4)
+
+        # Save medians
+        with open(os.path.join(output_dir, config["processed_medians"]), 'w') as f:
+            f.write(medians_json)
     
     # Process visualization for display images if needed
     if config["display_image_keys"]:
