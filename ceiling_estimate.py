@@ -47,15 +47,22 @@ def get_medians(clickmaps, mode, thresh=95):
     return medians
 
 
-def split_clickmaps(clickmaps):
-    """Split clickmaps for each image into two random halves"""
+def split_clickmaps(clickmaps, min_subjects_per_half=2):
+    """Split clickmaps for each image into two random halves, ensuring both halves have enough subjects"""
     first_half = {}
     second_half = {}
     
+    # First pass: filter to keep only images with enough trials for both halves
+    filtered_clickmaps = {}
     for img_name, trials in clickmaps.items():
-        if len(trials) < 2:  # Need at least 2 trials to split
-            continue
-            
+        # Need at least 2*min_subjects_per_half trials to have enough for both halves
+        if len(trials) >= 2*min_subjects_per_half:
+            filtered_clickmaps[img_name] = trials
+    
+    print(f"Splitting {len(filtered_clickmaps)} images with sufficient trials (≥{2*min_subjects_per_half})")
+    
+    # Second pass: split the filtered clickmaps
+    for img_name, trials in filtered_clickmaps.items():
         # Randomly shuffle the trials
         shuffled_trials = trials.copy()
         np.random.shuffle(shuffled_trials)
@@ -65,7 +72,7 @@ def split_clickmaps(clickmaps):
         first_half[img_name] = shuffled_trials[:mid_point]
         second_half[img_name] = shuffled_trials[mid_point:]
     
-    return first_half, second_half
+    return first_half, second_half, filtered_clickmaps.keys()
 
 
 def calculate_spearman_correlation(map1, map2):
@@ -80,9 +87,10 @@ def calculate_spearman_correlation(map1, map2):
     return corr
 
 
-def process_split_maps_gpu(clickmaps, config, metadata=None, create_clickmap_func=None, fast_duplicate_detection=None):
+def process_split_maps_gpu(clickmaps, config, image_keys=None, metadata=None, create_clickmap_func=None, fast_duplicate_detection=None):
     """
     Process a split of clickmaps on GPU in batches
+    If image_keys is provided, only process these images and preserve them even if they have few trials
     """
     # Extract basic parameters
     blur_size = config["blur_size"]
@@ -102,11 +110,16 @@ def process_split_maps_gpu(clickmaps, config, metadata=None, create_clickmap_fun
     categories = []
     final_clickmaps = {}
     
+    # If image_keys is provided, only process those keys
+    keys_to_process = image_keys if image_keys is not None else clickmaps.keys()
+    
     # Preprocess all clickmaps first to binary maps
-    for key, trials in tqdm(clickmaps.items(), desc="Creating binary maps"):
-        if len(trials) < min_subjects:
+    for key in tqdm(keys_to_process, desc="Creating binary maps"):
+        if key not in clickmaps:
             continue
             
+        trials = clickmaps[key]
+        
         # Create binary clickmaps
         if metadata and key in metadata:
             native_size = metadata[key]
@@ -118,8 +131,8 @@ def process_split_maps_gpu(clickmaps, config, metadata=None, create_clickmap_fun
         mask = binary_maps.sum((-2, -1)) >= min_clicks
         binary_maps = binary_maps[mask]
         
-        # If we have enough valid maps, average them and keep this image
-        if len(binary_maps) >= min_subjects:
+        # If we have any valid maps, average them and keep this image
+        if len(binary_maps) > 0:
             all_clickmaps.append(np.array(binary_maps).mean(0, keepdims=True))
             categories.append(key.split("/")[0])
             keep_index.append(key)
@@ -196,30 +209,41 @@ def compute_ceiling_floor_estimates(clickmaps, config, K=20, metadata=None, crea
     image_results = {}
     
     for k in tqdm(range(K), desc=f"Running {K} iterations of ceiling/floor estimation"):
-        # Split clickmaps into two random halves
-        first_half, second_half = split_clickmaps(clickmaps)
+        # Split clickmaps into two random halves, making sure both halves contain the same images
+        min_subjects_per_half = max(1, config["min_subjects"] // 2)
+        first_half, second_half, common_image_keys = split_clickmaps(clickmaps, min_subjects_per_half)
         
-        # Process both halves
-        import pdb; pdb.set_trace()
+        print(f"Iteration {k+1}/{K}: Split data for {len(common_image_keys)} common images")
+        
+        if not common_image_keys:
+            print(f"Warning: No common images in iteration {k+1}, skipping")
+            continue
+        
+        # Process both halves, ensuring they contain the same images
         _, first_maps, _, first_indices = process_split_maps_gpu(
-            first_half, config, metadata, create_clickmap_func, fast_duplicate_detection)
+            first_half, config, common_image_keys, metadata, create_clickmap_func, fast_duplicate_detection)
         
         _, second_maps, _, second_indices = process_split_maps_gpu(
-            second_half, config, metadata, create_clickmap_func, fast_duplicate_detection)
+            second_half, config, common_image_keys, metadata, create_clickmap_func, fast_duplicate_detection)
         
-        # Find common images between the two halves
-        common_indices = set(first_indices).intersection(set(second_indices))
-        print(f"Iteration {k+1}/{K}: Found {len(common_indices)} common images between splits")
+        # Verify both halves contain the same images
+        if set(first_indices) != set(second_indices):
+            # If there's a mismatch, only use images present in both
+            common_indices = set(first_indices).intersection(set(second_indices))
+            print(f"Warning: Image mismatch after processing. Using {len(common_indices)} common images.")
+        else:
+            common_indices = first_indices
+            print(f"Successfully processed {len(common_indices)} common images in both halves")
         
         if not common_indices:
-            print(f"Warning: No common images in iteration {k+1}, skipping")
+            print(f"Warning: No common images after processing in iteration {k+1}, skipping")
             continue
         
         # Calculate correlations for this iteration
         iteration_ceiling_corrs = []
         iteration_floor_corrs = []
         
-        # Create copy of second half indices for shuffling
+        # Create copy of second half indices for shuffling (for floor estimate)
         shuffled_indices = second_indices.copy()
         np.random.shuffle(shuffled_indices)
         
@@ -238,20 +262,24 @@ def compute_ceiling_floor_estimates(clickmaps, config, K=20, metadata=None, crea
             iteration_ceiling_corrs.append(ceiling_corr)
             
             # For floor, use a random different image from second half
-            random_idx = shuffled_indices.index(list(common_indices)[i])
-            random_map_idx = second_indices.index(shuffled_indices[random_idx])
-            map2_random = second_maps[random_map_idx][0]
-            
-            # Calculate floor correlation (correlation with random different image)
-            floor_corr = calculate_spearman_correlation(map1, map2_random)
-            iteration_floor_corrs.append(floor_corr)
+            if len(common_indices) > 1:  # Need at least 2 images for floor estimate
+                # Find a different image to use for floor estimate
+                other_images = list(common_indices - {img_name})
+                random_img = np.random.choice(other_images)
+                random_idx = second_indices.index(random_img)
+                map2_random = second_maps[random_idx][0]
+                
+                # Calculate floor correlation (correlation with random different image)
+                floor_corr = calculate_spearman_correlation(map1, map2_random)
+                iteration_floor_corrs.append(floor_corr)
             
             # Store per-image results
             if img_name not in image_results:
                 image_results[img_name] = {"ceiling": [], "floor": []}
             
             image_results[img_name]["ceiling"].append(ceiling_corr)
-            image_results[img_name]["floor"].append(floor_corr)
+            if len(common_indices) > 1 and 'floor_corr' in locals():
+                image_results[img_name]["floor"].append(floor_corr)
         
         # Add iteration averages to overall results
         if iteration_ceiling_corrs:
@@ -260,8 +288,8 @@ def compute_ceiling_floor_estimates(clickmaps, config, K=20, metadata=None, crea
             floor_corrs.append(np.nanmean(iteration_floor_corrs))
     
     # Calculate overall averages
-    avg_ceiling = np.nanmean(ceiling_corrs)
-    avg_floor = np.nanmean(floor_corrs)
+    avg_ceiling = np.nanmean(ceiling_corrs) if ceiling_corrs else np.nan
+    avg_floor = np.nanmean(floor_corrs) if floor_corrs else np.nan
     
     print(f"\nResults after {K} iterations:")
     print(f"Average ceiling correlation: {avg_ceiling:.4f}")
@@ -271,9 +299,9 @@ def compute_ceiling_floor_estimates(clickmaps, config, K=20, metadata=None, crea
     results_df = pd.DataFrame({
         "image": list(image_results.keys()),
         "avg_ceiling": [np.nanmean(v["ceiling"]) for v in image_results.values()],
-        "avg_floor": [np.nanmean(v["floor"]) for v in image_results.values()],
-        "std_ceiling": [np.nanstd(v["ceiling"]) for v in image_results.values()],
-        "std_floor": [np.nanstd(v["floor"]) for v in image_results.values()],
+        "avg_floor": [np.nanmean(v.get("floor", [np.nan])) for v in image_results.values()],
+        "std_ceiling": [np.nanstd(v["ceiling"]) if len(v["ceiling"]) > 1 else np.nan for v in image_results.values()],
+        "std_floor": [np.nanstd(v.get("floor", [np.nan])) if len(v.get("floor", [])) > 1 else np.nan for v in image_results.values()],
         "num_iterations": [len(v["ceiling"]) for v in image_results.values()]
     })
     
@@ -282,8 +310,8 @@ def compute_ceiling_floor_estimates(clickmaps, config, K=20, metadata=None, crea
         "image": ["OVERALL"],
         "avg_ceiling": [avg_ceiling],
         "avg_floor": [avg_floor],
-        "std_ceiling": [np.nanstd(ceiling_corrs)],
-        "std_floor": [np.nanstd(floor_corrs)],
+        "std_ceiling": [np.nanstd(ceiling_corrs) if len(ceiling_corrs) > 1 else np.nan],
+        "std_floor": [np.nanstd(floor_corrs) if len(floor_corrs) > 1 else np.nan],
         "num_iterations": [K]
     })
     
