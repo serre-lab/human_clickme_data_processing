@@ -232,7 +232,7 @@ def compute_ceiling_floor_estimates(clickmaps, config, K=20, metadata=None, crea
             common_indices = set(first_indices).intersection(set(second_indices))
             print(f"Warning: Image mismatch after processing. Using {len(common_indices)} common images.")
         else:
-            common_indices = first_indices
+            common_indices = set(first_indices)  # Convert to set for consistency
             print(f"Successfully processed {len(common_indices)} common images in both halves")
         
         if not common_indices:
@@ -248,7 +248,8 @@ def compute_ceiling_floor_estimates(clickmaps, config, K=20, metadata=None, crea
         np.random.shuffle(shuffled_indices)
         
         # Process each common image
-        for i, img_name in enumerate(common_indices):
+        common_indices_list = list(common_indices)  # Convert to list for iteration
+        for i, img_name in enumerate(common_indices_list):
             # Find indices in each list
             first_idx = first_indices.index(img_name)
             second_idx = second_indices.index(img_name)
@@ -264,7 +265,7 @@ def compute_ceiling_floor_estimates(clickmaps, config, K=20, metadata=None, crea
             # For floor, use a random different image from second half
             if len(common_indices) > 1:  # Need at least 2 images for floor estimate
                 # Find a different image to use for floor estimate
-                other_images = list(common_indices - {img_name})
+                other_images = [img for img in common_indices_list if img != img_name]
                 random_img = np.random.choice(other_images)
                 random_idx = second_indices.index(random_img)
                 map2_random = second_maps[random_idx][0]
