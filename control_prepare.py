@@ -105,7 +105,7 @@ def process_all_maps_gpu(clickmaps, config, metadata=None, create_clickmap_func=
     
     # Step 2: Prepare for batch blurring on GPU
     total_maps = len(all_clickmaps)
-    print(f"Preparing to blur {total_maps} clickmaps using GPU...")
+    print(f"Preparing to blur {total_maps} image clickmaps using GPU...")
     
     # Convert all maps to tensors
     all_tensors = [torch.from_numpy(maps).float() for maps in all_clickmaps]
