@@ -200,6 +200,7 @@ def compute_ceiling_floor_estimates(clickmaps, config, K=20, metadata=None, crea
         first_half, second_half = split_clickmaps(clickmaps)
         
         # Process both halves
+        import pdb; pdb.set_trace()
         _, first_maps, _, first_indices = process_split_maps_gpu(
             first_half, config, metadata, create_clickmap_func, fast_duplicate_detection)
         
