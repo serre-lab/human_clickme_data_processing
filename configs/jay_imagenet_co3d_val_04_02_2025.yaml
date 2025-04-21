@@ -8,8 +8,8 @@ clickme_data: clickme_datasets/val_combined_04_02_2025.npz
 correlation_batch_size: 1024
 debug: false
 display_image_keys: auto
-example_image_output_dir: jay_imagenet_val_combined_04_02_2025_images
-experiment_name: jay_imagenet_val_04_02_2025
+example_image_output_dir: jay_imagenet_co3d_val_04_02_2025_images
+experiment_name: jay_imagenet_co3d_val_04_02_2025
 file_exclusion_filter: ILSVRC2012_train
 file_inclusion_filter: ILSVRC2012_val
 filter_mobile: true
@@ -32,6 +32,6 @@ parallel_save: false
 participant_filter: false
 percentile_thresh: 50
 preprocess_db_data: true
-processed_clickme_file: jay_imagenet_val_combined_02_19_2025_processed.npz
-processed_medians: jay_imagenet_val_combined_02_19_2025_medians.json
+processed_clickme_file: jay_imagenet_co3d_val_04_02_2025_processed.npz
+processed_medians: jay_imagenet_co3d_val_04_02_2025_medians.json
 remove_string: imagenet/val/
