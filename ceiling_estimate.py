@@ -257,7 +257,7 @@ def process_split_maps_gpu(clickmaps, config, image_keys=None, metadata=None, cr
         num_batches = total_maps
         gpu_batch_size = 1
     
-    print(f"Processing in {num_batches} batches of up to {gpu_batch_size} maps each...")
+    print(f"Processing in {num_batches} batches of up to {gpu_batch_size} images each...")
     for batch_idx in tqdm(range(num_batches), desc="Processing GPU batches"):
         # Get batch indices
         start_idx = batch_idx * gpu_batch_size
