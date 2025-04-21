@@ -247,6 +247,7 @@ def compute_ceiling_floor_estimates(clickmaps, config, K=20, metadata=None, crea
     image_results = {}
     
     # Check if center crop should be applied
+    import pdb;pdb.set_trace()
     crop_size = config.get("center_crop", None)
     if crop_size is not None:
         print(f"Will apply center cropping with size {crop_size}")
