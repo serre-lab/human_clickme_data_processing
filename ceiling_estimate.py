@@ -92,10 +92,36 @@ def apply_center_crop(image_map, crop_size):
         The center-cropped image map
     """
     # Get current dimensions
-    h, w = image_map.shape[-2:]
+    if len(image_map.shape) == 2:  # 2D map
+        h, w = image_map.shape
+    elif len(image_map.shape) == 3:  # 3D map (with batch dimension)
+        h, w = image_map.shape[1:]
+    else:
+        return image_map  # Return as-is if dimensions don't match expected
     
     # Calculate crop coordinates
     crop_h, crop_w = crop_size
+    
+    # If image is smaller than crop size, pad it
+    if h < crop_h or w < crop_w:
+        pad_h = max(0, crop_h - h)
+        pad_w = max(0, crop_w - w)
+        
+        if len(image_map.shape) == 2:
+            padded = np.pad(image_map, ((pad_h//2, pad_h - pad_h//2), (pad_w//2, pad_w - pad_w//2)), 
+                            mode='constant', constant_values=0)
+        else:
+            padded = np.pad(image_map, ((0, 0), (pad_h//2, pad_h - pad_h//2), (pad_w//2, pad_w - pad_w//2)), 
+                            mode='constant', constant_values=0)
+        image_map = padded
+        
+        # Update dimensions
+        if len(image_map.shape) == 2:
+            h, w = image_map.shape
+        else:
+            h, w = image_map.shape[1:]
+    
+    # Calculate crop coordinates
     start_h = (h - crop_h) // 2
     start_w = (w - crop_w) // 2
     
@@ -115,13 +141,40 @@ def calculate_spearman_correlation(map1, map2, crop_size=None):
         map1 = apply_center_crop(map1, crop_size)
         map2 = apply_center_crop(map2, crop_size)
     
+    # Make sure maps have consistent dimensions
+    if map1.shape != map2.shape:
+        print(f"Warning: Map shapes don't match: {map1.shape} vs {map2.shape}")
+        # Resize the second map to match the first
+        if len(map1.shape) == 2:
+            target_shape = map1.shape
+            resized_map2 = np.zeros(target_shape, dtype=map2.dtype)
+            min_h = min(target_shape[0], map2.shape[0])
+            min_w = min(target_shape[1], map2.shape[1])
+            resized_map2[:min_h, :min_w] = map2[:min_h, :min_w]
+            map2 = resized_map2
+        elif len(map1.shape) == 3:
+            target_shape = map1.shape
+            resized_map2 = np.zeros(target_shape, dtype=map2.dtype)
+            min_h = min(target_shape[1], map2.shape[1])
+            min_w = min(target_shape[2], map2.shape[2])
+            resized_map2[:, :min_h, :min_w] = map2[:, :min_h, :min_w]
+            map2 = resized_map2
+    
     # Flatten maps
     flat1 = map1.flatten()
     flat2 = map2.flatten()
     
+    # Check for constant arrays (which cause problems with Spearman correlation)
+    if np.all(flat1 == flat1[0]) or np.all(flat2 == flat2[0]):
+        return np.nan
+    
     # Calculate Spearman correlation
     corr, _ = spearmanr(flat1, flat2)
     
+    # Check if correlation is NaN or infinite
+    if np.isnan(corr) or np.isinf(corr):
+        return np.nan
+        
     return corr
 
 
