@@ -35,3 +35,4 @@ preprocess_db_data: true
 processed_clickme_file: jay_imagenet_co3d_val_04_02_2025_processed.npz
 processed_medians: jay_imagenet_co3d_val_04_02_2025_medians.json
 remove_string: imagenet/val/
+output_format: "numpy"
