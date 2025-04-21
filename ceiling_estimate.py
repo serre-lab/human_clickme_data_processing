@@ -75,8 +75,46 @@ def split_clickmaps(clickmaps, min_subjects_per_half=2):
     return first_half, second_half, filtered_clickmaps.keys()
 
 
-def calculate_spearman_correlation(map1, map2):
+def apply_center_crop(image_map, crop_size):
+    """
+    Apply center cropping to an image map
+    
+    Parameters:
+    -----------
+    image_map : numpy.ndarray
+        The image map to crop
+    crop_size : list or tuple
+        The dimensions of the crop [height, width]
+        
+    Returns:
+    --------
+    numpy.ndarray
+        The center-cropped image map
+    """
+    # Get current dimensions
+    h, w = image_map.shape[-2:]
+    
+    # Calculate crop coordinates
+    crop_h, crop_w = crop_size
+    start_h = (h - crop_h) // 2
+    start_w = (w - crop_w) // 2
+    
+    # Apply crop
+    if len(image_map.shape) == 2:  # 2D map
+        return image_map[start_h:start_h+crop_h, start_w:start_w+crop_w]
+    elif len(image_map.shape) == 3:  # 3D map (with batch dimension)
+        return image_map[:, start_h:start_h+crop_h, start_w:start_w+crop_w]
+    
+    return image_map  # Return as-is if dimensions don't match expected
+
+
+def calculate_spearman_correlation(map1, map2, crop_size=None):
     """Calculate Spearman correlation between two 2D maps"""
+    # Apply center crop if specified
+    if crop_size is not None:
+        map1 = apply_center_crop(map1, crop_size)
+        map2 = apply_center_crop(map2, crop_size)
+    
     # Flatten maps
     flat1 = map1.flatten()
     flat2 = map2.flatten()
@@ -208,6 +246,11 @@ def compute_ceiling_floor_estimates(clickmaps, config, K=20, metadata=None, crea
     floor_corrs = []
     image_results = {}
     
+    # Check if center crop should be applied
+    crop_size = config.get("center_crop", None)
+    if crop_size is not None:
+        print(f"Will apply center cropping with size {crop_size}")
+    
     for k in tqdm(range(K), desc=f"Running {K} iterations of ceiling/floor estimation"):
         # Split clickmaps into two random halves, making sure both halves contain the same images
         min_subjects_per_half = max(1, config["min_subjects"] // 2)
@@ -259,7 +302,7 @@ def compute_ceiling_floor_estimates(clickmaps, config, K=20, metadata=None, crea
             map2 = second_maps[second_idx][0]  # First element of batch
             
             # Calculate ceiling correlation (actual correlation between halves)
-            ceiling_corr = calculate_spearman_correlation(map1, map2)
+            ceiling_corr = calculate_spearman_correlation(map1, map2, crop_size)
             iteration_ceiling_corrs.append(ceiling_corr)
             
             # For floor, use a random different image from second half
@@ -271,7 +314,7 @@ def compute_ceiling_floor_estimates(clickmaps, config, K=20, metadata=None, crea
                 map2_random = second_maps[random_idx][0]
                 
                 # Calculate floor correlation (correlation with random different image)
-                floor_corr = calculate_spearman_correlation(map1, map2_random)
+                floor_corr = calculate_spearman_correlation(map1, map2_random, crop_size)
                 iteration_floor_corrs.append(floor_corr)
             
             # Store per-image results
