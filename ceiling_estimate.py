@@ -111,6 +111,7 @@ def apply_center_crop(image_map, crop_size):
 def calculate_spearman_correlation(map1, map2, crop_size=None):
     """Calculate Spearman correlation between two 2D maps"""
     # Apply center crop if specified
+    import pdb;pdb.set_trace()
     if crop_size is not None:
         map1 = apply_center_crop(map1, crop_size)
         map2 = apply_center_crop(map2, crop_size)
@@ -247,7 +248,6 @@ def compute_ceiling_floor_estimates(clickmaps, config, K=20, metadata=None, crea
     image_results = {}
     
     # Check if center crop should be applied
-    import pdb;pdb.set_trace()
     crop_size = config.get("center_crop", None)
     if crop_size is not None:
         print(f"Will apply center cropping with size {crop_size}")
