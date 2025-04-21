@@ -111,7 +111,6 @@ def apply_center_crop(image_map, crop_size):
 def calculate_spearman_correlation(map1, map2, crop_size=None):
     """Calculate Spearman correlation between two 2D maps"""
     # Apply center crop if specified
-    import pdb;pdb.set_trace()
     if crop_size is not None:
         map1 = apply_center_crop(map1, crop_size)
         map2 = apply_center_crop(map2, crop_size)
