@@ -55,6 +55,7 @@ def filter_classes(
         class_filter_file,
         allow_pickle=True).item()
     category_map_keys = np.asarray([k for k in category_map.keys()])
+    import pdb;pdb.set_trace()
 
     # Filter clickmaps based on the category map
     filtered_clickmaps = {}

@@ -513,6 +513,7 @@ if __name__ == "__main__":
         n_jobs=config["n_jobs"])
     
     # Apply filters if necessary
+    import pdb;pdb.set_trace()
     if config["class_filter_file"]:
         print("Filtering classes...")
         clickmaps = utils.filter_classes(
