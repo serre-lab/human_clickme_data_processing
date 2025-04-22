@@ -3,7 +3,7 @@ blur_size: 21
 center_crop:
 - 256
 - 256
-class_filter_file: false
+class_filter_file: category_maps/synset_to_co3d.npy
 clickme_data: clickme_datasets/val_combined_04_02_2025.npz
 correlation_batch_size: 1024
 debug: false
