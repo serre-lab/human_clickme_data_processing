@@ -351,6 +351,7 @@ def compute_ceiling_floor_estimates(clickmaps, config, K=20, metadata=None, crea
             second_idx = second_indices.index(img_name)
             
             # Get the processed maps
+            import pdb;pdb.set_trace()
             map1 = first_maps[first_idx][0]  # First element of batch
             map2 = second_maps[second_idx][0]  # First element of batch
             
