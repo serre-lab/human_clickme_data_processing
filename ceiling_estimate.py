@@ -137,29 +137,12 @@ def apply_center_crop(image_map, crop_size):
 def calculate_spearman_correlation(map1, map2, crop_size=None):
     """Calculate Spearman correlation between two 2D maps"""
     # Apply center crop if specified
-    if crop_size is not None:
+    map1_shape = np.asarray([x for x in map1.shape])
+    map2_shape = np.asarray([x for x in map2.shape])
+    if crop_size is not None and not np.all(map1_shape == map2_shape):
         map1 = apply_center_crop(map1, crop_size)
         map2 = apply_center_crop(map2, crop_size)
-    
-    # Make sure maps have consistent dimensions
-    if map1.shape != map2.shape:
-        print(f"Warning: Map shapes don't match: {map1.shape} vs {map2.shape}")
-        # Resize the second map to match the first
-        if len(map1.shape) == 2:
-            target_shape = map1.shape
-            resized_map2 = np.zeros(target_shape, dtype=map2.dtype)
-            min_h = min(target_shape[0], map2.shape[0])
-            min_w = min(target_shape[1], map2.shape[1])
-            resized_map2[:min_h, :min_w] = map2[:min_h, :min_w]
-            map2 = resized_map2
-        elif len(map1.shape) == 3:
-            target_shape = map1.shape
-            resized_map2 = np.zeros(target_shape, dtype=map2.dtype)
-            min_h = min(target_shape[1], map2.shape[1])
-            min_w = min(target_shape[2], map2.shape[2])
-            resized_map2[:, :min_h, :min_w] = map2[:, :min_h, :min_w]
-            map2 = resized_map2
-    
+        
     # Flatten maps
     flat1 = map1.flatten()
     flat2 = map2.flatten()
@@ -356,7 +339,7 @@ def compute_ceiling_floor_estimates(clickmaps, config, K=20, metadata=None, crea
             map2 = second_maps[second_idx][0]  # First element of batch
             
             # Calculate ceiling correlation (actual correlation between halves)
-            ceiling_corr = calculate_spearman_correlation(map1, map2, crop_size)
+            ceiling_corr = calculate_spearman_correlation(map1, map2)  # Dont crop. Same image.
             iteration_ceiling_corrs.append(ceiling_corr)
             
             # For floor, use a random different image from second half
