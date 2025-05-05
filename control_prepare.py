@@ -74,6 +74,7 @@ def process_all_maps_gpu(clickmaps, config, metadata=None, create_clickmap_func=
     keep_index = []
     categories = []
     final_clickmaps = {}
+    click_counts = {}  # Track click counts for each image
     
     # Preprocess all clickmaps first to binary maps
     for key, trials in tqdm(clickmaps.items(), desc="Creating binary maps"):
@@ -87,6 +88,9 @@ def process_all_maps_gpu(clickmaps, config, metadata=None, create_clickmap_func=
         else:
             binary_maps = np.asarray([create_clickmap_func([trial], tuple(image_shape)) for trial in trials])
         
+        # Count total clicks in each trial
+        total_clicks_per_trial = [len(trial) for trial in trials]
+        
         # Only keep maps with enough valid pixels using mask
         mask = binary_maps.sum((-2, -1)) >= min_clicks
         binary_maps = binary_maps[mask]
@@ -98,10 +102,11 @@ def process_all_maps_gpu(clickmaps, config, metadata=None, create_clickmap_func=
             categories.append(key.split("/")[0])
             keep_index.append(key)
             final_clickmaps[key] = trials
+            click_counts[key] = sum(total_clicks_per_trial)  # Store total clicks for this image
     
     if not all_clickmaps:
         print("No valid clickmaps to process")
-        return {}, [], [], []
+        return {}, [], [], [], {}
     
     # Step 2: Prepare for batch blurring on GPU
     total_maps = len(all_clickmaps)
@@ -158,7 +163,7 @@ def process_all_maps_gpu(clickmaps, config, metadata=None, create_clickmap_func=
     torch.cuda.empty_cache()
     
     print(f"Finished blurring {total_maps} clickmaps. Kept {len(keep_index)} images.")
-    return final_clickmaps, all_clickmaps, categories, keep_index
+    return final_clickmaps, all_clickmaps, categories, keep_index, click_counts
 
 
 if __name__ == "__main__":
@@ -312,6 +317,7 @@ if __name__ == "__main__":
         # Store final results
         all_medians = {'image': {}, 'category': {}, 'all': {}}
         processed_images_count = 0
+        all_click_counts = {}  # To store click counts across all batches
         
         for batch_num in range(num_batches):
             print(f"\n--- Processing batch {batch_num+1}/{num_batches} ---")
@@ -332,6 +338,7 @@ if __name__ == "__main__":
             
             with h5py.File(hdf5_path, 'w') as f:
                 f.create_group("clickmaps")
+                f.create_group("click_counts")  # Add group for click counts
                 meta_grp = f.create_group("metadata")
                 meta_grp.attrs["batch_number"] = batch_num + 1
                 meta_grp.attrs["total_batches"] = num_batches
@@ -343,7 +350,7 @@ if __name__ == "__main__":
             # Process this batch of clickmaps
             print(f"Processing batch with GPU (batch size: {config['gpu_batch_size']})...")
             
-            batch_final_clickmaps, batch_all_clickmaps, batch_categories, batch_final_keep_index = process_all_maps_gpu(
+            batch_final_clickmaps, batch_all_clickmaps, batch_categories, batch_final_keep_index, batch_click_counts = process_all_maps_gpu(
                 clickmaps=batch_clickmaps,
                 config=config,
                 metadata=metadata,
@@ -361,11 +368,22 @@ if __name__ == "__main__":
                     categories=batch_categories,
                     masks=masks,
                     mask_threshold=config["mask_threshold"])
+                # Update click counts to match filtered images
+                batch_click_counts = {k: batch_click_counts[k] for k in batch_final_keep_index if k in batch_click_counts}
             
             # Save results for this batch
             if batch_final_keep_index:
                 print(f"Saving {len(batch_final_keep_index)} processed maps for batch {batch_num+1}...")
                 processed_images_count += len(batch_final_keep_index)
+                
+                # Store click counts
+                all_click_counts.update(batch_click_counts)
+                
+                # Save click counts to HDF5
+                with h5py.File(hdf5_path, 'a') as f:
+                    for img_name, count in batch_click_counts.items():
+                        dataset_name = img_name.replace('/', '_')
+                        f["click_counts"].create_dataset(dataset_name, data=count)
                 
                 # Use optimized HDF5 saving with compression
                 saved_count = utils.save_clickmaps_to_hdf5(
@@ -395,7 +413,7 @@ if __name__ == "__main__":
                     all_medians['all'][k].append(v)
             
             # Free memory after each batch
-            del batch_clickmaps, batch_final_clickmaps, batch_all_clickmaps, batch_categories, batch_final_keep_index
+            del batch_clickmaps, batch_final_clickmaps, batch_all_clickmaps, batch_categories, batch_final_keep_index, batch_click_counts
             gc.collect()
             if config["use_gpu_blurring"]:
                 torch.cuda.empty_cache()
@@ -424,6 +442,11 @@ if __name__ == "__main__":
         with open(os.path.join(output_dir, config["processed_medians"]), 'w') as f:
             f.write(medians_json)
         
+        # Save click counts to a separate JSON file
+        click_counts_json = json.dumps(all_click_counts, indent=4)
+        with open(os.path.join(output_dir, f"{config['experiment_name']}_click_counts.json"), 'w') as f:
+            f.write(click_counts_json)
+        
         print(f"Processed and saved a total of {processed_images_count} images across {num_batches} batches")
         
         # Set finals for visualization
@@ -435,6 +458,7 @@ if __name__ == "__main__":
         print(f"Saving results to file: {hdf5_path}")
         with h5py.File(hdf5_path, 'w') as f:
             f.create_group("clickmaps")
+            f.create_group("click_counts")  # Add group for click counts
             meta_grp = f.create_group("metadata")
             meta_grp.attrs["total_unique_images"] = total_unique_images
             meta_grp.attrs["total_maps"] = total_maps
@@ -502,7 +526,7 @@ if __name__ == "__main__":
         # Process all maps with our new single-batch GPU function
         print(f"Processing with GPU (batch size: {config['gpu_batch_size']})...")
         
-        final_clickmaps, all_clickmaps, categories, final_keep_index = process_all_maps_gpu(
+        final_clickmaps, all_clickmaps, categories, final_keep_index, click_counts = process_all_maps_gpu(
             clickmaps=clickmaps,
             config=config,
             metadata=metadata,
@@ -520,10 +544,23 @@ if __name__ == "__main__":
                 categories=categories,
                 masks=masks,
                 mask_threshold=config["mask_threshold"])
+            # Update click counts to match filtered images
+            click_counts = {k: click_counts[k] for k in final_keep_index if k in click_counts}
         
         # Save results
         if final_keep_index:
             print(f"Saving {len(final_keep_index)} processed maps...")
+            
+            # Save click counts to HDF5
+            with h5py.File(hdf5_path, 'a') as f:
+                for img_name, count in click_counts.items():
+                    dataset_name = img_name.replace('/', '_')
+                    f["click_counts"].create_dataset(dataset_name, data=count)
+            
+            # Save click counts to a separate JSON file
+            click_counts_json = json.dumps(click_counts, indent=4)
+            with open(os.path.join(output_dir, f"{config['experiment_name']}_click_counts.json"), 'w') as f:
+                f.write(click_counts_json)
             
             # Use parallel saving
             saved_count = utils.save_clickmaps_parallel(
@@ -535,7 +572,13 @@ if __name__ == "__main__":
                 n_jobs=config["n_jobs"],
                 file_inclusion_filter=config.get("file_inclusion_filter")
             )
-            print(f"Saved {saved_count} files")
+            
+            # Save click counts alongside individual numpy files
+            for i, img_name in enumerate(final_keep_index):
+                count_file = os.path.join(output_dir, config["experiment_name"], f"{img_name.replace('/', '_')}_count.npy")
+                np.save(count_file, click_counts[img_name])
+            
+            print(f"Saved {saved_count} files and their click counts")
         
         # Get median number of clicks from the results
         print("Calculating medians...")
@@ -566,6 +609,8 @@ if __name__ == "__main__":
                         dataset_name = img_name.replace('/', '_')
                         if dataset_name in f["clickmaps"]:
                             hmp = f["clickmaps"][dataset_name][:]
+                            # Also read click count if available
+                            click_count = f["click_counts"][dataset_name][()] if dataset_name in f["click_counts"] else None
                         else:
                             print(f"Heatmap not found for {img_name}")
                             continue
@@ -577,6 +622,9 @@ if __name__ == "__main__":
                         continue
                         
                     hmp = np.load(heatmap_path)
+                    # Try to load click count
+                    count_path = os.path.join(output_dir, config["experiment_name"], f"{img_name.replace('/', '_')}_count.npy")
+                    click_count = np.load(count_path) if os.path.exists(count_path) else None
                     
                 # Load image
                 if os.path.exists(os.path.join(config["image_path"], img_name)):
@@ -599,6 +647,10 @@ if __name__ == "__main__":
                 f = plt.figure()
                 plt.subplot(1, 2, 1)
                 plt.imshow(np.asarray(img))
+                title = f"{img_name}"
+                if click_count is not None:
+                    title += f"\nTotal clicks: {click_count}"
+                plt.title(title)
                 plt.axis("off")
                 plt.subplot(1, 2, 2)
                 plt.imshow(hmp.mean(0))
