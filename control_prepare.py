@@ -46,6 +46,49 @@ def get_medians(clickmaps, mode, thresh=95):
     return medians
 
 
+def filter_duplicate_participants(clickme_data):
+    """
+    Filter out duplicate submissions from the same participant for each image
+    keeping only the first submission.
+    
+    Parameters:
+    -----------
+    clickme_data : pandas.DataFrame
+        DataFrame containing clickme data with at least 'image_path' and 'participant' columns
+        
+    Returns:
+    --------
+    filtered_data : pandas.DataFrame
+        DataFrame with duplicate participant submissions removed
+    """
+    print("Filtering duplicate participant submissions...")
+    # Make a copy to avoid modifying the original
+    data = clickme_data.copy()
+    
+    # Check if 'participant' column exists
+    if 'participant' not in data.columns:
+        print("Warning: Cannot filter duplicate participants - 'participant' column missing")
+        return data
+    
+    # Count before filtering
+    total_before = len(data)
+    
+    # Sort by timestamp if available to ensure we keep earliest submission
+    if 'timestamp' in data.columns:
+        data = data.sort_values('timestamp')
+    
+    # Keep only the first occurrence of each participant-image combination
+    filtered_data = data.drop_duplicates(subset=['image_path', 'participant'], keep='first')
+    
+    # Count after filtering
+    total_after = len(filtered_data)
+    removed = total_before - total_after
+    
+    print(f"Removed {removed} duplicate participant submissions ({removed/total_before:.2%} of total)")
+    
+    return filtered_data
+
+
 def process_all_maps_gpu(clickmaps, config, metadata=None, create_clickmap_func=None, fast_duplicate_detection=None):
     """
     Simplified function to blur clickmaps on GPU in batches
@@ -175,6 +218,7 @@ if __name__ == "__main__":
     parser.add_argument('--gpu-batch-size', type=int, default=None, help='Override GPU batch size')
     parser.add_argument('--max-workers', type=int, default=None, help='Maximum number of CPU workers')
     parser.add_argument('--profile', action='store_true', help='Enable performance profiling')
+    parser.add_argument('--filter-duplicates', action='store_false', help='Filter duplicate participant submissions, keeping only the first submission per image')
     args = parser.parse_args()
     
     # Start profiling if requested
@@ -192,6 +236,10 @@ if __name__ == "__main__":
         config_file = utils.get_config(sys.argv)
         config = utils.process_config(config_file)
     
+    # Add filter_duplicates to config if not present
+    if "filter_duplicates" not in config:
+        config["filter_duplicates"] = args.filter_duplicates
+    
     # Load clickme data
     print(f"Loading clickme data...")
     clickme_data = utils.process_clickme_data(
@@ -199,6 +247,11 @@ if __name__ == "__main__":
         config["filter_mobile"])
     total_maps = len(clickme_data)
 
+    # Apply duplicate filtering if requested
+    if config["filter_duplicates"] or args.filter_duplicates:
+        clickme_data = filter_duplicate_participants(clickme_data)
+        total_maps = len(clickme_data)
+    
     # Validate clickme data structure
     print(f"Validating clickme data structure for {total_maps} maps...")
     image_paths = clickme_data['image_path'].unique()
@@ -251,6 +304,7 @@ if __name__ == "__main__":
         print(f"- GPU batch size: {config['gpu_batch_size']}")
         print(f"- CPU workers: {config['n_jobs']}")
         print(f"- Output format: {config['output_format']}")
+        print(f"- Filter duplicates: {config['filter_duplicates']}")
         print(f"- Memory usage at start: {get_memory_usage():.2f} MB\n")
         
         # Choose processing method (compiled Cython vs. Python)
@@ -345,6 +399,7 @@ if __name__ == "__main__":
                 meta_grp.attrs["batch_size"] = batch_size
                 meta_grp.attrs["total_unique_images"] = total_unique_images
                 meta_grp.attrs["total_maps"] = total_maps
+                meta_grp.attrs["filter_duplicates"] = np.bytes_("True" if config["filter_duplicates"] else "False")
                 meta_grp.attrs["creation_date"] = np.bytes_(pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"))
             
             # Process this batch of clickmaps
@@ -462,6 +517,7 @@ if __name__ == "__main__":
             meta_grp = f.create_group("metadata")
             meta_grp.attrs["total_unique_images"] = total_unique_images
             meta_grp.attrs["total_maps"] = total_maps
+            meta_grp.attrs["filter_duplicates"] = np.bytes_("True" if config["filter_duplicates"] else "False")
             meta_grp.attrs["creation_date"] = np.bytes_(pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"))
     
         # Print optimization settings
@@ -470,6 +526,7 @@ if __name__ == "__main__":
         print(f"- GPU batch size: {config['gpu_batch_size']}")
         print(f"- CPU workers: {config['n_jobs']}")
         print(f"- Output format: {config['output_format']}")
+        print(f"- Filter duplicates: {config['filter_duplicates']}")
         print(f"- Memory usage at start: {get_memory_usage():.2f} MB\n")
         
         # Choose processing method (compiled Cython vs. Python)
