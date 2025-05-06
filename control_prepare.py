@@ -78,7 +78,7 @@ def filter_duplicate_participants(clickme_data):
         data = data.sort_values('timestamp')
     
     # Keep only the first occurrence of each participant-image combination
-    filtered_data = data.drop_duplicates(subset=['user_id', 'participant'], keep='first')
+    filtered_data = data.drop_duplicates(subset=['user_id', 'user_id'], keep='first')
     
     # Count after filtering
     total_after = len(filtered_data)
