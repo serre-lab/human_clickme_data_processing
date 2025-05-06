@@ -404,7 +404,6 @@ if __name__ == "__main__":
             
             # Process this batch of clickmaps
             print(f"Processing batch with GPU (batch size: {config['gpu_batch_size']})...")
-            
             batch_final_clickmaps, batch_all_clickmaps, batch_categories, batch_final_keep_index, batch_click_counts = process_all_maps_gpu(
                 clickmaps=batch_clickmaps,
                 config=config,
@@ -412,6 +411,7 @@ if __name__ == "__main__":
                 create_clickmap_func=create_clickmap_func,
                 fast_duplicate_detection=fast_duplicate_detection
             )
+            import pdb;pdb.set_trace()
 
             # Apply mask filtering if needed
             if batch_final_keep_index and config["mask_dir"]:
