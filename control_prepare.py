@@ -294,7 +294,8 @@ if __name__ == "__main__":
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(image_output_dir, exist_ok=True)
     os.makedirs(os.path.join(output_dir, config["experiment_name"]), exist_ok=True)
-    
+    import pdb;pdb.set_trace()
+
     # Setup HDF5 file if needed
     hdf5_path = None
     if output_format == "hdf5":
@@ -336,7 +337,6 @@ if __name__ == "__main__":
         else:
             metadata = None
 
-        import pdb;pdb.set_trace()
         print("Processing clickme data...")
         # Always use parallel processing for large datasets
         clickmaps, ccounts = utils.process_clickmap_files_parallel(
