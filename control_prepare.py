@@ -132,7 +132,6 @@ def process_all_maps_gpu(clickmaps, config, metadata=None, create_clickmap_func=
             binary_maps = np.asarray([create_clickmap_func([trial], tuple(image_shape)) for trial in trials])
         
         # Count total clicks in each trial
-        import pdb;pdb.set_trace()
         total_clicks_per_trial = len(binary_maps)
         
         # Only keep maps with enough valid pixels using mask
