@@ -294,7 +294,6 @@ if __name__ == "__main__":
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(image_output_dir, exist_ok=True)
     os.makedirs(os.path.join(output_dir, config["experiment_name"]), exist_ok=True)
-    import pdb;pdb.set_trace()
 
     # Setup HDF5 file if needed
     hdf5_path = None
@@ -605,6 +604,7 @@ if __name__ == "__main__":
             click_counts = {k: click_counts[k] for k in final_keep_index if k in click_counts}
         
         # Save results
+        import pdb;pdb.set_trace()
         if final_keep_index:
             print(f"Saving {len(final_keep_index)} processed maps...")
             
