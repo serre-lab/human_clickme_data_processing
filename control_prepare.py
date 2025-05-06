@@ -145,7 +145,7 @@ def process_all_maps_gpu(clickmaps, config, metadata=None, create_clickmap_func=
             categories.append(key.split("/")[0])
             keep_index.append(key)
             final_clickmaps[key] = trials
-            click_counts[key] = sum(total_clicks_per_trial)  # Store total clicks for this image
+            click_counts[key] = total_clicks_per_trial  # Store total clicks for this image
     
     if not all_clickmaps:
         print("No valid clickmaps to process")
