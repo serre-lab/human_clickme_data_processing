@@ -78,7 +78,6 @@ def filter_duplicate_participants(clickme_data):
         data = data.sort_values('timestamp')
     
     # Keep only the first occurrence of each participant-image combination
-    import pdb;pdb.set_trace()
     filtered_data = data.drop_duplicates(subset=['user_id', 'image_path'], keep='first')
     
     # Count after filtering
