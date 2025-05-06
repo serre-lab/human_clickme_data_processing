@@ -336,6 +336,7 @@ if __name__ == "__main__":
         else:
             metadata = None
 
+        import pdb;pdb.set_trace()
         print("Processing clickme data...")
         # Always use parallel processing for large datasets
         clickmaps, ccounts = utils.process_clickmap_files_parallel(
@@ -411,7 +412,6 @@ if __name__ == "__main__":
                 create_clickmap_func=create_clickmap_func,
                 fast_duplicate_detection=fast_duplicate_detection
             )
-            import pdb;pdb.set_trace()
 
             # Apply mask filtering if needed
             if batch_final_keep_index and config["mask_dir"]:
