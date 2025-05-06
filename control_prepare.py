@@ -66,6 +66,7 @@ def filter_duplicate_participants(clickme_data):
     data = clickme_data.copy()
     
     # Check if 'participant' column exists
+    import pdb; pdb.set_trace()
     if 'participant' not in data.columns:
         print("Warning: Cannot filter duplicate participants - 'participant' column missing")
         return data
