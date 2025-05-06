@@ -65,10 +65,9 @@ def filter_duplicate_participants(clickme_data):
     # Make a copy to avoid modifying the original
     data = clickme_data.copy()
     
-    # Check if 'participant' column exists
-    import pdb; pdb.set_trace()
-    if 'participant' not in data.columns:
-        print("Warning: Cannot filter duplicate participants - 'participant' column missing")
+    # Check if 'user_id' column exists
+    if 'user_id' not in data.columns:
+        print("Warning: Cannot filter duplicate participants - 'user_id' column missing")
         return data
     
     # Count before filtering
@@ -79,7 +78,7 @@ def filter_duplicate_participants(clickme_data):
         data = data.sort_values('timestamp')
     
     # Keep only the first occurrence of each participant-image combination
-    filtered_data = data.drop_duplicates(subset=['image_path', 'participant'], keep='first')
+    filtered_data = data.drop_duplicates(subset=['user_id', 'participant'], keep='first')
     
     # Count after filtering
     total_after = len(filtered_data)
