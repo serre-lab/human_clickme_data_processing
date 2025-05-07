@@ -604,7 +604,6 @@ if __name__ == "__main__":
             click_counts = {k: click_counts[k] for k in final_keep_index if k in click_counts}
         
         # Save results
-        import pdb;pdb.set_trace()
         if final_keep_index:
             print(f"Saving {len(final_keep_index)} processed maps...")
             
