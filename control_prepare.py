@@ -294,7 +294,11 @@ if __name__ == "__main__":
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(image_output_dir, exist_ok=True)
     os.makedirs(os.path.join(output_dir, config["experiment_name"]), exist_ok=True)
-
+    
+    # Create dedicated directory for click counts
+    click_counts_dir = os.path.join(output_dir, f"{config['experiment_name']}_click_counts")
+    os.makedirs(click_counts_dir, exist_ok=True)
+    
     # Setup HDF5 file if needed
     hdf5_path = None
     if output_format == "hdf5":
@@ -501,6 +505,11 @@ if __name__ == "__main__":
         with open(os.path.join(output_dir, f"{config['experiment_name']}_click_counts.json"), 'w') as f:
             f.write(click_counts_json)
         
+        # Save individual click counts to their own directory
+        for img_name, count in all_click_counts.items():
+            count_file = os.path.join(click_counts_dir, f"{img_name.replace('/', '_')}.npy")
+            np.save(count_file, count)
+        
         print(f"Processed and saved a total of {processed_images_count} images across {num_batches} batches")
         
         # Set finals for visualization
@@ -629,10 +638,10 @@ if __name__ == "__main__":
                 file_inclusion_filter=config.get("file_inclusion_filter")
             )
             
-            # Save click counts alongside individual numpy files
-            for i, img_name in enumerate(final_keep_index):
-                count_file = os.path.join(output_dir, config["experiment_name"], f"{img_name.replace('/', '_')}_count.npy")
-                np.save(count_file, click_counts[img_name])
+            # Save click counts to their dedicated directory
+            for img_name, count in click_counts.items():
+                count_file = os.path.join(click_counts_dir, f"{img_name.replace('/', '_')}.npy")
+                np.save(count_file, count)
             
             print(f"Saved {saved_count} files and their click counts")
         
@@ -666,7 +675,8 @@ if __name__ == "__main__":
                         if dataset_name in f["clickmaps"]:
                             hmp = f["clickmaps"][dataset_name][:]
                             # Also read click count if available
-                            click_count = f["click_counts"][dataset_name][()] if dataset_name in f["click_counts"] else None
+                            count_path = os.path.join(output_dir, config["experiment_name"], f"{img_name.replace('/', '_')}_count.npy")
+                            click_count = np.load(count_path) if os.path.exists(count_path) else None
                         else:
                             print(f"Heatmap not found for {img_name}")
                             continue
@@ -681,6 +691,11 @@ if __name__ == "__main__":
                     # Try to load click count
                     count_path = os.path.join(output_dir, config["experiment_name"], f"{img_name.replace('/', '_')}_count.npy")
                     click_count = np.load(count_path) if os.path.exists(count_path) else None
+                    
+                    # If not found, try the dedicated click counts directory
+                    if click_count is None:
+                        count_path = os.path.join(click_counts_dir, f"{img_name.replace('/', '_')}.npy")
+                        click_count = np.load(count_path) if os.path.exists(count_path) else None
                     
                 # Load image
                 if os.path.exists(os.path.join(config["image_path"], img_name)):
