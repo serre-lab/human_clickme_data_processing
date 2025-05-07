@@ -1185,7 +1185,6 @@ def batch_compute_correlations_gpu(test_maps, reference_maps, metric='auc', devi
 def save_single_clickmap(all_clickmaps, idx, img_name, image_path, file_inclusion_filter=None, save_dir=None):
     """Helper function to save a single clickmap"""
     # Check multiple possible paths for the image
-    import pdb;pdb.set_trace()
     image_exists = False
     possible_paths = [
         os.path.join(image_path, img_name)  # Standard path
