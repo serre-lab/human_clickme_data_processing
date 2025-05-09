@@ -258,14 +258,24 @@ def main(
         from control_prepare import filter_duplicate_participants
         clickme_data = filter_duplicate_participants(clickme_data)
     
-    clickmaps, ccounts = process_clickmap_files(
-        clickme_data=clickme_data,
-        image_path=clickme_image_folder,
-        file_inclusion_filter=file_inclusion_filter,
-        file_exclusion_filter=file_exclusion_filter,
-        min_clicks=min_clicks,
-        max_clicks=max_clicks,
-        n_jobs=n_jobs)
+    # Call process_clickmap_files with appropriate parameters
+    if n_jobs > 1:
+        clickmaps, ccounts = process_clickmap_files(
+            clickme_data=clickme_data,
+            image_path=clickme_image_folder,
+            file_inclusion_filter=file_inclusion_filter,
+            file_exclusion_filter=file_exclusion_filter,
+            min_clicks=min_clicks,
+            max_clicks=max_clicks,
+            n_jobs=n_jobs)
+    else:
+        clickmaps, ccounts = process_clickmap_files(
+            clickme_data=clickme_data,
+            image_path=clickme_image_folder,
+            file_inclusion_filter=file_inclusion_filter,
+            file_exclusion_filter=file_exclusion_filter,
+            min_clicks=min_clicks,
+            max_clicks=max_clicks)
     
     # Filter classes if requested
     if class_filter_file:
