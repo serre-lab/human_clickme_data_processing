@@ -1400,3 +1400,211 @@ def save_clickmaps_to_hdf5(all_clickmaps, final_keep_index, hdf5_path, n_jobs=1,
         print(f"Warning: Could not update final HDF5 metadata: {e}")
     
     return saved_count
+
+
+
+
+def get_memory_usage():
+    """Get current memory usage in MB"""
+    process = psutil.Process(os.getpid())
+    return process.memory_info().rss / (1024 * 1024)
+
+
+def get_medians(clickmaps, mode, thresh=95):
+    """Compute median number of clicks in each category"""
+    medians = {}
+    if mode == 'all':
+        csize = [len(x) for x in clickmaps.values()]
+        if not csize:
+            return {}
+        medians['median'] = int(np.median(csize))
+        medians['mean'] = float(np.mean(csize))
+        medians['threshold'] = int(np.percentile(csize, thresh))
+    elif mode == 'image':
+        medians['image'] = {}
+        for img_name, clicks in clickmaps.items():
+            medians['image'][img_name] = int(np.median([len(x) for x in clicks]))
+    elif mode == 'category':
+        medians['category'] = {}
+        cats = {}
+        for img_name, clicks in clickmaps.items():
+            img_category = img_name.split('/')[0]
+            if img_category not in cats:
+                cats[img_category] = []
+            cats[img_category].append(len(clicks))
+        for category, counts in cats.items():
+            medians['category'][category] = int(np.median(counts))
+    return medians
+
+
+def filter_duplicate_participants(clickme_data):
+    """
+    Filter out duplicate submissions from the same participant for each image
+    keeping only the first submission.
+    
+    Parameters:
+    -----------
+    clickme_data : pandas.DataFrame
+        DataFrame containing clickme data with at least 'image_path' and 'participant' columns
+        
+    Returns:
+    --------
+    filtered_data : pandas.DataFrame
+        DataFrame with duplicate participant submissions removed
+    """
+    print("Filtering duplicate participant submissions...")
+    # Make a copy to avoid modifying the original
+    data = clickme_data.copy()
+    
+    # Check if 'user_id' column exists
+    if 'user_id' not in data.columns:
+        print("Warning: Cannot filter duplicate participants - 'user_id' column missing")
+        return data
+    
+    # Count before filtering
+    total_before = len(data)
+    
+    # Sort by timestamp if available to ensure we keep earliest submission
+    if 'timestamp' in data.columns:
+        data = data.sort_values('timestamp')
+    
+    # Keep only the first occurrence of each participant-image combination
+    filtered_data = data.drop_duplicates(subset=['user_id', 'image_path'], keep='first')
+    
+    # Count after filtering
+    total_after = len(filtered_data)
+    removed = total_before - total_after
+    
+    print(f"Removed {removed} duplicate participant submissions ({removed/total_before:.2%} of total)")
+    
+    return filtered_data
+
+
+def process_all_maps_gpu(
+        clickmaps, 
+        config, 
+        metadata=None, 
+        create_clickmap_func=None, 
+        fast_duplicate_detection=None,
+        average_maps=True
+        ):
+    """
+    Simplified function to blur clickmaps on GPU in batches
+    """
+    import torch
+    from tqdm import tqdm
+    import numpy as np
+    
+    # Extract basic parameters
+    blur_size = config["blur_size"]
+    blur_sigma = config.get("blur_sigma", blur_size)
+    image_shape = config["image_shape"]
+    min_subjects = config["min_subjects"]
+    min_clicks = config["min_clicks"]
+    
+    # Get GPU batch size for processing
+    gpu_batch_size = config.get("gpu_batch_size", 4096)
+    
+    print(f"Processing {len(clickmaps)} unique images with GPU (batch size: {gpu_batch_size})...")
+    
+    # Step 1: Prepare binary maps and average them
+    print("Pre-processing clickmaps on CPU...")
+    
+    # Prepare data structures
+    all_clickmaps = []
+    keep_index = []
+    categories = []
+    final_clickmaps = {}
+    click_counts = {}  # Track click counts for each image
+    
+    # Preprocess all clickmaps first to binary maps
+    for key, trials in tqdm(clickmaps.items(), desc="Creating binary maps"):
+        if len(trials) < min_subjects:
+            continue
+            
+        # Create binary clickmaps
+        if metadata and key in metadata:
+            native_size = metadata[key]
+            binary_maps = np.asarray([create_clickmap_func([trial], native_size[::-1]) for trial in trials])
+        else:
+            binary_maps = np.asarray([create_clickmap_func([trial], tuple(image_shape)) for trial in trials])
+        
+        # Count total clicks in each trial
+        total_clicks_per_trial = len(binary_maps)
+        
+        # Only keep maps with enough valid pixels using mask
+        mask = binary_maps.sum((-2, -1)) >= min_clicks
+        binary_maps = binary_maps[mask]
+        
+        # If we have enough valid maps, average them and keep this image
+        if len(binary_maps) >= min_subjects:
+            if average_maps:
+                all_clickmaps.append(np.array(binary_maps).mean(0, keepdims=True))
+            else:
+                all_clickmaps.append(np.array(binary_maps))
+            # Note that if we are measuring ceiling we need to keep all maps ^^ change above.
+            categories.append(key.split("/")[0])
+            keep_index.append(key)
+            final_clickmaps[key] = trials
+            click_counts[key] = total_clicks_per_trial  # Store total clicks for this image
+    
+    if not all_clickmaps:
+        print("No valid clickmaps to process")
+        return {}, [], [], [], {}
+    
+    # Step 2: Prepare for batch blurring on GPU
+    total_maps = len(all_clickmaps)
+    print(f"Preparing to blur {total_maps} image clickmaps using GPU...")
+    
+    # Convert all maps to tensors
+    all_tensors = [torch.from_numpy(maps).float() for maps in all_clickmaps]
+    
+    # Create circular kernel
+    if blur_size % 2 == 0:
+        adjusted_blur_size = blur_size + 1  # Ensure odd kernel size
+    else:
+        adjusted_blur_size = blur_size
+        
+    kernel = utils.circle_kernel(adjusted_blur_size, blur_sigma, 'cuda')
+    
+    # Process in batches based on the GPU batch size
+    try:
+        torch.cat(all_tensors[:1000])
+        num_batches = (total_maps + gpu_batch_size - 1) // gpu_batch_size
+    except Exception as e:
+        # TODO: Pad all clickmaps to the same size, blur, then crop after.
+        num_batches = total_maps
+        gpu_batch_size = 1
+    
+    print(f"Processing in {num_batches} batches of up to {gpu_batch_size} maps each...")
+    for batch_idx in tqdm(range(num_batches), desc="Processing GPU batches"):
+        # Get batch indices
+        start_idx = batch_idx * gpu_batch_size
+        end_idx = min(start_idx + gpu_batch_size, total_maps)
+        current_batch_size = end_idx - start_idx
+        
+        # Create batch tensor
+        batch_tensors = all_tensors[start_idx:end_idx]
+        batch_tensor = torch.cat(batch_tensors, dim=0).unsqueeze(1).to('cuda')
+        
+        # Apply blurring to this batch
+        blurred_tensor = utils.convolve(batch_tensor, kernel, double_conv=True)
+        
+        # Convert back to numpy
+        blurred_maps = blurred_tensor.squeeze(1).cpu().numpy()
+        
+        # Update results
+        for i in range(current_batch_size):
+            map_idx = start_idx + i
+            all_clickmaps[map_idx] = blurred_maps[i:i+1]  # Keep the same shape with extra dimension
+        
+        # Clean up GPU memory for this batch
+        del batch_tensor, blurred_tensor
+        torch.cuda.empty_cache()
+    
+    # Clean up remaining GPU memory
+    del kernel
+    torch.cuda.empty_cache()
+    
+    print(f"Finished blurring {total_maps} clickmaps. Kept {len(keep_index)} images.")
+    return final_clickmaps, all_clickmaps, categories, keep_index, click_counts

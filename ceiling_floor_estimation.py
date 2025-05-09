@@ -98,7 +98,7 @@ def compute_null_correlation_batch(batch_index, num_samples, all_clickmaps, clic
             for i in range(click_len):
                 selected_clickmaps = all_clickmaps[i]
                 tmp_rng = np.arange(click_len)
-                j = tmp_rng[~np.in1d(tmp_rng, i)]
+                j = tmp_rng[~np.isin(tmp_rng, [i])]  # Select indices not equal to i
                 j = j[np.random.permutation(len(j))][0]  # Select a random other image
                 other_clickmaps = all_clickmaps[j]
                 
@@ -129,7 +129,7 @@ def compute_null_correlation_batch(batch_index, num_samples, all_clickmaps, clic
         for i in range(click_len):
             selected_clickmaps = all_clickmaps[i]
             tmp_rng = np.arange(click_len)
-            j = tmp_rng[~np.in1d(tmp_rng, i)]
+            j = tmp_rng[~np.isin(tmp_rng, [i])]  # Select indices not equal to i
             j = j[np.random.permutation(len(j))][0]  # Select a random other image
             other_clickmaps = all_clickmaps[j]
             
