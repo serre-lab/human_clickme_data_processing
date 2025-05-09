@@ -15,7 +15,7 @@ from train_subject_classifier import RNN
 from accelerate import Accelerator
 from joblib import Parallel, delayed
 import h5py
-
+import psutil
 
 import numpy as np
 from scipy import stats
@@ -1565,7 +1565,7 @@ def process_all_maps_gpu(
     else:
         adjusted_blur_size = blur_size
         
-    kernel = utils.circle_kernel(adjusted_blur_size, blur_sigma, 'cuda')
+    kernel = circle_kernel(adjusted_blur_size, blur_sigma, 'cuda')
     
     # Process in batches based on the GPU batch size
     try:
@@ -1588,7 +1588,7 @@ def process_all_maps_gpu(
         batch_tensor = torch.cat(batch_tensors, dim=0).unsqueeze(1).to('cuda')
         
         # Apply blurring to this batch
-        blurred_tensor = utils.convolve(batch_tensor, kernel, double_conv=True)
+        blurred_tensor = convolve(batch_tensor, kernel, double_conv=True)
         
         # Convert back to numpy
         blurred_maps = blurred_tensor.squeeze(1).cpu().numpy()
