@@ -365,7 +365,7 @@ def main(
     print(f"Converting clickmaps for correlation analysis...")
     processed_clickmaps = []
     for i, key in enumerate(final_keep_index):
-        processed_clickmaps.append(np.array([create_clickmap_func([trial], image_shape) for trial in final_clickmaps[key]]))
+        processed_clickmaps.append(np.array([create_clickmap_func([trial], tuple(image_shape)) for trial in final_clickmaps[key]]))
     
     # Compute scores through split-halfs
     # Optimize by processing in batches for better parallelization
