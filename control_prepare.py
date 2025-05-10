@@ -433,6 +433,7 @@ if __name__ == "__main__":
                 f.write(click_counts_json)
             
             # Use parallel saving
+            import pdb;pdb.set_trace()
             saved_count = utils.save_clickmaps_parallel(
                 all_clickmaps=all_clickmaps,
                 final_keep_index=final_keep_index,
