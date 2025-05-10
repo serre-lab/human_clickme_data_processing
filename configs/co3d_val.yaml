@@ -36,3 +36,4 @@ preprocess_db_data: false
 processed_clickme_file: co3d_val_processed.npz
 processed_medians: co3d_val_medians.json
 remove_string: false
+multi_thresh_gpu: true
