@@ -403,6 +403,7 @@ if __name__ == "__main__":
             create_clickmap_func=create_clickmap_func,
             fast_duplicate_detection=fast_duplicate_detection
         )
+        import pdb;pdb.set_trace()
 
         # Apply mask filtering if needed
         if final_keep_index and config["mask_dir"]:
