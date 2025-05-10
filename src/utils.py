@@ -1518,7 +1518,6 @@ def process_all_maps_gpu(
     click_counts = {}  # Track click counts for each image
     
     # Preprocess all clickmaps first to binary maps
-    import pdb;pdb.set_trace()
     for key, trials in tqdm(clickmaps.items(), desc="Creating binary maps"):
         if len(trials) < min_subjects:
             continue
@@ -1585,6 +1584,149 @@ def process_all_maps_gpu(
         current_batch_size = end_idx - start_idx
         
         # Create batch tensor
+        batch_tensors = all_tensors[start_idx:end_idx]
+        batch_tensor = torch.cat(batch_tensors, dim=0).unsqueeze(1).to('cuda')
+        
+        # Apply blurring to this batch
+        blurred_tensor = convolve(batch_tensor, kernel, double_conv=True)
+        
+        # Convert back to numpy
+        blurred_maps = blurred_tensor.squeeze(1).cpu().numpy()
+        
+        # Update results
+        for i in range(current_batch_size):
+            map_idx = start_idx + i
+            all_clickmaps[map_idx] = blurred_maps[i:i+1]  # Keep the same shape with extra dimension
+        
+        # Clean up GPU memory for this batch
+        del batch_tensor, blurred_tensor
+        torch.cuda.empty_cache()
+    
+    # Clean up remaining GPU memory
+    del kernel
+    torch.cuda.empty_cache()
+    
+    print(f"Finished blurring {total_maps} clickmaps. Kept {len(keep_index)} images.")
+    return final_clickmaps, all_clickmaps, categories, keep_index, click_counts
+
+
+def process_all_maps_multi_thresh_gpu(
+        clickmaps, 
+        config, 
+        metadata=None, 
+        create_clickmap_func=None, 
+        fast_duplicate_detection=None,
+        average_maps=True,
+        thresholds=10,
+        ):
+    """
+    Simplified function to blur clickmaps on GPU in batches
+    """
+    import torch
+    from tqdm import tqdm
+    import numpy as np
+    
+    # Extract basic parameters
+    blur_size = config["blur_size"]
+    blur_sigma = config.get("blur_sigma", blur_size)
+    image_shape = config["image_shape"]
+    min_subjects = config["min_subjects"]
+    min_clicks = config["min_clicks"]
+    
+    # Get GPU batch size for processing
+    gpu_batch_size = config.get("gpu_batch_size", 4096)
+    
+    print(f"Processing {len(clickmaps)} unique images with GPU (batch size: {gpu_batch_size})...")
+    
+    # Step 1: Prepare binary maps and average them
+    print("Pre-processing clickmaps on CPU...")
+    
+    # Prepare data structures
+    all_clickmaps = []
+    keep_index = []
+    categories = []
+    final_clickmaps = {}
+    click_counts = {}  # Track click counts for each image
+    
+    # Preprocess all clickmaps first to binary maps
+    import pdb;pdb.set_trace()
+    for key, trials in tqdm(clickmaps.items(), desc="Creating binary maps"):
+        if len(trials) < min_subjects:
+            continue
+        
+        # Get max count then do thresholds from that
+        max_count = max([len(x) for x in trials])
+        bins = np.linspace(min_clicks, max_count + 1, thresholds).astype(int)
+        bin_clickmaps = []
+        for bin in bins:
+
+            # Threshold trials
+            thresholded_trials = [x[:bin] for x in trials]
+
+            # Create binary clickmaps
+            if metadata and key in metadata:
+                native_size = metadata[key]
+                binary_maps = np.asarray([create_clickmap_func([trial], native_size[::-1]) for trial in thresholded_trials])
+            else:
+                binary_maps = np.asarray([create_clickmap_func([trial], tuple(image_shape)) for trial in thresholded_trials])
+            
+            # Count total clicks in each trial
+            total_clicks_per_trial = len(binary_maps)
+            
+            # Only keep maps with enough valid pixels using mask
+            mask = binary_maps.sum((-2, -1)) >= min_clicks
+            binary_maps = binary_maps[mask]
+            
+            # If we have enough valid maps, average them and keep this image
+            if len(binary_maps) >= min_subjects:
+                if average_maps:
+                    bin_clickmaps.append(np.array(binary_maps).mean(0, keepdims=True))
+                else:
+                    bin_clickmaps.append(np.array(binary_maps))
+                # Note that if we are measuring ceiling we need to keep all maps ^^ change above.
+                categories.append(key.split("/")[0])
+                keep_index.append(key)
+                final_clickmaps[key] = trials
+                click_counts[key] = total_clicks_per_trial  # Store total clicks for this image
+        all_clickmaps.append(np.stack(bin_clickmaps))
+    
+    if not all_clickmaps:
+        print("No valid clickmaps to process")
+        return {}, [], [], [], {}
+    
+    # Step 2: Prepare for batch blurring on GPU
+    total_maps = len(all_clickmaps)
+    print(f"Preparing to blur {total_maps} image clickmaps using GPU...")
+    
+    # Convert all maps to tensors
+    all_tensors = [torch.from_numpy(maps).float() for maps in all_clickmaps]
+    
+    # Create circular kernel
+    if blur_size % 2 == 0:
+        adjusted_blur_size = blur_size + 1  # Ensure odd kernel size
+    else:
+        adjusted_blur_size = blur_size
+        
+    kernel = circle_kernel(adjusted_blur_size, blur_sigma, 'cuda')
+    
+    # Process in batches based on the GPU batch size
+    try:
+        torch.cat(all_tensors[:1000])
+        num_batches = (total_maps + gpu_batch_size - 1) // gpu_batch_size
+    except Exception as e:
+        # TODO: Pad all clickmaps to the same size, blur, then crop after.
+        num_batches = total_maps
+        gpu_batch_size = 1
+    
+    print(f"Processing in {num_batches} batches of up to {gpu_batch_size} maps each...")
+    for batch_idx in tqdm(range(num_batches), desc="Processing GPU batches"):
+        # Get batch indices
+        start_idx = batch_idx * gpu_batch_size
+        end_idx = min(start_idx + gpu_batch_size, total_maps)
+        current_batch_size = end_idx - start_idx
+        
+        # Create batch tensor
+        import pdb;pdb.set_trace()
         batch_tensors = all_tensors[start_idx:end_idx]
         batch_tensor = torch.cat(batch_tensors, dim=0).unsqueeze(1).to('cuda')
         
