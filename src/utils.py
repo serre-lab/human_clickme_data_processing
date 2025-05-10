@@ -1687,7 +1687,7 @@ def process_all_maps_multi_thresh_gpu(
                 keep_index.append(key)
                 final_clickmaps[key] = trials
                 click_counts[key] = total_clicks_per_trial  # Store total clicks for this image
-        all_clickmaps.append(np.stack(bin_clickmaps))
+        all_clickmaps.append(np.concatenate(bin_clickmaps, axis=0))
     
     if not all_clickmaps:
         print("No valid clickmaps to process")
