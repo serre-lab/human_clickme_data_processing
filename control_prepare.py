@@ -6,7 +6,6 @@ import pandas as pd
 import argparse
 from matplotlib import pyplot as plt
 from src import utils
-# from tqdm import tqdm
 import h5py
 import gc
 import torch
@@ -393,7 +392,7 @@ if __name__ == "__main__":
         
         # Process all maps with our new single-batch GPU function
         print(f"Processing with GPU (batch size: {config['gpu_batch_size']})...")
-        
+        import pdb;pdb.set_trace()
         final_clickmaps, all_clickmaps, categories, final_keep_index, click_counts = utils.process_all_maps_gpu(
             clickmaps=clickmaps,
             config=config,
