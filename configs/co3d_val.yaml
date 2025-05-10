@@ -21,7 +21,7 @@ image_shape:
 - 256
 mask_dir: null
 mask_threshold: 0.17
-max_clicks: 75
+max_clicks: 1000000  # Set to an impossibly high number to keep all maps
 metadata_file: false
 metric: spearman
 min_clicks: 10
