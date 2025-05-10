@@ -1518,6 +1518,7 @@ def process_all_maps_gpu(
     click_counts = {}  # Track click counts for each image
     
     # Preprocess all clickmaps first to binary maps
+    import pdb;pdb.set_trace()
     for key, trials in tqdm(clickmaps.items(), desc="Creating binary maps"):
         if len(trials) < min_subjects:
             continue
