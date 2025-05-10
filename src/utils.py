@@ -1550,7 +1550,7 @@ def process_all_maps_gpu(
     
     if not all_clickmaps:
         print("No valid clickmaps to process")
-        return {}, [], [], [], {}
+        return {}, [], [], {}, {}
     
     # Step 2: Prepare for batch blurring on GPU
     total_maps = len(all_clickmaps)
@@ -1691,7 +1691,7 @@ def process_all_maps_multi_thresh_gpu(
     
     if not all_clickmaps:
         print("No valid clickmaps to process")
-        return {}, [], [], [], {}
+        return {}, [], [], {}, {}
     
     # Step 2: Prepare for batch blurring on GPU
     total_maps = len(all_clickmaps)
@@ -1710,10 +1710,11 @@ def process_all_maps_multi_thresh_gpu(
     
     # Process in batches based on the GPU batch size
     try:
-        torch.cat(all_tensors[:1000])
+        # Just check if we can access the first tensor
+        _ = all_tensors[0].shape
         num_batches = (total_maps + gpu_batch_size - 1) // gpu_batch_size
     except Exception as e:
-        # TODO: Pad all clickmaps to the same size, blur, then crop after.
+        print(f"Error accessing tensors: {e}")
         num_batches = total_maps
         gpu_batch_size = 1
     
@@ -1724,25 +1725,69 @@ def process_all_maps_multi_thresh_gpu(
         end_idx = min(start_idx + gpu_batch_size, total_maps)
         current_batch_size = end_idx - start_idx
         
-        # Create batch tensor
-        import pdb;pdb.set_trace()
+        # Get tensors for this batch
         batch_tensors = all_tensors[start_idx:end_idx]
-        batch_tensor = torch.cat(batch_tensors, dim=0).unsqueeze(1).to('cuda')
         
-        # Apply blurring to this batch
-        blurred_tensor = convolve(batch_tensor, kernel, double_conv=True)
+        # Track original shapes and flatten all maps for processing
+        original_shapes = []
+        flattened_maps = []
+        map_indices = []  # Keep track of which image each map belongs to
         
-        # Convert back to numpy
-        blurred_maps = blurred_tensor.squeeze(1).cpu().numpy()
+        # Prepare flattened list of maps with their indices
+        for i, tensor in enumerate(batch_tensors):
+            batch_img_idx = start_idx + i
+            original_shapes.append(tensor.shape)
+            # For each map in this tensor
+            for j in range(tensor.shape[0]):
+                flattened_maps.append(tensor[j:j+1])  # Keep as [1, H, W]
+                map_indices.append(batch_img_idx)
         
-        # Update results
-        for i in range(current_batch_size):
-            map_idx = start_idx + i
-            all_clickmaps[map_idx] = blurred_maps[i:i+1]  # Keep the same shape with extra dimension
-        
-        # Clean up GPU memory for this batch
-        del batch_tensor, blurred_tensor
-        torch.cuda.empty_cache()
+        # Process maps in smaller sub-batches to avoid memory issues
+        if flattened_maps:
+            sub_batch_size = 256  # Smaller sub-batch size for stability
+            num_maps = len(flattened_maps)
+            num_sub_batches = (num_maps + sub_batch_size - 1) // sub_batch_size
+            
+            processed_maps = []
+            for sub_idx in range(num_sub_batches):
+                sub_start = sub_idx * sub_batch_size
+                sub_end = min(sub_start + sub_batch_size, num_maps)
+                
+                # Get maps for this sub-batch
+                sub_batch_maps = flattened_maps[sub_start:sub_end]
+                
+                # Concatenate and process
+                sub_batch_tensor = torch.cat(sub_batch_maps, dim=0).unsqueeze(1).to('cuda')
+                blurred_tensor = convolve(sub_batch_tensor, kernel, double_conv=True)
+                
+                # Store processed maps
+                processed_maps.extend(blurred_tensor.squeeze(1).cpu())
+                
+                # Clean up GPU memory
+                del sub_batch_tensor, blurred_tensor
+                torch.cuda.empty_cache()
+            
+            # Reconstruct the original tensor structures
+            for i, tensor_shape in enumerate(original_shapes):
+                batch_img_idx = start_idx + i
+                
+                # Find all maps for this image
+                img_map_indices = [j for j, idx in enumerate(map_indices) if idx == batch_img_idx]
+                img_maps = [processed_maps[j] for j in img_map_indices]
+                
+                # Stack them back to original shape
+                stacked_maps = torch.stack(img_maps, dim=0)
+                
+                # Verify shape matches the original
+                if stacked_maps.shape != tensor_shape:
+                    print(f"Warning: Reconstructed shape {stacked_maps.shape} doesn't match original {tensor_shape}")
+                
+                # Update the original tensor with processed maps
+                all_clickmaps[batch_img_idx] = stacked_maps.numpy()
+            
+            # Clean up
+            del processed_maps, flattened_maps, map_indices
+            torch.cuda.empty_cache()
     
     # Clean up remaining GPU memory
     del kernel
