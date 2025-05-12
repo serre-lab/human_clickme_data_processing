@@ -1204,7 +1204,6 @@ def save_single_clickmap(all_clickmaps, idx, img_name, image_path, file_inclusio
     
     if not image_exists:
         return 0
-    import pdb;pdb.set_trace()
     hmp = all_clickmaps[idx]
     # Save to disk
     np.save(
