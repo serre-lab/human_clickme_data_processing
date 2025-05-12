@@ -1256,13 +1256,13 @@ def save_clickmaps_parallel(all_clickmaps, final_keep_index, output_dir, experim
     os.makedirs(save_dir, exist_ok=True)
     
     # Use tqdm to show progress
+    final_keep_index = np.asarray(final_keep_index).reshape(-1, all_clickmaps[0].shape[0])[:, 0]
     with tqdm(total=len(final_keep_index), desc="Saving files in parallel", 
              colour="cyan") as save_pbar:
         
         # Process in smaller batches to update progress bar more frequently
         batch_size = max(1, min(100, len(final_keep_index) // 10))
         saved_count = 0
-        import pdb;pdb.set_trace()
         for i in range(0, len(final_keep_index), batch_size):
             batch_indices = list(range(i, min(i + batch_size, len(final_keep_index))))
             batch_img_names = [final_keep_index[j] for j in batch_indices]
