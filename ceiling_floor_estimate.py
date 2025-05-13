@@ -21,8 +21,7 @@ def compute_correlation_batch(batch_indices, all_clickmaps, metric, n_iterations
         clickmaps = all_clickmaps[i]
         level_corrs = []
         if floor:
-            import pdb; pdb.set_trace()
-            rand_i = np.random.choice([j for j in range(len(clickmaps)) if j != i])
+            rand_i = np.random.choice([j for j in range(len(all_clickmaps)) if j != i])
         for k, clickmap_at_k in enumerate(clickmaps):
             rand_corrs = []
             n = len(clickmap_at_k)
@@ -34,7 +33,7 @@ def compute_correlation_batch(batch_indices, all_clickmaps, metric, n_iterations
                 # Create the test and reference maps
                 test_map = clickmap_at_k[fh].mean(0)
                 if floor:
-                    reference_map = clickmaps[rand_i][k][sh].mean(0)  # Take maps from the same level in a random other image
+                    reference_map = all_clickmaps[rand_i][k][sh].mean(0)  # Take maps from the same level in a random other image
                     reference_map = utils.blur_maps_for_cf(
                         reference_map[None, None],
                         blur_size,
