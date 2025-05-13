@@ -34,17 +34,27 @@ def compute_correlation_batch(batch_indices, all_clickmaps, metric, n_iterations
                 test_map = clickmap_at_k[fh].mean(0)
                 if floor:
                     reference_map = clickmaps[rand_i][k][sh].mean(0)  # Take maps from the same level in a random other image
+                    reference_map = utils.blur_maps_for_cf(
+                        reference_map[None, None],
+                        blur_size,
+                        blur_sigma,
+                        gpu_batch_size=2).squeeze()
+                    test_map = utils.blur_maps_for_cf(
+                        test_map[None, None],
+                        blur_size,
+                        blur_sigma,
+                        gpu_batch_size=2).squeeze()
                 else:
                     reference_map = clickmap_at_k[sh].mean(0)
 
-                # Make maps for each
-                blur_clickmaps = utils.blur_maps_for_cf(
-                    np.stack((test_map, reference_map), axis=0)[None],
-                    blur_size,
-                    blur_sigma,
-                    gpu_batch_size=2).squeeze()
-                test_map = blur_clickmaps[0]
-                reference_map = blur_clickmaps[1]
+                    # Make maps for each
+                    blur_clickmaps = utils.blur_maps_for_cf(
+                        np.stack((test_map, reference_map), axis=0)[None],
+                        blur_size,
+                        blur_sigma,
+                        gpu_batch_size=2).squeeze()
+                    test_map = blur_clickmaps[0]
+                    reference_map = blur_clickmaps[1]
                 
                 # Use scipy's spearman correlation
                 correlation, _ = spearmanr(test_map.flatten(), reference_map.flatten())
@@ -357,7 +367,7 @@ if __name__ == "__main__":
             device=device,
             blur_size=config["blur_size"],
             blur_sigma=config.get("blur_sigma", config["blur_size"])
-        ) for batch in tqdm(batches, desc="Computing split-half correlations")
+        ) for batch in tqdm(batches, desc="Computing ceilings")
     )
     floor_results = Parallel(n_jobs=n_jobs)(
         delayed(compute_correlation_batch)(
@@ -369,7 +379,7 @@ if __name__ == "__main__":
             floor=True,
             blur_size=config["blur_size"],
             blur_sigma=config.get("blur_sigma", config["blur_size"])
-        ) for batch in tqdm(batches, desc="Computing split-half correlations")
+        ) for batch in tqdm(batches, desc="Computing floors")
     )
     
     # Flatten the results
