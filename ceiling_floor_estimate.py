@@ -375,7 +375,6 @@ if __name__ == "__main__":
     # Compute scores through split-halfs
     # Optimize by processing in batches for better parallelization
     print(f"Computing split-half correlations in parallel (n_jobs={n_jobs}, batch_size={correlation_batch_size})...")
-    import pdb;pdb.set_trace()
     num_clickmaps = len(all_clickmaps)
     
     # Prepare batches for correlation computation
