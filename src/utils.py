@@ -1684,6 +1684,7 @@ def process_all_maps_multi_thresh_gpu(
         return {}, [], [], {}, {}
     
     if return_before_blur:
+        import pdb;pdb.set_trace()
         return final_clickmaps, all_clickmaps, categories, keep_index, click_counts
     
     # Step 2: Prepare for batch blurring on GPU
