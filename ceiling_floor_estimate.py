@@ -26,14 +26,15 @@ def compute_correlation_batch(batch_indices, all_clickmaps, metric, n_iterations
             level_corrs = []
             for clickmap_at_k in clickmaps:
                 rand_corrs = []
+                n = len(clickmap_at_k)
                 for _ in range(n_iterations):
                     rand_perm = np.random.permutation(n)
                     fh = rand_perm[:(n // 2)]
                     sh = rand_perm[(n // 2):]
                     
                     # Create the test and reference maps
-                    test_map = clickmaps[fh].mean(0)
-                    reference_map = clickmaps[sh].mean(0)
+                    test_map = clickmap_at_k[fh].mean(0)
+                    reference_map = clickmap_at_k[sh].mean(0)
                     
                     # Normalize maps
                     test_map = (test_map - test_map.min()) / (test_map.max() - test_map.min() + 1e-10)
