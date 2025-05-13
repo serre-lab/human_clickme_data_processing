@@ -21,11 +21,11 @@ image_shape:
 - 256
 mask_dir: null  # Don't use masks for training right now... Akash TODO
 mask_threshold: 0.17
-max_clicks: 75
+max_clicks: 100000
 metadata_file: false
 metric: spearman
-min_clicks: 10
-min_subjects: 1
+min_clicks: 1
+min_subjects: 2
 n_jobs: -1
 null_iterations: 10
 parallel_prepare_maps: true
@@ -36,3 +36,5 @@ preprocess_db_data: false
 processed_clickme_file: co3d_train_processed.npz
 processed_medians: co3d_train_medians.json
 remove_string: false
+multi_thresh_gpu: true
+

@@ -20,7 +20,7 @@ image_shape:
 - 256
 mask_dir: false
 mask_threshold: 1
-max_clicks: 75
+max_clicks: 100000
 metadata_file: image_metadata/jay_imagenet_train_0.1_dimensions.npy
 metric: spearman
 min_clicks: 10
