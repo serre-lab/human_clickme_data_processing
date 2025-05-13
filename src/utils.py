@@ -1639,7 +1639,8 @@ def process_all_maps_multi_thresh_gpu(
     click_counts = {}  # Track click counts for each image
     
     # Preprocess all clickmaps first to binary maps
-    for key, trials in tqdm(clickmaps.items(), desc="Creating binary maps"):
+    # for key, trials in tqdm(clickmaps.items(), desc="Creating binary maps"):
+    for key, trials in clickmaps.items():
         if len(trials) < min_subjects:
             continue
         
@@ -1715,7 +1716,7 @@ def process_all_maps_multi_thresh_gpu(
         gpu_batch_size = 1
     
     print(f"Processing in {num_batches} batches of up to {gpu_batch_size} maps each...")
-    for batch_idx in tqdm(range(num_batches), desc="Processing GPU batches"):
+    for batch_idx in range(num_batches):
         # Get batch indices
         start_idx = batch_idx * gpu_batch_size
         end_idx = min(start_idx + gpu_batch_size, total_maps)
