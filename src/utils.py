@@ -1648,6 +1648,7 @@ def process_all_maps_multi_thresh_gpu(
         max_count = max([len(x) for x in trials])
         bins = np.linspace(min_clicks, max_count + 1, thresholds).astype(int)
         bin_clickmaps = []
+        store_data = False
         for bin in bins:
 
             # Threshold trials
@@ -1673,11 +1674,14 @@ def process_all_maps_multi_thresh_gpu(
                     bin_clickmaps.append(np.array(binary_maps).mean(0, keepdims=True))
                 else:
                     bin_clickmaps.append(np.array(binary_maps))
+                store_data = True
                 # Note that if we are measuring ceiling we need to keep all maps ^^ change above.
-                categories.append(key.split("/")[0])
-                keep_index.append(key)
-                final_clickmaps[key] = trials
-                click_counts[key] = total_clicks_per_trial  # Store total clicks for this image
+
+        if store_data:
+            categories.append(key.split("/")[0])
+            keep_index.append(key)
+            final_clickmaps[key] = trials
+            click_counts[key] = total_clicks_per_trial  # Store total clicks for this image
         if return_before_blur:
             all_clickmaps.append(np.stack(bin_clickmaps, axis=0))
         else:
