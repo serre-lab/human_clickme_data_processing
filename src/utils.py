@@ -1,25 +1,17 @@
 import re
 import os
-import sys
 import torch
 import yaml
 import numpy as np
 import pandas as pd
 from torch.nn import functional as F
-from scipy.stats import spearmanr
 from tqdm import tqdm
 from torchvision.transforms import functional as tvF
-from scipy.spatial.distance import cdist
 from glob import glob
 from train_subject_classifier import RNN
 from accelerate import Accelerator
 from joblib import Parallel, delayed
-import h5py
 import psutil
-
-import numpy as np
-from scipy import stats
-from scipy.spatial.distance import cdist
 
 # Near the top of the file (around line 10), add torch.cuda memory management functions
 try:
@@ -1623,9 +1615,6 @@ def process_all_maps_multi_thresh_gpu(
     """
     Simplified function to blur clickmaps on GPU in batches
     """
-    import torch
-    from tqdm import tqdm
-    import numpy as np
     
     # Extract basic parameters
     blur_size = config["blur_size"]
@@ -1678,7 +1667,6 @@ def process_all_maps_multi_thresh_gpu(
             binary_maps = binary_maps[mask]
             
             # If we have enough valid maps, average them and keep this image
-            import pdb; pdb.set_trace()
             if len(binary_maps) >= min_subjects:
                 if average_maps:
                     bin_clickmaps.append(np.array(binary_maps).mean(0, keepdims=True))

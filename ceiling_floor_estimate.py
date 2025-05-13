@@ -337,7 +337,8 @@ if __name__ == "__main__":
         metadata=metadata,
         create_clickmap_func=create_clickmap_func,
         fast_duplicate_detection=fast_duplicate_detection,
-        return_before_blur=True
+        return_before_blur=True,
+        average_maps=False,
     )
     import pdb; pdb.set_trace()
     # Apply mask filtering if needed
