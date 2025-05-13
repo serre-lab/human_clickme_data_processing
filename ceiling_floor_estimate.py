@@ -52,7 +52,6 @@ def compute_correlation_batch(batch_indices, all_clickmaps, metric, n_iterations
             rand_corrs = np.asarray(rand_corrs).mean()  # Take the mean of the random correlations
             level_corrs.append(rand_corrs)
         batch_results.append(np.asarray(level_corrs).mean())  # Integrate over the levels
-    import pdb; pdb.set_trace()
     return batch_results
 
 
@@ -376,6 +375,7 @@ if __name__ == "__main__":
     # Flatten the results
     all_ceilings = []
     all_floors = []
+    import pdb; pdb.set_trace()
     for batch_result in ceiling_results:
         all_ceilings.extend(batch_result[0])
         all_floors.extend(batch_result[1])
