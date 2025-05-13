@@ -5,7 +5,7 @@ center_crop:
 - 256
 class_filter_file: false
 clickme_data: clickme_datasets/val_combined_04_02_2025.npz
-correlation_batch_size: 1024
+correlation_batch_size: 8
 debug: false
 display_image_keys: auto
 example_image_output_dir: jay_imagenet_val_combined_04_02_2025_images
@@ -18,13 +18,13 @@ image_path: /media/data_cifs/projects/prj_video_imagenet/imagenet/ILSVRC/Data/CL
 image_shape:
 - 256
 - 256
-mask_dir: false
-mask_threshold: 1
-max_clicks: 75
+mask_dir: null
+mask_threshold: 0.
+max_clicks: 100000
 metadata_file: image_metadata/jay_imagenet_val_0.1_dimensions.npy
 metric: spearman
-min_clicks: 10
-min_subjects: 5
+min_clicks: 1
+min_subjects: 6
 n_jobs: -1
 null_iterations: 10
 parallel_prepare_maps: true
@@ -35,3 +35,4 @@ preprocess_db_data: true
 processed_clickme_file: jay_imagenet_val_combined_02_19_2025_processed.npz
 processed_medians: jay_imagenet_val_combined_02_19_2025_medians.json
 remove_string: imagenet/val/
+multi_thresh_gpu: true
