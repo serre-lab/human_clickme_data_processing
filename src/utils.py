@@ -1618,6 +1618,7 @@ def process_all_maps_multi_thresh_gpu(
         fast_duplicate_detection=None,
         average_maps=True,
         thresholds=10,
+        return_before_blur=False
         ):
     """
     Simplified function to blur clickmaps on GPU in batches
@@ -1692,6 +1693,9 @@ def process_all_maps_multi_thresh_gpu(
     if not all_clickmaps:
         print("No valid clickmaps to process")
         return {}, [], [], {}, {}
+    
+    if return_before_blur:
+        return final_clickmaps, all_clickmaps, categories, keep_index, click_counts
     
     # Step 2: Prepare for batch blurring on GPU
     total_maps = len(all_clickmaps)

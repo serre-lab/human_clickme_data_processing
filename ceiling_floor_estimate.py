@@ -22,26 +22,27 @@ def compute_correlation_batch(batch_indices, all_clickmaps, metric, n_iterations
         for i in batch_indices:
             clickmaps = all_clickmaps[i]
             import pdb; pdb.set_trace()
-            n = len(clickmaps)
-            rand_corrs = []
-            
-            for _ in range(n_iterations):
-                rand_perm = np.random.permutation(n)
-                fh = rand_perm[:(n // 2)]
-                sh = rand_perm[(n // 2):]
+            levels = len(clickmaps)  # What is K for the thresholds
+            level_corrs = []
+            for clickmap_at_k in clickmaps:
+                rand_corrs = []
+                for _ in range(n_iterations):
+                    rand_perm = np.random.permutation(n)
+                    fh = rand_perm[:(n // 2)]
+                    sh = rand_perm[(n // 2):]
+                    
+                    # Create the test and reference maps
+                    test_map = clickmaps[fh].mean(0)
+                    reference_map = clickmaps[sh].mean(0)
+                    
+                    # Normalize maps
+                    test_map = (test_map - test_map.min()) / (test_map.max() - test_map.min() + 1e-10)
+                    reference_map = (reference_map - reference_map.min()) / (reference_map.max() - reference_map.min() + 1e-10)
+                    
+                    # Use scipy's spearman correlation
+                    correlation, _ = spearmanr(test_map.flatten(), reference_map.flatten())
+                    rand_corrs.append(correlation)
                 
-                # Create the test and reference maps
-                test_map = clickmaps[fh].mean(0)
-                reference_map = clickmaps[sh].mean(0)
-                
-                # Normalize maps
-                test_map = (test_map - test_map.min()) / (test_map.max() - test_map.min() + 1e-10)
-                reference_map = (reference_map - reference_map.min()) / (reference_map.max() - reference_map.min() + 1e-10)
-                
-                # Use scipy's spearman correlation
-                correlation, _ = spearmanr(test_map.flatten(), reference_map.flatten())
-                rand_corrs.append(correlation)
-            
             batch_results.append(np.mean(rand_corrs))
         return batch_results
     
@@ -544,16 +545,17 @@ if __name__ == "__main__":
         
         # Process all maps with our new single-batch GPU function
         print(f"Processing with GPU (batch size: {config['gpu_batch_size']})...")
-        if config.get("multi_thresh_gpu", False):
+        if 1:  # config.get("multi_thresh_gpu", False):
             process_fun = utils.process_all_maps_multi_thresh_gpu
-        else:
-            process_fun = utils.process_all_maps_gpu
+        # else:
+        #     process_fun = utils.process_all_maps_gpu
         final_clickmaps, all_clickmaps, categories, final_keep_index, click_counts = process_fun(
             clickmaps=clickmaps,
             config=config,
             metadata=metadata,
             create_clickmap_func=create_clickmap_func,
-            fast_duplicate_detection=fast_duplicate_detection
+            fast_duplicate_detection=fast_duplicate_detection,
+            return_before_blur=True
         )
 
         # Apply mask filtering if needed
