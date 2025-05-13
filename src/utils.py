@@ -1677,15 +1677,16 @@ def process_all_maps_multi_thresh_gpu(
                 keep_index.append(key)
                 final_clickmaps[key] = trials
                 click_counts[key] = total_clicks_per_trial  # Store total clicks for this image
-        import pdb;pdb.set_trace()
-        all_clickmaps.append(np.concatenate(bin_clickmaps, axis=0))
+        if return_before_blur:
+            all_clickmaps.append(np.stack(bin_clickmaps, axis=0))
+        else:
+            all_clickmaps.append(np.concatenate(bin_clickmaps, axis=0))
     
     if not all_clickmaps:
         print("No valid clickmaps to process")
         return {}, [], [], {}, {}
     
     if return_before_blur:
-        import pdb;pdb.set_trace()
         return final_clickmaps, all_clickmaps, categories, keep_index, click_counts
     
     # Step 2: Prepare for batch blurring on GPU
