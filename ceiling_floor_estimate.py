@@ -40,12 +40,12 @@ def compute_correlation_batch(batch_indices, all_clickmaps, metric, n_iterations
                         reference_map[None, None],
                         blur_size,
                         blur_sigma,
-                        gpu_batch_size=2).squeeze()
+                        gpu_batch_size=1).squeeze()
                     test_map = utils.blur_maps_for_cf(
                         test_map[None, None],
                         blur_size,
                         blur_sigma,
-                        gpu_batch_size=2).squeeze()
+                        gpu_batch_size=1).squeeze()
                 else:
                     reference_map = clickmap_at_k[sh].mean(0)
 
@@ -384,14 +384,8 @@ if __name__ == "__main__":
     )
     
     # Flatten the results
-    all_ceilings = []
-    all_floors = []
-    import pdb; pdb.set_trace()
-    for batch_result in ceiling_results:
-        all_ceilings.extend(batch_result[0])
-        all_floors.extend(batch_result[1])
-    all_ceilings = np.asarray(all_ceilings)
-    all_floors = np.asarray(all_floors)
+    all_ceilings = np.concatenate(ceiling_results)
+    all_floors = np.concatenate(floor_results)
 
     # Compute the mean of the ceilings and floors
     mean_ceiling = all_ceilings.mean()
