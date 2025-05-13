@@ -20,6 +20,7 @@ def compute_correlation_batch(batch_indices, all_clickmaps, metric, n_iterations
     for i in batch_indices:
         clickmaps = all_clickmaps[i]
         level_corrs = []
+        import pdb; pdb.set_trace()
         if floor:
             rand_i = np.random.choice([j for j in range(len(clickmaps)) if j != i])
         for k, clickmap_at_k in enumerate(clickmaps):
@@ -369,6 +370,7 @@ if __name__ == "__main__":
             blur_sigma=config.get("blur_sigma", config["blur_size"])
         ) for batch in tqdm(batches, desc="Computing ceilings")
     )
+    n_jobs = 1
     floor_results = Parallel(n_jobs=n_jobs)(
         delayed(compute_correlation_batch)(
             batch_indices=batch,
