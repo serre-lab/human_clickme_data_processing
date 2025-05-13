@@ -52,6 +52,7 @@ def compute_correlation_batch(batch_indices, all_clickmaps, metric, n_iterations
             rand_corrs = np.asarray(rand_corrs).mean()  # Take the mean of the random correlations
             level_corrs.append(rand_corrs)
         batch_results.append(np.asarray(level_corrs).mean())  # Integrate over the levels
+    import pdb; pdb.set_trace()
     return batch_results
 
 
@@ -347,6 +348,7 @@ if __name__ == "__main__":
     batches = [indices[i:i+correlation_batch_size] for i in range(0, len(indices), correlation_batch_size)]
     
     # Process correlation batches in parallel
+    import pdb; pdb.set_trace()
     ceiling_results = Parallel(n_jobs=n_jobs)(
         delayed(compute_correlation_batch)(
             batch_indices=batch,
