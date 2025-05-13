@@ -33,7 +33,8 @@ def compute_correlation_batch(batch_indices, all_clickmaps, metric, n_iterations
                 # Create the test and reference maps
                 test_map = clickmap_at_k[fh].mean(0)
                 if floor:
-                    import pdb; pdb.set_trace()
+                    rand_perm = np.random.permutation(len(all_clickmaps[rand_i][k]))
+                    sh = rand_perm[(n // 2):]
                     reference_map = all_clickmaps[rand_i][k][sh].mean(0)  # Take maps from the same level in a random other image
                     reference_map = utils.blur_maps_for_cf(
                         reference_map[None, None],
@@ -369,7 +370,6 @@ if __name__ == "__main__":
             blur_sigma=config.get("blur_sigma", config["blur_size"])
         ) for batch in tqdm(batches, desc="Computing ceilings")
     )
-    n_jobs = 1
     floor_results = Parallel(n_jobs=n_jobs)(
         delayed(compute_correlation_batch)(
             batch_indices=batch,
