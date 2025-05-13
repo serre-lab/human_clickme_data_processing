@@ -14,14 +14,15 @@ from joblib import Parallel, delayed
 from scipy.stats import spearmanr
 
 
-def compute_correlation_batch(batch_indices, all_clickmaps, metric, n_iterations=10, device='cuda', blur_size=11, blur_sigma=1.5):
+def compute_correlation_batch(batch_indices, all_clickmaps, metric, n_iterations=10, device='cuda', blur_size=11, blur_sigma=1.5, floor=False):
     """Compute split-half correlations for a batch of clickmaps in parallel"""
     batch_results = []
     for i in batch_indices:
         clickmaps = all_clickmaps[i]
-        import pdb; pdb.set_trace()
         level_corrs = []
-        for clickmap_at_k in clickmaps:
+        if floor:
+            rand_i = np.random.choice([j for j in range(len(clickmaps)) if j != k])
+        for k, clickmap_at_k in enumerate(clickmaps):
             rand_corrs = []
             n = len(clickmap_at_k)
             for _ in range(n_iterations):
@@ -31,12 +32,17 @@ def compute_correlation_batch(batch_indices, all_clickmaps, metric, n_iterations
                 
                 # Create the test and reference maps
                 test_map = clickmap_at_k[fh].mean(0)
-                reference_map = clickmap_at_k[sh].mean(0)
+                if floor:
+                    reference_map = clickmaps[rand_i][k][sh].mean(0)  # Take maps from the same level in a random other image
+                else:
+                    reference_map = clickmap_at_k[sh].mean(0)
 
                 # Make maps for each
-                import pdb; pdb.set_trace()
-                blur_clickmaps = np.stack((test_map, reference_map), axis=0)
-                blur_clickmaps = utils.blur_maps_for_cf(blur_clickmaps, blur_size, blur_sigma, gpu_batch_size=2)
+                blur_clickmaps = utils.blur_maps_for_cf(
+                    np.stack((test_map, reference_map), axis=0)[None],
+                    blur_size,
+                    blur_sigma,
+                    gpu_batch_size=2).squeeze()
                 test_map = blur_clickmaps[0]
                 reference_map = blur_clickmaps[1]
                 
@@ -342,7 +348,7 @@ if __name__ == "__main__":
     
     # Process correlation batches in parallel
     n_jobs=1
-    results = Parallel(n_jobs=n_jobs)(
+    ceiling_results = Parallel(n_jobs=n_jobs)(
         delayed(compute_correlation_batch)(
             batch_indices=batch,
             all_clickmaps=all_clickmaps,
@@ -353,14 +359,44 @@ if __name__ == "__main__":
             blur_sigma=config.get("blur_sigma", config["blur_size"])
         ) for batch in tqdm(batches, desc="Computing split-half correlations")
     )
+    floor_results = Parallel(n_jobs=n_jobs)(
+        delayed(compute_correlation_batch)(
+            batch_indices=batch,
+            all_clickmaps=all_clickmaps,
+            metric=metric,
+            n_iterations=null_iterations,
+            device=device,
+            floor=True,
+            blur_size=config["blur_size"],
+            blur_sigma=config.get("blur_sigma", config["blur_size"])
+        ) for batch in tqdm(batches, desc="Computing split-half correlations")
+    )
     
     # Flatten the results
-    all_correlations = []
-    for batch_result in results:
-        all_correlations.extend(batch_result)
-    all_correlations = np.asarray(all_correlations)
+    all_ceilings = []
+    all_floors = []
+    for batch_result in ceiling_results:
+        all_ceilings.extend(batch_result[0])
+        all_floors.extend(batch_result[1])
+    all_ceilings = np.asarray(all_ceilings)
+    all_floors = np.asarray(all_floors)
 
+    # Compute the mean of the ceilings and floors
+    mean_ceiling = all_ceilings.mean()
+    mean_floor = all_floors.mean()
 
+    # Compute the ratio of the mean of the ceilings to the mean of the floors
+    ratio = mean_ceiling / mean_floor
+    print(f"Mean ceiling: {mean_ceiling}, Mean floor: {mean_floor}, Ratio: {ratio}")
+
+    # Save the results
+    np.savez(
+        os.path.join(output_dir, f"{config['experiment_name']}_ceiling_floor_results.npz"),
+        mean_ceiling=mean_ceiling,
+        mean_floor=mean_floor,
+        all_ceilings=all_ceilings,
+        all_floors=all_floors,
+        ratio=ratio)
 
     # End profiling if it was enabled
     if args.profile:
