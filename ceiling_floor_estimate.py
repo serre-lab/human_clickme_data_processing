@@ -350,7 +350,7 @@ if __name__ == "__main__":
             n_iterations=null_iterations,
             device=device,
             blur_size=config["blur_size"],
-            blur_sigma=config["blur_sigma"]
+            blur_sigma=config.get("blur_sigma", config["blur_size"])
         ) for batch in tqdm(batches, desc="Computing split-half correlations")
     )
     
