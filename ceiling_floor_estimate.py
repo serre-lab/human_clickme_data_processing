@@ -11,83 +11,41 @@ import h5py
 import gc
 import torch
 from joblib import Parallel, delayed
+from scipy.stats import spearmanr
 
 
-def compute_correlation_batch(batch_indices, all_clickmaps, metric, n_iterations=10, device='cuda'):
+def compute_correlation_batch(batch_indices, all_clickmaps, metric, n_iterations=10, device='cuda', blur_size=11, blur_sigma=1.5):
     """Compute split-half correlations for a batch of clickmaps in parallel"""
     batch_results = []
-    
-    # Handle Spearman correlation separately if that's the metric
-    if metric.lower() == "spearman":
-        for i in batch_indices:
-            clickmaps = all_clickmaps[i]
-            import pdb; pdb.set_trace()
-            levels = len(clickmaps)  # What is K for the thresholds
-            level_corrs = []
-            for clickmap_at_k in clickmaps:
-                rand_corrs = []
-                n = len(clickmap_at_k)
-                for _ in range(n_iterations):
-                    rand_perm = np.random.permutation(n)
-                    fh = rand_perm[:(n // 2)]
-                    sh = rand_perm[(n // 2):]
-                    
-                    # Create the test and reference maps
-                    test_map = clickmap_at_k[fh].mean(0)
-                    reference_map = clickmap_at_k[sh].mean(0)
-                    
-                    # Normalize maps
-                    test_map = (test_map - test_map.min()) / (test_map.max() - test_map.min() + 1e-10)
-                    reference_map = (reference_map - reference_map.min()) / (reference_map.max() - reference_map.min() + 1e-10)
-                    
-                    # Use scipy's spearman correlation
-                    correlation, _ = spearmanr(test_map.flatten(), reference_map.flatten())
-                    rand_corrs.append(correlation)
-                
-            batch_results.append(np.mean(rand_corrs))
-        return batch_results
-    
-    # For other metrics, use GPU acceleration
-    # Lists to store test and reference maps for batch GPU processing
-    test_maps_batch = []
-    reference_maps_batch = []
-    
     for i in batch_indices:
         clickmaps = all_clickmaps[i]
-        n = len(clickmaps)
-        
-        for _ in range(n_iterations):
-            rand_perm = np.random.permutation(n)
-            fh = rand_perm[:(n // 2)]
-            sh = rand_perm[(n // 2):]
-            
-            # Create the test and reference maps
-            test_map = clickmaps[fh].mean(0)
-            reference_map = clickmaps[sh].mean(0)
-            
-            # Normalize maps
-            test_map = (test_map - test_map.min()) / (test_map.max() - test_map.min() + 1e-10)
-            reference_map = (reference_map - reference_map.min()) / (reference_map.max() - reference_map.min() + 1e-10)
-            
-            # Add to batch for GPU processing
-            test_maps_batch.append(test_map)
-            reference_maps_batch.append(reference_map)
-    
-    # Process all correlations in one GPU batch for maximum efficiency
-    if test_maps_batch:
-        scores = utils.batch_compute_correlations_gpu(
-            test_maps=test_maps_batch,
-            reference_maps=reference_maps_batch,
-            metric=metric,
-            device=device
-        )
-        
-        # Reshape scores back to match the original batch structure
-        idx = 0
-        for i in batch_indices:
-            batch_results.append(np.mean(scores[idx:idx+n_iterations]))
-            idx += n_iterations
-    
+        import pdb; pdb.set_trace()
+        level_corrs = []
+        for clickmap_at_k in clickmaps:
+            rand_corrs = []
+            n = len(clickmap_at_k)
+            for _ in range(n_iterations):
+                rand_perm = np.random.permutation(n)
+                fh = rand_perm[:(n // 2)]
+                sh = rand_perm[(n // 2):]
+                
+                # Create the test and reference maps
+                test_map = clickmap_at_k[fh].mean(0)
+                reference_map = clickmap_at_k[sh].mean(0)
+
+                # Make maps for each
+                import pdb; pdb.set_trace()
+                blur_clickmaps = np.stack((test_map, reference_map), axis=0)
+                blur_clickmaps = utils.blur_maps_for_cf(blur_clickmaps, blur_size, blur_sigma, gpu_batch_size=2)
+                test_map = blur_clickmaps[0]
+                reference_map = blur_clickmaps[1]
+                
+                # Use scipy's spearman correlation
+                correlation, _ = spearmanr(test_map.flatten(), reference_map.flatten())
+                rand_corrs.append(correlation)
+            rand_corrs = np.asarray(rand_corrs).mean()  # Take the mean of the random correlations
+            level_corrs.append(rand_corrs)
+        batch_results.append(np.asarray(level_corrs).mean())  # Integrate over the levels
     return batch_results
 
 
@@ -390,7 +348,9 @@ if __name__ == "__main__":
             all_clickmaps=all_clickmaps,
             metric=metric,
             n_iterations=null_iterations,
-            device=device
+            device=device,
+            blur_size=config["blur_size"],
+            blur_sigma=config["blur_sigma"]
         ) for batch in tqdm(batches, desc="Computing split-half correlations")
     )
     
