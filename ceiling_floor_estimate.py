@@ -557,7 +557,7 @@ if __name__ == "__main__":
             fast_duplicate_detection=fast_duplicate_detection,
             return_before_blur=True
         )
-
+        import pdb; pdb.set_trace()
         # Apply mask filtering if needed
         if final_keep_index and config["mask_dir"]:
             print("Applying mask filtering...")
