@@ -21,7 +21,7 @@ def compute_correlation_batch(batch_indices, all_clickmaps, metric, n_iterations
         clickmaps = all_clickmaps[i]
         level_corrs = []
         if floor:
-            rand_i = np.random.choice([j for j in range(len(clickmaps)) if j != k])
+            rand_i = np.random.choice([j for j in range(len(clickmaps)) if j != i])
         for k, clickmap_at_k in enumerate(clickmaps):
             rand_corrs = []
             n = len(clickmap_at_k)

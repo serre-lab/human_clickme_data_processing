@@ -1790,7 +1790,6 @@ def process_all_maps_multi_thresh_gpu(
     del kernel
     torch.cuda.empty_cache()
     
-    print(f"Finished blurring {total_maps} clickmaps. Kept {len(keep_index)} images.")
     return final_clickmaps, all_clickmaps, categories, keep_index, click_counts
 
 
