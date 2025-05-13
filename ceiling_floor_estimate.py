@@ -357,7 +357,6 @@ if __name__ == "__main__":
     batches = [indices[i:i+correlation_batch_size] for i in range(0, len(indices), correlation_batch_size)]
     
     # Process correlation batches in parallel
-    n_jobs = 1
     ceiling_results = Parallel(n_jobs=n_jobs)(
         delayed(compute_correlation_batch)(
             batch_indices=batch,
@@ -369,7 +368,6 @@ if __name__ == "__main__":
             blur_sigma=config.get("blur_sigma", config["blur_size"])
         ) for batch in tqdm(batches, desc="Computing ceilings")
     )
-    n_jobs = 1
     floor_results = Parallel(n_jobs=n_jobs)(
         delayed(compute_correlation_batch)(
             batch_indices=batch,
