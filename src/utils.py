@@ -1678,6 +1678,7 @@ def process_all_maps_multi_thresh_gpu(
             binary_maps = binary_maps[mask]
             
             # If we have enough valid maps, average them and keep this image
+            import pdb; pdb.set_trace()
             if len(binary_maps) >= min_subjects:
                 if average_maps:
                     bin_clickmaps.append(np.array(binary_maps).mean(0, keepdims=True))
