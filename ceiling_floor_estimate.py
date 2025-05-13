@@ -572,7 +572,7 @@ if __name__ == "__main__":
     # Convert all_clickmaps to the format expected by the correlation code
     image_shape = config["image_shape"]
     correlation_batch_size = config["correlation_batch_size"]
-    randomization_iters = config["randomization_iters"]
+    null_iterations = config["null_iterations"]
     metric = config["metric"]
     n_jobs = config["n_jobs"]
     gpu_batch_size = config["gpu_batch_size"]
@@ -604,7 +604,7 @@ if __name__ == "__main__":
             batch_indices=batch,
             all_clickmaps=all_clickmaps,
             metric=metric,
-            n_iterations=randomization_iters,
+            n_iterations=null_iterations,
             device=device
         ) for batch in tqdm(batches, desc="Computing split-half correlations")
     )
