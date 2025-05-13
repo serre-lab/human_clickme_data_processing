@@ -340,7 +340,6 @@ if __name__ == "__main__":
         return_before_blur=True,
         average_maps=False,
     )
-    import pdb; pdb.set_trace()
     # Apply mask filtering if needed
     if final_keep_index and config["mask_dir"]:
         print("Applying mask filtering...")
