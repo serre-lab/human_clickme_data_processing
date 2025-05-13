@@ -1796,7 +1796,6 @@ def process_all_maps_multi_thresh_gpu(
 def blur_maps_for_cf(all_clickmaps, blur_size, blur_sigma, gpu_batch_size):
     # Step 2: Prepare for batch blurring on GPU
     total_maps = len(all_clickmaps)
-    print(f"Preparing to blur {total_maps} image clickmaps using GPU...")
     
     # Convert all maps to tensors
     all_tensors = [torch.from_numpy(maps).float() for maps in all_clickmaps]
@@ -1819,8 +1818,7 @@ def blur_maps_for_cf(all_clickmaps, blur_size, blur_sigma, gpu_batch_size):
         num_batches = total_maps
         gpu_batch_size = 1
     
-    print(f"Processing in {num_batches} batches of up to {gpu_batch_size} maps each...")
-    for batch_idx in tqdm(range(num_batches), desc="Processing GPU batches"):
+    for batch_idx in range(num_batches):
         # Get batch indices
         start_idx = batch_idx * gpu_batch_size
         end_idx = min(start_idx + gpu_batch_size, total_maps)
