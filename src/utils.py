@@ -1639,7 +1639,6 @@ def process_all_maps_multi_thresh_gpu(
     click_counts = {}  # Track click counts for each image
     
     # Preprocess all clickmaps first to binary maps
-    # for key, trials in tqdm(clickmaps.items(), desc="Creating binary maps"):
     for key, trials in clickmaps.items():
         if len(trials) < min_subjects:
             continue
@@ -1647,11 +1646,10 @@ def process_all_maps_multi_thresh_gpu(
         # Get max count then do thresholds from that
         max_count = max([len(x) for x in trials])
         min_count = max_count // 2  # Set floor to half the max. Important since we are using spearman.
-        bins = np.linspace(min_clicks, max_count + 1, thresholds).astype(int)
+        bins = np.linspace(min_count, max_count + 1, thresholds).astype(int)
         bin_clickmaps = []
-        store_data = False
+        
         for bin in bins:
-
             # Threshold trials
             thresholded_trials = [x[:bin] for x in trials]
 
@@ -1661,9 +1659,6 @@ def process_all_maps_multi_thresh_gpu(
                 binary_maps = np.asarray([create_clickmap_func([trial], native_size[::-1]) for trial in thresholded_trials])
             else:
                 binary_maps = np.asarray([create_clickmap_func([trial], tuple(image_shape)) for trial in thresholded_trials])
-            
-            # Count total clicks in each trial
-            total_clicks_per_trial = len(binary_maps)
             
             # Only keep maps with enough valid pixels using mask
             mask = binary_maps.sum((-2, -1)) >= min_clicks
@@ -1675,14 +1670,25 @@ def process_all_maps_multi_thresh_gpu(
                     bin_clickmaps.append(np.array(binary_maps).mean(0, keepdims=True))
                 else:
                     bin_clickmaps.append(np.array(binary_maps))
-                store_data = True
-                # Note that if we are measuring ceiling we need to keep all maps ^^ change above.
-
-        if store_data:
-            categories.append(key.split("/")[0])
-            keep_index.append(key)
-            final_clickmaps[key] = trials
-            click_counts[key] = total_clicks_per_trial  # Store total clicks for this image
+        
+        # Skip if we don't have any valid bin_clickmaps
+        if not bin_clickmaps:
+            continue
+            
+        # For stacking, check if all maps have same shape
+        if return_before_blur:
+            shapes = [m.shape for m in bin_clickmaps]
+            if len(set(str(s) for s in shapes)) > 1:
+                print(f"Warning: Inconsistent shapes for {key}: {shapes}")
+                continue
+        
+        # Only add to tracking structures if we can successfully process this image
+        categories.append(key.split("/")[0])
+        keep_index.append(key)
+        final_clickmaps[key] = trials
+        click_counts[key] = len(trials)  # Store total clicks for this image
+            
+        # Add to all_clickmaps with the appropriate method
         if return_before_blur:
             all_clickmaps.append(np.stack(bin_clickmaps, axis=0))
         else:
@@ -1690,7 +1696,7 @@ def process_all_maps_multi_thresh_gpu(
     
     if not all_clickmaps:
         print("No valid clickmaps to process")
-        return {}, [], [], {}, {}
+        return {}, [], [], [], {}
     
     if return_before_blur:
         return final_clickmaps, all_clickmaps, categories, keep_index, click_counts
