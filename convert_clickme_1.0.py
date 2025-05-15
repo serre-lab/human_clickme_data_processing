@@ -8,8 +8,8 @@ from joblib import Parallel, delayed
 # Create output directories for each tfrecord file
 paths = [
     "/media/data_cifs/clicktionary/clickme_experiment/tf_records/archive/clickme_test.tfrecords",
-    "/media/data_cifs/clicktionary/clickme_experiment/tf_records/archive/clickme_train.tfrecords",
-    "/media/data_cifs/clicktionary/clickme_experiment/tf_records/archive/clickme_val.tfrecords",
+    # "/media/data_cifs/clicktionary/clickme_experiment/tf_records/archive/clickme_train.tfrecords",
+    # "/media/data_cifs/clicktionary/clickme_experiment/tf_records/archive/clickme_val.tfrecords",
 ]
 
 fdict = {
@@ -22,10 +22,9 @@ fdict = {
 def process_record(record, fdict, image_output_dir, hm_output_dir, idx):
     """Process a single record from the dataset."""
     # Parse the record
-    import pdb; pdb.set_trace()
     example = tf.train.Example()
     example.ParseFromString(record.numpy())
-    print("Available keys:", example.features.feature.keys())  # This will show all available keys
+    # print("Available keys:", example.features.feature.keys())  # This will show all available keys
     features = tf.io.parse_single_example(record, features=fdict)
     
     # Get feature dictionary
@@ -57,10 +56,12 @@ def process_record(record, fdict, image_output_dir, hm_output_dir, idx):
 # Process each tfrecord file
 for path in paths:
     # Create output directory
-    image_output_dir = "{}_images_v1".format(path.split(os.path.sep)[-1].split(".")[0])
-    hm_output_dir = "{}_heatmaps_v1".format(path.split(os.path.sep)[-1].split(".")[0])
+    image_output_dir = "{}_images_v2".format(path.split(os.path.sep)[-1].split(".")[0])
+    hm_output_dir = "{}_heatmaps_v2".format(path.split(os.path.sep)[-1].split(".")[0])
+    meta_output_dir = "{}_meta_v2".format(path.split(os.path.sep)[-1].split(".")[0])
     os.makedirs(image_output_dir, exist_ok=True)
     os.makedirs(hm_output_dir, exist_ok=True)
+    os.makedirs(meta_output_dir, exist_ok=True)
     
     # Read the tfrecord file
     dataset = tf.data.TFRecordDataset(path)
@@ -82,3 +83,4 @@ for path in paths:
     labels = [r['label'] for r in results]
     image_paths = [r['image_path'] for r in results if r['image_path'] is not None]
     user_ids = [r['user_id'] for r in results if r['user_id'] is not None]
+    np.savez(os.path.join(meta_output_dir, "results.npz"), clicks=clicks, labels=labels, user_ids=user_ids)
