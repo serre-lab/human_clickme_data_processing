@@ -271,16 +271,17 @@ if __name__ == "__main__":
                         compression_level=config.get("hdf5_compression_level", 0)
                     )
                     
-                    # Also save individual .npy files for each clickmap
-                    individual_save_dir = os.path.join(output_dir, config["experiment_name"])
-                    os.makedirs(individual_save_dir, exist_ok=True)
-                    print(f"Additionally saving individual .npy files to {individual_save_dir}...")
-                    
-                    for i, img_name in enumerate(batch_final_keep_index):
-                        np.save(
-                            os.path.join(individual_save_dir, f"{img_name.replace('/', '_')}.npy"), 
-                            batch_all_clickmaps[i]
-                        )
+                    # Also save individual NPY files for compatibility
+                    print("Saving individual NPY files in addition to HDF5...")
+                    npy_saved_count = utils.save_clickmaps_parallel(
+                        all_clickmaps=batch_all_clickmaps,
+                        final_keep_index=batch_final_keep_index,
+                        output_dir=output_dir,
+                        experiment_name=f"{config['experiment_name']}{batch_suffix}",
+                        image_path=config["image_path"],
+                        n_jobs=config["n_jobs"],
+                        file_inclusion_filter=config.get("file_inclusion_filter")
+                    )
                 else:
                     # Use parallel saving for non-HDF5 format
                     saved_count = utils.save_clickmaps_parallel(
@@ -292,6 +293,7 @@ if __name__ == "__main__":
                         n_jobs=config["n_jobs"],
                         file_inclusion_filter=config.get("file_inclusion_filter")
                     )
+                
                 print(f"Saved {saved_count} files in batch {batch_num+1}")
                 
                 # Calculate batch medians and update global medians
@@ -414,16 +416,17 @@ if __name__ == "__main__":
                     compression_level=config.get("hdf5_compression_level", 0)
                 )
                 
-                # Also save individual .npy files for each clickmap
-                individual_save_dir = os.path.join(output_dir, config["experiment_name"])
-                os.makedirs(individual_save_dir, exist_ok=True)
-                print(f"Additionally saving individual .npy files to {individual_save_dir}...")
-                
-                for i, img_name in enumerate(final_keep_index):
-                    np.save(
-                        os.path.join(individual_save_dir, f"{img_name.replace('/', '_')}.npy"), 
-                        all_clickmaps[i]
-                    )
+                # Also save individual NPY files for compatibility
+                print("Saving individual NPY files in addition to HDF5...")
+                npy_saved_count = utils.save_clickmaps_parallel(
+                    all_clickmaps=all_clickmaps,
+                    final_keep_index=final_keep_index,
+                    output_dir=output_dir,
+                    experiment_name=config["experiment_name"],
+                    image_path=config["image_path"],
+                    n_jobs=config["n_jobs"],
+                    file_inclusion_filter=config.get("file_inclusion_filter")
+                )
             else:
                 # Use parallel saving for non-HDF5 format
                 saved_count = utils.save_clickmaps_parallel(
