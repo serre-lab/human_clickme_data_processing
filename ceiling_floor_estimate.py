@@ -276,11 +276,7 @@ if __name__ == "__main__":
     
     # Process all maps with our new single-batch GPU function
     print(f"Processing with GPU (batch size: {config['gpu_batch_size']})...")
-    if 1:  # config.get("multi_thresh_gpu", False):
-        process_fun = utils.process_all_maps_multi_thresh_gpu
-    # else:
-    #     process_fun = utils.process_all_maps_gpu
-    final_clickmaps, all_clickmaps, categories, final_keep_index, click_counts = process_fun(
+    final_clickmaps, all_clickmaps, categories, final_keep_index, click_counts = utils.process_all_maps_multi_thresh_gpu(
         clickmaps=clickmaps,
         config=config,
         metadata=metadata,
