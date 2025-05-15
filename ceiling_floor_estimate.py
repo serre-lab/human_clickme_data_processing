@@ -12,6 +12,7 @@ import gc
 import torch
 from joblib import Parallel, delayed
 from scipy.stats import spearmanr
+import resource  # Add resource module for file descriptor limits
 
 
 def auc(test_map, reference_map, thresholds=100):
@@ -85,8 +86,17 @@ def compute_correlation_batch(batch_indices, all_clickmaps, metric="auc", n_iter
                 else:
                     score, _ = spearmanr(test_map.flatten(), reference_map.flatten())
                 rand_corrs.append(score)
+                
+                # Explicitly free memory
+                if 'blur_clickmaps' in locals():
+                    del blur_clickmaps
+                
             rand_corrs = np.asarray(rand_corrs).mean()  # Take the mean of the random correlations
             level_corrs.append(rand_corrs)
+            
+            # Free memory
+            gc.collect()
+            
         batch_results.append(np.asarray(level_corrs).mean())  # Integrate over the levels
     return batch_results
 
@@ -101,7 +111,18 @@ if __name__ == "__main__":
     parser.add_argument('--max-workers', type=int, default=None, help='Maximum number of CPU workers')
     parser.add_argument('--profile', action='store_true', help='Enable performance profiling')
     parser.add_argument('--filter-duplicates', action='store_false', help='Filter duplicate participant submissions, keeping only the first submission per image')
+    parser.add_argument('--max-open-files', type=int, default=4096, help='Maximum number of open files allowed')
     args = parser.parse_args()
+    
+    # Increase file descriptor limit
+    try:
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        print(f"Current file descriptor limits: soft={soft}, hard={hard}")
+        new_soft = min(args.max_open_files, hard)
+        resource.setrlimit(resource.RLIMIT_NOFILE, (new_soft, hard))
+        print(f"Increased file descriptor soft limit to {new_soft}")
+    except (ValueError, resource.error) as e:
+        print(f"Warning: Could not increase file descriptor limit: {e}")
     
     # Start profiling if requested
     if args.profile:
@@ -309,6 +330,12 @@ if __name__ == "__main__":
     indices = list(range(num_clickmaps))
     batches = [indices[i:i+correlation_batch_size] for i in range(0, len(indices), correlation_batch_size)]
     
+    # Reduce the number of jobs if there are many batches to prevent too many files open
+    adjusted_n_jobs = min(n_jobs, max(1, 20 // len(batches) + 1))
+    if adjusted_n_jobs < n_jobs:
+        print(f"Reducing parallel jobs from {n_jobs} to {adjusted_n_jobs} to prevent 'too many files open' error")
+        n_jobs = adjusted_n_jobs
+    
     # Process correlation batches in parallel
     ceiling_results = Parallel(n_jobs=n_jobs)(
         delayed(compute_correlation_batch)(
@@ -321,6 +348,10 @@ if __name__ == "__main__":
             blur_sigma=config.get("blur_sigma", config["blur_size"])
         ) for batch in tqdm(batches, desc="Computing ceilings")
     )
+    
+    # Force garbage collection between major operations
+    gc.collect()
+    
     floor_results = Parallel(n_jobs=n_jobs)(
         delayed(compute_correlation_batch)(
             batch_indices=batch,
