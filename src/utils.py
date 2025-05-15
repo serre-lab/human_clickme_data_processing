@@ -1644,8 +1644,9 @@ def process_all_maps_multi_thresh_gpu(
             continue
         
         # Get max count then do thresholds from that
-        max_count = max([len(x) for x in trials])
-        min_count = max_count // 2  # Set floor to half the max. Important since we are using spearman.
+        lens = [len(x) for x in trials]
+        max_count = max(lens)
+        min_count = max(int(min(lens) * .1), 1)
         bins = np.linspace(min_count, max_count + 1, thresholds).astype(int)
         bin_clickmaps = []
         
