@@ -270,6 +270,17 @@ if __name__ == "__main__":
                         compression=config.get("hdf5_compression"),
                         compression_level=config.get("hdf5_compression_level", 0)
                     )
+                    
+                    # Also save individual .npy files for each clickmap
+                    individual_save_dir = os.path.join(output_dir, config["experiment_name"])
+                    os.makedirs(individual_save_dir, exist_ok=True)
+                    print(f"Additionally saving individual .npy files to {individual_save_dir}...")
+                    
+                    for i, img_name in enumerate(batch_final_keep_index):
+                        np.save(
+                            os.path.join(individual_save_dir, f"{img_name.replace('/', '_')}.npy"), 
+                            batch_all_clickmaps[i]
+                        )
                 else:
                     # Use parallel saving for non-HDF5 format
                     saved_count = utils.save_clickmaps_parallel(
@@ -402,6 +413,17 @@ if __name__ == "__main__":
                     compression=config.get("hdf5_compression"),
                     compression_level=config.get("hdf5_compression_level", 0)
                 )
+                
+                # Also save individual .npy files for each clickmap
+                individual_save_dir = os.path.join(output_dir, config["experiment_name"])
+                os.makedirs(individual_save_dir, exist_ok=True)
+                print(f"Additionally saving individual .npy files to {individual_save_dir}...")
+                
+                for i, img_name in enumerate(final_keep_index):
+                    np.save(
+                        os.path.join(individual_save_dir, f"{img_name.replace('/', '_')}.npy"), 
+                        all_clickmaps[i]
+                    )
             else:
                 # Use parallel saving for non-HDF5 format
                 saved_count = utils.save_clickmaps_parallel(
