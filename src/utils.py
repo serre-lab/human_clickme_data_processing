@@ -1757,23 +1757,37 @@ def process_all_maps_multi_thresh_gpu(
             num_sub_batches = (num_maps + sub_batch_size - 1) // sub_batch_size
             
             processed_maps = []
-            for sub_idx in range(num_sub_batches):
-                sub_start = sub_idx * sub_batch_size
-                sub_end = min(sub_start + sub_batch_size, num_maps)
+            # Group maps by size to handle different dimensions
+            size_groups = {}
+            for i, map_tensor in enumerate(flattened_maps):
+                size_key = tuple(map_tensor.shape)
+                if size_key not in size_groups:
+                    size_groups[size_key] = []
+                size_groups[size_key].append((i, map_tensor))
+            
+            # Process each size group separately
+            processed_maps = [None] * len(flattened_maps)  # Pre-allocate to maintain order
+            for size, tensors in size_groups.items():
+                indices = [t[0] for t in tensors]
+                size_tensors = [t[1] for t in tensors]
                 
-                # Get maps for this sub-batch
-                sub_batch_maps = flattened_maps[sub_start:sub_end]
-                
-                # Concatenate and process
-                sub_batch_tensor = torch.cat(sub_batch_maps, dim=0).unsqueeze(1).to('cuda')
-                blurred_tensor = convolve(sub_batch_tensor, kernel, double_conv=True)
-                
-                # Store processed maps
-                processed_maps.extend(blurred_tensor.squeeze(1).cpu())
-                
-                # Clean up GPU memory
-                del sub_batch_tensor, blurred_tensor
-                torch.cuda.empty_cache()
+                # Process this size group in sub-batches
+                for sub_idx in range(0, len(size_tensors), sub_batch_size):
+                    sub_end = min(sub_idx + sub_batch_size, len(size_tensors))
+                    sub_batch = size_tensors[sub_idx:sub_end]
+                    sub_indices = indices[sub_idx:sub_end]
+                    
+                    # Concatenate and process tensors of the same size
+                    sub_batch_tensor = torch.cat(sub_batch, dim=0).unsqueeze(1).to('cuda')
+                    blurred_tensor = convolve(sub_batch_tensor, kernel, double_conv=True)
+                    
+                    # Store processed maps at their original positions
+                    for j, idx in enumerate(sub_indices):
+                        processed_maps[idx] = blurred_tensor[j].squeeze(0).cpu()
+                    
+                    # Clean up GPU memory
+                    del sub_batch_tensor, blurred_tensor
+                    torch.cuda.empty_cache()
             
             # Reconstruct the original tensor structures
             for i, tensor_shape in enumerate(original_shapes):
@@ -1783,15 +1797,19 @@ def process_all_maps_multi_thresh_gpu(
                 img_map_indices = [j for j, idx in enumerate(map_indices) if idx == batch_img_idx]
                 img_maps = [processed_maps[j] for j in img_map_indices]
                 
-                # Stack them back to original shape
-                stacked_maps = torch.stack(img_maps, dim=0)
-                
-                # Verify shape matches the original
-                if stacked_maps.shape != tensor_shape:
-                    print(f"Warning: Reconstructed shape {stacked_maps.shape} doesn't match original {tensor_shape}")
-                
-                # Update the original tensor with processed maps
-                all_clickmaps[batch_img_idx] = stacked_maps.numpy()
+                # For variable-sized maps, we can't use stack - store as a list
+                if len(set(m.shape for m in img_maps)) > 1:
+                    all_clickmaps[batch_img_idx] = img_maps
+                else:
+                    # Stack them back to original shape if all same size
+                    stacked_maps = torch.stack(img_maps, dim=0)
+                    
+                    # Verify shape matches the original
+                    if stacked_maps.shape != tensor_shape:
+                        print(f"Warning: Reconstructed shape {stacked_maps.shape} doesn't match original {tensor_shape}")
+                    
+                    # Update the original tensor with processed maps
+                    all_clickmaps[batch_img_idx] = stacked_maps.numpy()
             
             # Clean up
             del processed_maps, flattened_maps, map_indices
