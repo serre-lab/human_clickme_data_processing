@@ -103,7 +103,7 @@ if __name__ == "__main__":
     
     # Setup HDF5 file if needed
     hdf5_path = None
-    if 0:  # output_format == "hdf5":
+    if output_format == "hdf5":
         # Print optimization settings
         print("\nProcessing settings:")
         print(f"- Dataset size: {total_maps} maps, {total_unique_images} images")
