@@ -1680,6 +1680,7 @@ def process_all_maps_multi_thresh_gpu(
         if return_before_blur:
             shapes = [m.shape for m in bin_clickmaps]
             if len(set(str(s) for s in shapes)) > 1:
+                import pdb; pdb.set_trace()
                 print(f"Warning: Inconsistent shapes for {key}: {shapes}")
                 continue
         
