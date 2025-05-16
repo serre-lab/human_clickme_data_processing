@@ -27,7 +27,6 @@ def auc(test_map, reference_map, thresholds=100):
     thresholds = np.linspace(0, 1, thresholds)
     
     # Calculate IOU at each threshold pair
-    import pdb; pdb.set_trace()
     for threshold in thresholds:
         test_binary = test_map > threshold
         ref_binary = reference_map > threshold
