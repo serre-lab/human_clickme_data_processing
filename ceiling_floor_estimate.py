@@ -40,6 +40,54 @@ def auc(test_map, reference_map, thresholds=100):
     return np.trapezoid(ious, x=thresholds) if len(thresholds) > 1 else np.mean(ious)
 
 
+def rankorder(test_map, reference_map, threshold=0.):
+    """
+    1. Rank order the test map.
+    2. Binarize the reference map to get a mask of locations that we look at
+    3. Average test map ranks within the reference map
+    
+    Parameters:
+    -----------
+    test_map : numpy.ndarray
+        The test map to be rank ordered
+    reference_map : numpy.ndarray
+        The reference map to be binarized
+    threshold : float, optional
+        Threshold to binarize the reference map, default is 0.5
+        
+    Returns:
+    --------
+    float
+        The average rank of test map values within the reference map mask
+    """
+    # Normalize the reference map
+    reference_map = reference_map / reference_map.max()
+    
+    # Binarize the reference map to create a mask
+    mask = reference_map > threshold
+    
+    # Get flat indices of non-zero elements in mask
+    mask_indices = np.where(mask.flatten())[0]
+    
+    if mask_indices.size == 0:
+        return 0.0  # Return 0 if no pixels are in the mask
+    
+    # Get the flattened test map
+    flat_test_map = test_map.flatten()
+    
+    # Rank order the test map (higher values get higher ranks)
+    # Using argsort of argsort gives ranks starting from 0
+    ranks = np.argsort(np.argsort(-flat_test_map))
+    
+    # Normalize ranks to [0, 1]
+    normalized_ranks = ranks / (len(ranks) - 1) if len(ranks) > 1 else ranks
+    
+    # Calculate mean rank within mask
+    mean_rank = normalized_ranks[mask_indices].mean()
+    
+    return mean_rank
+
+
 def compute_correlation_batch(batch_indices, all_clickmaps, metric="auc", n_iterations=10, device='cuda', blur_size=11, blur_sigma=1.5, floor=False):
     """Compute split-half correlations for a batch of clickmaps in parallel"""
     batch_results = []
