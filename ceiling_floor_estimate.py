@@ -37,6 +37,7 @@ def auc(test_map, reference_map, thresholds=100):
     
     # Return the area under the curve (trapezoidal integration)
     # We're integrating over normalized threshold range [0,1]
+    import pdb; pdb.set_trace()
     return np.trapz(ious, dx=1.0/thresholds) if len(thresholds) > 1 else np.mean(ious)
 
 
@@ -337,6 +338,7 @@ if __name__ == "__main__":
         n_jobs = adjusted_n_jobs
     
     # Process correlation batches in parallel
+    n_jobs = 1
     ceiling_results = Parallel(n_jobs=n_jobs)(
         delayed(compute_correlation_batch)(
             batch_indices=batch,
