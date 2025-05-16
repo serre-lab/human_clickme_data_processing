@@ -37,8 +37,7 @@ def auc(test_map, reference_map, thresholds=100):
     
     # Return the area under the curve (trapezoidal integration)
     # We're integrating over normalized threshold range [0,1]
-    import pdb; pdb.set_trace()
-    return np.trapz(ious, dx=1.0/thresholds) if len(thresholds) > 1 else np.mean(ious)
+    return np.trapz(ious, x=thresholds) if len(thresholds) > 1 else np.mean(ious)
 
 
 def compute_correlation_batch(batch_indices, all_clickmaps, metric="auc", n_iterations=10, device='cuda', blur_size=11, blur_sigma=1.5, floor=False):
