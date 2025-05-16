@@ -18,14 +18,18 @@ import resource  # Add resource module for file descriptor limits
 def auc(test_map, reference_map, thresholds=100):
     """Compute the area under the IOU curve for a test map and a reference map"""
     ious = []
-    # Create evenly spaced thresholds from 0 to max value
-    test_thresholds = np.linspace(0, test_map.max(), thresholds)
-    reference_thresholds = np.linspace(0, reference_map.max(), thresholds)
+
+    # Normalize each map to [0,1]
+    test_map = test_map / test_map.max()
+    reference_map = reference_map / reference_map.max()
+
+    # Create evenly spaced thresholds from 0 to 1
+    thresholds = np.linspace(0, 1, thresholds)
     
     # Calculate IOU at each threshold pair
-    for test_threshold, reference_threshold in zip(test_thresholds, reference_thresholds):
-        test_binary = test_map > test_threshold
-        ref_binary = reference_map > reference_threshold
+    for threshold in thresholds:
+        test_binary = test_map > threshold
+        ref_binary = reference_map > threshold
         intersection = np.sum(np.logical_and(test_binary, ref_binary))
         union = np.sum(np.logical_or(test_binary, ref_binary))
         iou = intersection / union if union > 0 else 0.0
