@@ -76,10 +76,12 @@ def rankorder(test_map, reference_map, threshold=0.):
     flat_test_map = test_map.flatten()
     
     # Rank order the test map (higher values get higher ranks)
-    # Using argsort of argsort gives ranks starting from 0
-    ranks = np.argsort(np.argsort(-flat_test_map))
+    # First argsort finds positions in sorted order
+    # Second argsort converts those positions to ranks
+    # We use flat_test_map directly (not negated) to make higher values = higher ranks
+    ranks = np.argsort(np.argsort(flat_test_map))
     
-    # Normalize ranks to [0, 1]
+    # Normalize ranks to [0, 1] where 1 represents the highest value
     normalized_ranks = ranks / (len(ranks) - 1) if len(ranks) > 1 else ranks
     
     # Calculate mean rank within mask
@@ -378,11 +380,11 @@ if __name__ == "__main__":
     indices = list(range(num_clickmaps))
     batches = [indices[i:i+correlation_batch_size] for i in range(0, len(indices), correlation_batch_size)]
     
-    # Reduce the number of jobs if there are many batches to prevent too many files open
-    adjusted_n_jobs = min(n_jobs, max(1, 20 // len(batches) + 1))
-    if adjusted_n_jobs < n_jobs:
-        print(f"Reducing parallel jobs from {n_jobs} to {adjusted_n_jobs} to prevent 'too many files open' error")
-        n_jobs = adjusted_n_jobs
+    # # Reduce the number of jobs if there are many batches to prevent too many files open
+    # adjusted_n_jobs = min(n_jobs, max(1, 20 // len(batches) + 1))
+    # if adjusted_n_jobs < n_jobs:
+    #     print(f"Reducing parallel jobs from {n_jobs} to {adjusted_n_jobs} to prevent 'too many files open' error")
+    #     n_jobs = adjusted_n_jobs
     
     # Process correlation batches in parallel
     ceiling_results = Parallel(n_jobs=n_jobs)(
