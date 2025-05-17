@@ -166,15 +166,8 @@ if __name__ == "__main__":
     # Add command line arguments
     parser = argparse.ArgumentParser(description="Process clickme data for modeling")
     parser.add_argument('config', nargs='?', help='Path to config file')
-    parser.add_argument('--debug', action='store_true', help='Enable additional debug output')
-    parser.add_argument('--verbose', action='store_true', help='Show detailed progress for GPU processing')
-    parser.add_argument('--gpu-batch-size', type=int, default=None, help='Override GPU batch size')
-    parser.add_argument('--max-workers', type=int, default=None, help='Maximum number of CPU workers')
+    parser.add_argument('--metric', type=str, default=None, help='Metric to use for correlation')
     parser.add_argument('--profile', action='store_true', help='Enable performance profiling')
-    parser.add_argument('--filter-duplicates', action='store_false', help='Filter duplicate participant submissions, keeping only the first submission per image')
-    parser.add_argument('--max-open-files', type=int, default=4096, help='Maximum number of open files allowed')
-    parser.add_argument('--correlation-batch-size', type=int, default=None, help='Override correlation batch size')
-    parser.add_argument('--correlation-jobs', type=int, default=None, help='Override number of parallel jobs for correlation')
     args = parser.parse_args()
     
     # Increase file descriptor limit
@@ -205,6 +198,9 @@ if __name__ == "__main__":
     # Add filter_duplicates to config if not present
     if "filter_duplicates" not in config:
         config["filter_duplicates"] = args.filter_duplicates
+
+    if args.metric is not None:
+        config["metric"] = args.metric
     
     # Load clickme data
     print(f"Loading clickme data...")
