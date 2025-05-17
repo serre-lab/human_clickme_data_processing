@@ -23,7 +23,7 @@ mask_dir: null
 mask_threshold: 0.
 max_clicks: 1000000  # Set to an impossibly high number to keep all maps
 metadata_file: false
-metric: rankorder
+metric: auc
 min_clicks: 1
 min_subjects: 6
 n_jobs: -1

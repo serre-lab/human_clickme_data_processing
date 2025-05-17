@@ -15,7 +15,7 @@ from scipy.stats import spearmanr
 import resource  # Add resource module for file descriptor limits
 
 
-def auc(test_map, reference_map, thresholds=100):
+def auc(test_map, reference_map, thresholds=1):
     """Compute the area under the IOU curve for a test map and a reference map"""
     ious = []
 
@@ -24,7 +24,10 @@ def auc(test_map, reference_map, thresholds=100):
     reference_map = reference_map / reference_map.max()
 
     # Create evenly spaced thresholds from 0 to 1
-    thresholds = np.linspace(0, 1, thresholds)
+    if thresholds == 1:
+        thresholds = [0]
+    else:
+        thresholds = np.linspace(0, 1, thresholds)
     
     # Calculate IOU at each threshold pair
     for threshold in thresholds:
