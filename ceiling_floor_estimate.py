@@ -137,8 +137,12 @@ def compute_correlation_batch(batch_indices, all_clickmaps, metric="auc", n_iter
                 # Use scipy's spearman correlation
                 if metric == "auc":
                     score = auc(test_map.flatten(), reference_map.flatten())
-                else:
+                elif metric == "rankorder":
+                    score = rankorder(test_map.flatten(), reference_map.flatten())
+                elif metric == "spearman":
                     score, _ = spearmanr(test_map.flatten(), reference_map.flatten())
+                else:
+                    raise ValueError(f"Invalid metric: {metric}")
                 rand_corrs.append(score)
                 
                 # Explicitly free memory
