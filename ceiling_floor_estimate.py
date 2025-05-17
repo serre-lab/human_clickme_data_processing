@@ -15,7 +15,7 @@ from scipy.stats import spearmanr
 import resource  # Add resource module for file descriptor limits
 
 
-def auc(test_map, reference_map, thresholds=1):
+def auc(test_map, reference_map, thresholds=10):
     """Compute the area under the IOU curve for a test map and a reference map"""
     ious = []
 
