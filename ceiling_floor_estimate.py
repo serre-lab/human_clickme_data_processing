@@ -201,6 +201,7 @@ if __name__ == "__main__":
 
     if args.metric is not None:
         config["metric"] = args.metric
+        print(f"Overwriting metric to {args.metric}")
     
     # Load clickme data
     print(f"Loading clickme data...")
