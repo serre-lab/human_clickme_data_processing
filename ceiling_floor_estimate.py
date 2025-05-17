@@ -170,6 +170,8 @@ if __name__ == "__main__":
     parser.add_argument('--profile', action='store_true', help='Enable performance profiling')
     parser.add_argument('--filter-duplicates', action='store_false', help='Filter duplicate participant submissions, keeping only the first submission per image')
     parser.add_argument('--max-open-files', type=int, default=4096, help='Maximum number of open files allowed')
+    parser.add_argument('--correlation-batch-size', type=int, default=None, help='Override correlation batch size')
+    parser.add_argument('--correlation-jobs', type=int, default=None, help='Override number of parallel jobs for correlation')
     args = parser.parse_args()
     
     # Increase file descriptor limit
@@ -364,6 +366,21 @@ if __name__ == "__main__":
     n_jobs = config["n_jobs"]
     gpu_batch_size = config["gpu_batch_size"]
 
+    # Override configuration with command-line arguments if provided
+    if args.correlation_batch_size:
+        correlation_batch_size = args.correlation_batch_size
+        print(f"Overriding correlation batch size: {correlation_batch_size}")
+    else:
+        # Increase default batch size to speed up processing
+        correlation_batch_size = max(correlation_batch_size, 16)
+        
+    if args.correlation_jobs:
+        n_jobs = args.correlation_jobs
+        print(f"Overriding correlation jobs: {n_jobs}")
+    else:
+        # Increase default number of jobs
+        n_jobs = max(n_jobs, min(16, os.cpu_count()))
+    
     # Check if GPU is available
     if torch.cuda.is_available():
         device = 'cuda'
