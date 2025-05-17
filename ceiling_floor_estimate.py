@@ -387,7 +387,7 @@ if __name__ == "__main__":
     #     n_jobs = adjusted_n_jobs
     
     # Process correlation batches in parallel
-    ceiling_results = Parallel(n_jobs=n_jobs)(
+    ceiling_results = Parallel(n_jobs=n_jobs, prefer="threads")(
         delayed(compute_correlation_batch)(
             batch_indices=batch,
             all_clickmaps=all_clickmaps,
@@ -402,7 +402,7 @@ if __name__ == "__main__":
     # Force garbage collection between major operations
     gc.collect()
     
-    floor_results = Parallel(n_jobs=n_jobs)(
+    floor_results = Parallel(n_jobs=n_jobs, prefer="threads")(
         delayed(compute_correlation_batch)(
             batch_indices=batch,
             all_clickmaps=all_clickmaps,
