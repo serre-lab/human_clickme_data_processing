@@ -453,7 +453,7 @@ if __name__ == "__main__":
 
     # Save the results
     np.savez(
-        os.path.join(output_dir, f"{config['experiment_name']}_ceiling_floor_results.npz"),
+        os.path.join(output_dir, f"{config['experiment_name']}_{config['metric']}_ceiling_floor_results.npz"),
         mean_ceiling=mean_ceiling,
         mean_floor=mean_floor,
         all_ceilings=all_ceilings,
