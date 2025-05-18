@@ -115,6 +115,17 @@ def compute_correlation_batch(batch_indices, all_clickmaps, metric="auc", n_iter
                     rand_perm = np.random.permutation(len(all_clickmaps[rand_i][k]))
                     sh = rand_perm[(n // 2):]
                     reference_map = all_clickmaps[rand_i][k][sh].mean(0)  # Take maps from the same level in a random other image
+                    
+                    # Ensure reference_map has the same shape as test_map
+                    if reference_map.shape != test_map.shape:
+                        # Resize reference_map to match test_map's shape
+                        reference_map_resized = np.zeros(test_map.shape, dtype=reference_map.dtype)
+                        # Copy the smaller of the dimensions for each axis
+                        min_height = min(reference_map.shape[0], test_map.shape[0])
+                        min_width = min(reference_map.shape[1], test_map.shape[1])
+                        reference_map_resized[:min_height, :min_width] = reference_map[:min_height, :min_width]
+                        reference_map = reference_map_resized
+                    
                     reference_map = utils.blur_maps_for_cf(
                         reference_map[None, None],
                         blur_size,
@@ -424,7 +435,8 @@ if __name__ == "__main__":
             n_iterations=null_iterations,
             device=device,
             blur_size=config["blur_size"],
-            blur_sigma=config.get("blur_sigma", config["blur_size"])
+            blur_sigma=config.get("blur_sigma", config["blur_size"]),
+            floor=False
         ) for batch in tqdm(batches, desc="Computing ceilings")
     )
     
@@ -438,9 +450,9 @@ if __name__ == "__main__":
             metric=metric,
             n_iterations=null_iterations,
             device=device,
-            floor=True,
             blur_size=config["blur_size"],
-            blur_sigma=config.get("blur_sigma", config["blur_size"])
+            blur_sigma=config.get("blur_sigma", config["blur_size"]),
+            floor=True
         ) for batch in tqdm(batches, desc="Computing floors")
     )
     
