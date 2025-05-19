@@ -25,10 +25,11 @@ def auc(test_map, reference_map, thresholds=10, metric="mAP"):
     reference_map = reference_map / reference_map.max()
 
     # Create evenly spaced thresholds from 0 to 1
-    if thresholds == 1:
-        thresholds = [0]
-    else:
-        thresholds = np.linspace(0, 1, thresholds)
+    # if thresholds == 1:
+    #     thresholds = [0]
+    # else:
+    #     thresholds = np.linspace(0, 1, thresholds)
+    threshold = np.arange(0.05, 1., 0.05)
     
     # Calculate IOU at each threshold pair
     for threshold in thresholds:
