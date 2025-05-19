@@ -443,7 +443,7 @@ if __name__ == "__main__":
             blur_size=config["blur_size"],
             blur_sigma=config.get("blur_sigma", config["blur_size"]),
             floor=False
-        ) for batch in tqdm(batches, desc="Computing ceilings")
+        ) for batch in tqdm(batches, desc="Computing ceiling batches", total=len(batches))
     )
     
     # Force garbage collection between major operations
@@ -459,7 +459,7 @@ if __name__ == "__main__":
             blur_size=config["blur_size"],
             blur_sigma=config.get("blur_sigma", config["blur_size"]),
             floor=True
-        ) for batch in tqdm(batches, desc="Computing floors")
+        ) for batch in tqdm(batches, desc="Computing floor batches", total=len(batches))
     )
     
     # Flatten the results
