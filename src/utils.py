@@ -1,5 +1,6 @@
 import re
 import os
+import sys
 import torch
 import yaml
 import numpy as np
@@ -1682,6 +1683,9 @@ def process_all_maps_multi_thresh_gpu(
             if len(set(str(s) for s in shapes)) > 1:
                 # print(f"Warning: Inconsistent shapes for {key}: {shapes}, fixing.")
                 min_shape = min([s[0] for s in shapes])
+                if min_shape <= 1:
+                    print(f"Minimum shape is 0 for {key}")
+                    sys.exit()
                 bin_clickmaps = [m[:min_shape] for m in bin_clickmaps]
                 # continue
 
