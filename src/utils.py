@@ -1348,20 +1348,20 @@ def save_clickmaps_to_hdf5(all_clickmaps, final_keep_index, hdf5_path, clickmap_
                     f["clickmaps"].create_dataset(
                         dataset_name,
                         data=hmp,
+                        bin_clickmaps=bin_clickmaps,
                         **compression_kwargs
                     )
                 else:
                     f["clickmaps"].create_dataset(
                         dataset_name,
-                        data=hmp
+                        data=hmp,
+                        bin_clickmaps=bin_clickmaps
                     )
                 
                 # Add metadata about the dataset
                 ds = f["clickmaps"][dataset_name]
                 ds.attrs["shape"] = hmp.shape
                 ds.attrs["original_path"] = img_name
-                import pdb;pdb.set_trace()
-                ds.attrs["clickmap_bins"] = bin_clickmaps
                 saved_count += 1
             
             # Update metadata after each batch
