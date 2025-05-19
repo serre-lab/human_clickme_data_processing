@@ -1360,6 +1360,7 @@ def save_clickmaps_to_hdf5(all_clickmaps, final_keep_index, hdf5_path, clickmap_
                 ds = f["clickmaps"][dataset_name]
                 ds.attrs["shape"] = hmp.shape
                 ds.attrs["original_path"] = img_name
+                import pdb;pdb.set_trace()
                 ds.attrs["clickmap_bins"] = bin_clickmaps
                 saved_count += 1
             
