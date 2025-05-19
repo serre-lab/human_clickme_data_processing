@@ -1691,7 +1691,7 @@ def process_all_maps_multi_thresh_gpu(
         keep_index.append(key)
         final_clickmaps[key] = trials
         click_counts[key] = len(trials)  # Store total clicks for this image
-        clickmap_bins[key] = bin_clickmaps
+        clickmap_bins[key] = bins
         # Add to all_clickmaps with the appropriate method
         if return_before_blur:
             all_clickmaps.append(np.stack(bin_clickmaps, axis=0))
