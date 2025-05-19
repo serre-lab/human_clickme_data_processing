@@ -21,8 +21,8 @@ def auc(test_map, reference_map, thresholds=10, metric="iou"):
     scores = []
 
     # Normalize each map to [0,1]
-    test_map = test_map / test_map.max()
-    reference_map = reference_map / reference_map.max()
+    test_map = (test_map - test_map.min()) / (test_map.max() - test_map.min())
+    reference_map = (reference_map - reference_map.min()) / (reference_map.max() - reference_map.min())
 
     # Create evenly spaced thresholds from 0 to 1
     # if thresholds == 1:
