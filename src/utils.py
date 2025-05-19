@@ -1273,7 +1273,7 @@ def save_clickmaps_parallel(all_clickmaps, final_keep_index, output_dir, experim
     
     return saved_count
 
-def save_clickmaps_to_hdf5(all_clickmaps, final_keep_index, hdf5_path, n_jobs=1, compression="gzip", compression_level=0):
+def save_clickmaps_to_hdf5(all_clickmaps, final_keep_index, hdf5_path, clickmap_bins, n_jobs=1, compression="gzip", compression_level=0):
     """
     Save clickmaps to HDF5 file safely without running into "Too many open files" error.
     
@@ -1291,7 +1291,8 @@ def save_clickmaps_to_hdf5(all_clickmaps, final_keep_index, hdf5_path, n_jobs=1,
         Compression algorithm to use ("gzip", "lzf", etc.). If None, no compression is used.
     compression_level : int
         Compression level (1-9, higher = more compression but slower)
-        
+    clickmap_bins : dict
+        Dictionary of clickmap bins
     Returns:
     --------
     int
@@ -1337,7 +1338,7 @@ def save_clickmaps_to_hdf5(all_clickmaps, final_keep_index, hdf5_path, n_jobs=1,
                 
                 # Get the clickmap
                 hmp = all_clickmaps[i]
-                
+                bin_clickmaps = clickmap_bins[img_name]
                 # Check if dataset already exists and delete it if it does
                 if dataset_name in f["clickmaps"]:
                     del f["clickmaps"][dataset_name]
@@ -1359,7 +1360,7 @@ def save_clickmaps_to_hdf5(all_clickmaps, final_keep_index, hdf5_path, n_jobs=1,
                 ds = f["clickmaps"][dataset_name]
                 ds.attrs["shape"] = hmp.shape
                 ds.attrs["original_path"] = img_name
-                    
+                ds.attrs["clickmap_bins"] = bin_clickmaps
                 saved_count += 1
             
             # Update metadata after each batch
@@ -1393,8 +1394,6 @@ def save_clickmaps_to_hdf5(all_clickmaps, final_keep_index, hdf5_path, n_jobs=1,
         print(f"Warning: Could not update final HDF5 metadata: {e}")
     
     return saved_count
-
-
 
 
 def get_memory_usage():
