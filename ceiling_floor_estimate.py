@@ -102,7 +102,7 @@ def rankorder(test_map, reference_map, threshold=0.):
 def compute_correlation_batch(batch_indices, all_clickmaps, metric="auc", n_iterations=10, device='cuda', blur_size=11, blur_sigma=1.5, floor=False):
     """Compute split-half correlations for a batch of clickmaps in parallel"""
     batch_results = []
-    for i in batch_indices:
+    for i in tqdm(batch_indices, desc="Computing split-half correlations", total=len(batch_indices)):
         clickmaps = all_clickmaps[i]
         level_corrs = []
         if floor:
