@@ -1648,7 +1648,6 @@ def process_all_maps_multi_thresh_gpu(
         lens = [len(x) for x in trials]
         max_count = max(lens)
         min_count = max(int(min(lens) * .1), 1)
-        import pdb;pdb.set_trace()
         bins = np.linspace(min_count, max_count + 1, thresholds).astype(int)
         bin_clickmaps = []
         
