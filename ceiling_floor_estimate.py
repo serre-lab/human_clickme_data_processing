@@ -434,6 +434,7 @@ if __name__ == "__main__":
     #     n_jobs = adjusted_n_jobs
     
     # Process correlation batches in parallel
+    n_jobs = 1
     ceiling_results = Parallel(n_jobs=n_jobs, prefer="threads")(
         delayed(compute_correlation_batch)(
             batch_indices=batch,
