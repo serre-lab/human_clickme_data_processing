@@ -13,11 +13,12 @@ import torch
 from joblib import Parallel, delayed
 from scipy.stats import spearmanr
 import resource  # Add resource module for file descriptor limits
+from sklearn.metrics import average_precision_score
 
 
-def auc(test_map, reference_map, thresholds=10):
+def auc(test_map, reference_map, thresholds=10, metric="mAP"):
     """Compute the area under the IOU curve for a test map and a reference map"""
-    ious = []
+    scores = []
 
     # Normalize each map to [0,1]
     test_map = test_map / test_map.max()
@@ -31,12 +32,17 @@ def auc(test_map, reference_map, thresholds=10):
     
     # Calculate IOU at each threshold pair
     for threshold in thresholds:
-        test_binary = test_map > threshold
         ref_binary = reference_map > threshold
-        intersection = np.sum(np.logical_and(test_binary, ref_binary))
-        union = np.sum(np.logical_or(test_binary, ref_binary))
-        iou = intersection / union if union > 0 else 0.0
-        ious.append(iou)
+        if metric.lower() == "map":
+            score = average_precision_score(ref_binary, test_map)
+        elif metric.lower() == "iou":
+            test_binary = test_map > threshold
+            intersection = np.sum(np.logical_and(test_binary, ref_binary))
+            union = np.sum(np.logical_or(test_binary, ref_binary))
+            score = intersection / union if union > 0 else 0.0
+        else:
+            raise ValueError(f"Invalid metric: {metric}")
+        scores.append(score)
     
     # Return the area under the curve (trapezoidal integration)
     # We're integrating over normalized threshold range [0,1]
