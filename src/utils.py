@@ -1637,6 +1637,7 @@ def process_all_maps_multi_thresh_gpu(
     keep_index = []
     categories = []
     final_clickmaps = {}
+    clickmap_bins = {}
     click_counts = {}  # Track click counts for each image
     
     # Preprocess all clickmaps first to binary maps
@@ -1694,7 +1695,7 @@ def process_all_maps_multi_thresh_gpu(
         keep_index.append(key)
         final_clickmaps[key] = trials
         click_counts[key] = len(trials)  # Store total clicks for this image
-            
+        clickmap_bins[key] = bin_clickmaps
         # Add to all_clickmaps with the appropriate method
         if return_before_blur:
             all_clickmaps.append(np.stack(bin_clickmaps, axis=0))
@@ -1706,7 +1707,7 @@ def process_all_maps_multi_thresh_gpu(
         return {}, [], [], [], {}
     
     if return_before_blur:
-        return final_clickmaps, all_clickmaps, categories, keep_index, click_counts
+        return final_clickmaps, all_clickmaps, categories, keep_index, click_counts, clickmap_bins
     
     # Step 2: Prepare for batch blurring on GPU
     total_maps = len(all_clickmaps)
@@ -1826,7 +1827,7 @@ def process_all_maps_multi_thresh_gpu(
     del kernel
     torch.cuda.empty_cache()
     
-    return final_clickmaps, all_clickmaps, categories, keep_index, click_counts
+    return final_clickmaps, all_clickmaps, categories, keep_index, click_counts, clickmap_bins
 
 
 def blur_maps_for_cf(all_clickmaps, blur_size, blur_sigma, gpu_batch_size):

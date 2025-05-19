@@ -224,7 +224,7 @@ if __name__ == "__main__":
             
             # Process this batch of clickmaps with multi-thresh GPU
             print(f"Processing batch with GPU (batch size: {config['gpu_batch_size']})...")
-            batch_final_clickmaps, batch_all_clickmaps, batch_categories, batch_final_keep_index, batch_click_counts = utils.process_all_maps_multi_thresh_gpu(
+            batch_final_clickmaps, batch_all_clickmaps, batch_categories, batch_final_keep_index, batch_click_counts, batch_clickmap_bins = utils.process_all_maps_multi_thresh_gpu(
                 clickmaps=batch_clickmaps,
                 config=config,
                 metadata=metadata,
@@ -268,7 +268,8 @@ if __name__ == "__main__":
                         hdf5_path=batch_hdf5_path,
                         n_jobs=config["n_jobs"],
                         compression=config.get("hdf5_compression"),
-                        compression_level=config.get("hdf5_compression_level", 0)
+                        compression_level=config.get("hdf5_compression_level", 0),
+                        clickmap_bins=batch_clickmap_bins
                     )
                     
                     # Also save individual NPY files for compatibility
@@ -290,7 +291,8 @@ if __name__ == "__main__":
                         hdf5_path=batch_hdf5_path,
                         n_jobs=config["n_jobs"],
                         compression=config.get("hdf5_compression"),
-                        compression_level=config.get("hdf5_compression_level", 0)
+                        compression_level=config.get("hdf5_compression_level", 0),
+                        clickmap_bins=batch_clickmap_bins
                     )
                     # Use parallel saving for non-HDF5 format
                     saved_count = utils.save_clickmaps_parallel(
@@ -356,6 +358,9 @@ if __name__ == "__main__":
         with open(os.path.join(output_dir, f"{config['experiment_name']}_click_counts.json"), 'w') as f:
             f.write(click_counts_json)
         
+        # Save clickmap bins
+        np.save(os.path.join(output_dir, config["processed_clickmap_bins"]), batch_clickmap_bins)
+
         # Save individual click counts to their own directory
         for img_name, count in all_click_counts.items():
             count_file = os.path.join(click_counts_dir, f"{img_name.replace('/', '_')}.npy")
@@ -372,7 +377,7 @@ if __name__ == "__main__":
     else:
         # Sequential processing for smaller datasets
         print(f"Processing with GPU in a single batch (batch size: {config['gpu_batch_size']})...")
-        final_clickmaps, all_clickmaps, categories, final_keep_index, click_counts = utils.process_all_maps_multi_thresh_gpu(
+        final_clickmaps, all_clickmaps, categories, final_keep_index, click_counts, clickmap_bins = utils.process_all_maps_multi_thresh_gpu(
             clickmaps=clickmaps,
             config=config,
             metadata=metadata,
@@ -422,7 +427,8 @@ if __name__ == "__main__":
                     hdf5_path=hdf5_path,
                     n_jobs=config["n_jobs"],
                     compression=config.get("hdf5_compression"),
-                    compression_level=config.get("hdf5_compression_level", 0)
+                    compression_level=config.get("hdf5_compression_level", 0),
+                    clickmap_bins=clickmap_bins
                 )
                 
                 # Also save individual NPY files for compatibility
@@ -444,7 +450,8 @@ if __name__ == "__main__":
                     hdf5_path=hdf5_path,
                     n_jobs=config["n_jobs"],
                     compression=config.get("hdf5_compression"),
-                    compression_level=config.get("hdf5_compression_level", 0)
+                    compression_level=config.get("hdf5_compression_level", 0),
+                    clickmap_bins=clickmap_bins
                 )
                 saved_count = utils.save_clickmaps_parallel(
                     all_clickmaps=all_clickmaps,
@@ -469,7 +476,10 @@ if __name__ == "__main__":
             medians_json = json.dumps(medians, indent=4)
             with open(os.path.join(output_dir, config["processed_medians"]), 'w') as f:
                 f.write(medians_json)
-    
+
+            # Save clickmap bins
+            np.save(os.path.join(output_dir, config["processed_clickmap_bins"]), clickmap_bins)
+        
     # Process visualization for display images if needed
     if config["display_image_keys"]:
         if config["display_image_keys"] == "auto":
