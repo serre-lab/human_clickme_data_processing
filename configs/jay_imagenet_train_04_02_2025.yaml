@@ -33,6 +33,7 @@ participant_filter: false
 percentile_thresh: 50
 preprocess_db_data: true
 processed_clickme_file: jay_imagenet_train_combined_04_02_2025_processed.npz
+processed_clickmap_bins: jay_imagenet_train_combined_04_02_2025_clickmap_bins.npy
 processed_medians: jay_imagenet_train_combined_04_02_2025_medians.json
 remove_string: imagenet/train/
 output_format: "hdf5"
