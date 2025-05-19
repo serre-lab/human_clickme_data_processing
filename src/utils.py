@@ -1338,7 +1338,6 @@ def save_clickmaps_to_hdf5(all_clickmaps, final_keep_index, hdf5_path, clickmap_
                 
                 # Get the clickmap
                 hmp = all_clickmaps[i]
-                import pdb;pdb.set_trace()
                 bin_clickmaps = clickmap_bins[img_name]
                 # Check if dataset already exists and delete it if it does
                 if dataset_name in f["clickmaps"]:
