@@ -429,6 +429,14 @@ if __name__ == "__main__":
                 )
             else:
                 # Use parallel saving for non-HDF5 format
+                saved_count = utils.save_clickmaps_to_hdf5(
+                    all_clickmaps=all_clickmaps,
+                    final_keep_index=final_keep_index,
+                    hdf5_path=hdf5_path,
+                    n_jobs=config["n_jobs"],
+                    compression=config.get("hdf5_compression"),
+                    compression_level=config.get("hdf5_compression_level", 0)
+                )
                 saved_count = utils.save_clickmaps_parallel(
                     all_clickmaps=all_clickmaps,
                     final_keep_index=final_keep_index,
