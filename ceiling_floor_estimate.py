@@ -16,7 +16,7 @@ import resource  # Add resource module for file descriptor limits
 from sklearn.metrics import average_precision_score
 
 
-def auc(test_map, reference_map, thresholds=10, metric="mAP"):
+def auc(test_map, reference_map, thresholds=10, metric="iou"):
     """Compute the area under the IOU curve for a test map and a reference map"""
     scores = []
 
