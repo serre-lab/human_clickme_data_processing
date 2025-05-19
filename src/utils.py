@@ -1343,21 +1343,17 @@ def save_clickmaps_to_hdf5(all_clickmaps, final_keep_index, hdf5_path, clickmap_
                 if dataset_name in f["clickmaps"]:
                     del f["clickmaps"][dataset_name]
                 
-                # Create the dataset with or without compression
-                if valid_compression:
-                    f["clickmaps"].create_dataset(
-                        dataset_name,
-                        data=hmp,
-                        bin_clickmaps=bin_clickmaps,
-                        **compression_kwargs
-                    )
-                else:
-                    f["clickmaps"].create_dataset(
-                        dataset_name,
-                        data=hmp,
-                        bin_clickmaps=bin_clickmaps
-                    )
+                # Create a group for this image's data
+                img_group = f["clickmaps"].create_group(dataset_name)
                 
+                # Create the main clickmap dataset
+                if valid_compression:
+                    img_group.create_dataset("clickmap", data=hmp, **compression_kwargs)
+                    img_group.create_dataset("bin_clickmaps", data=np.array(bin_clickmaps), **compression_kwargs)
+                else:
+                    img_group.create_dataset("clickmap", data=hmp)
+                    img_group.create_dataset("bin_clickmaps", data=np.array(bin_clickmaps)) 
+
                 # Add metadata about the dataset
                 ds = f["clickmaps"][dataset_name]
                 ds.attrs["shape"] = hmp.shape
