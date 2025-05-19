@@ -1680,7 +1680,7 @@ def process_all_maps_multi_thresh_gpu(
         if return_before_blur:
             shapes = [m.shape for m in bin_clickmaps]
             if len(set(str(s) for s in shapes)) > 1:
-                print(f"Warning: Inconsistent shapes for {key}: {shapes}, fixing.")
+                # print(f"Warning: Inconsistent shapes for {key}: {shapes}, fixing.")
                 min_shape = min([s[0] for s in shapes])
                 bin_clickmaps = [m[:min_shape] for m in bin_clickmaps]
                 # continue
