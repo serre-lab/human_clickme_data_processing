@@ -32,8 +32,8 @@ parallel_save: false
 participant_filter: false
 percentile_thresh: 50
 preprocess_db_data: true
-processed_clickme_file: jay_imagenet_val_combined_02_19_2025_processed.npz
-processed_clickmap_bins: jay_imagenet_val_combined_02_19_2025_clickmap_bins.npy
-processed_medians: jay_imagenet_val_combined_02_19_2025_medians.json
+processed_clickme_file: jay_imagenet_val_combined_04_02_2025_processed.npz
+processed_clickmap_bins: jay_imagenet_val_combined_04_02_2025_clickmap_bins.npy
+processed_medians: jay_imagenet_val_combined_04_02_2025_medians.json
 remove_string: imagenet/val/
 multi_thresh_gpu: true
