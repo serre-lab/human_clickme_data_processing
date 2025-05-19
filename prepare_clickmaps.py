@@ -283,6 +283,15 @@ if __name__ == "__main__":
                         file_inclusion_filter=config.get("file_inclusion_filter")
                     )
                 else:
+                    # Use optimized HDF5 saving with compression
+                    saved_count = utils.save_clickmaps_to_hdf5(
+                        all_clickmaps=batch_all_clickmaps,
+                        final_keep_index=batch_final_keep_index,
+                        hdf5_path=batch_hdf5_path,
+                        n_jobs=config["n_jobs"],
+                        compression=config.get("hdf5_compression"),
+                        compression_level=config.get("hdf5_compression_level", 0)
+                    )
                     # Use parallel saving for non-HDF5 format
                     saved_count = utils.save_clickmaps_parallel(
                         all_clickmaps=batch_all_clickmaps,
