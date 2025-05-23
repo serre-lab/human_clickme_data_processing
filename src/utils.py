@@ -1645,7 +1645,12 @@ def process_all_maps_multi_thresh_gpu(
         lens = [len(x) for x in trials]
         max_count = max(lens)
         min_count = max(int(min(lens) * .1), 1)
-        bins = np.linspace(min_count, max_count + 1, thresholds).astype(int)
+        # bins = np.linspace(min_count, max_count + 1, thresholds).astype(int)
+        mean_lens = int(np.mean(lens))
+        below_mean = np.linspace(mean_lens * .1, mean_lens + 1, thresholds // 2).astype(int)
+        above_mean = np.linspace(mean_lens, max_count + 1, thresholds // 2).astype(int)
+        bins = np.concatenate([below_mean, above_mean])
+        # bins = np.concatenate([below_mean, above_mean])
         bin_clickmaps = []
         
         for bin in bins:
@@ -1691,7 +1696,7 @@ def process_all_maps_multi_thresh_gpu(
         keep_index.append(key)
         final_clickmaps[key] = trials
         click_counts[key] = len(trials)  # Store total clicks for this image
-        clickmap_bins[key] = bins
+        clickmap_bins[key] = np.asarray(bins) * len(trials)
         # Add to all_clickmaps with the appropriate method
         if return_before_blur:
             all_clickmaps.append(np.stack(bin_clickmaps, axis=0))
