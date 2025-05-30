@@ -1475,10 +1475,12 @@ def process_all_maps_gpu(
         metadata=None, 
         create_clickmap_func=None, 
         fast_duplicate_detection=None,
-        average_maps=True
+        average_maps=True,
+        blur_sigma_function=None,
+        max_kernel_size=51
         ):
     """
-    Simplified function to blur clickmaps on GPU in batches
+    Simplified function to blur clickmaps on GPU in batches with adaptive kernel sizing
     """
     import torch
     from tqdm import tqdm
@@ -1494,6 +1496,10 @@ def process_all_maps_gpu(
     # Get GPU batch size for processing
     gpu_batch_size = config.get("gpu_batch_size", 4096)
     
+    # Set default blur_sigma_function if not provided
+    if blur_sigma_function is None:
+        blur_sigma_function = lambda x: x
+    
     print(f"Processing {len(clickmaps)} unique images with GPU (batch size: {gpu_batch_size})...")
     
     # Step 1: Prepare binary maps and average them
@@ -1505,6 +1511,7 @@ def process_all_maps_gpu(
     categories = []
     final_clickmaps = {}
     click_counts = {}  # Track click counts for each image
+    image_metadata = {}  # Track metadata for each processed image
     
     # Preprocess all clickmaps first to binary maps
     for key, trials in tqdm(clickmaps.items(), desc="Creating binary maps"):
@@ -1515,8 +1522,10 @@ def process_all_maps_gpu(
         if metadata and key in metadata:
             native_size = metadata[key]
             binary_maps = np.asarray([create_clickmap_func([trial], native_size[::-1]) for trial in trials])
+            image_metadata[key] = native_size
         else:
             binary_maps = np.asarray([create_clickmap_func([trial], tuple(image_shape)) for trial in trials])
+            image_metadata[key] = None
         
         # Count total clicks in each trial
         total_clicks_per_trial = len(binary_maps)
@@ -1541,61 +1550,93 @@ def process_all_maps_gpu(
         print("No valid clickmaps to process")
         return {}, [], [], {}, {}
     
-    # Step 2: Prepare for batch blurring on GPU
+    # Step 2: Prepare for batch blurring on GPU with adaptive kernel sizing
     total_maps = len(all_clickmaps)
-    print(f"Preparing to blur {total_maps} image clickmaps using GPU...")
+    print(f"Preparing to blur {total_maps} image clickmaps using GPU with adaptive kernel sizing...")
     
     # Convert all maps to tensors
     all_tensors = [torch.from_numpy(maps).float() for maps in all_clickmaps]
     
-    # Create circular kernel
-    if blur_size % 2 == 0:
-        adjusted_blur_size = blur_size + 1  # Ensure odd kernel size
-    else:
-        adjusted_blur_size = blur_size
+    # Group images by their required kernel size to batch efficiently
+    kernel_groups = {}
+    for idx, key in enumerate(keep_index):
+        native_size = image_metadata[key]
         
-    kernel = circle_kernel(adjusted_blur_size, blur_sigma, 'cuda')
+        if native_size is not None:
+            # Calculate adaptive kernel size
+            short_side = min(native_size)
+            scale = short_side / min(image_shape)
+            adj_blur_size = int(np.round(blur_size * scale))
+            if not adj_blur_size % 2:
+                adj_blur_size += 1
+            adj_blur_size = min(adj_blur_size, max_kernel_size)
+            adj_blur_sigma = blur_sigma_function(adj_blur_size)
+        else:
+            # Use default kernel size
+            adj_blur_size = blur_size if blur_size % 2 == 1 else blur_size + 1
+            adj_blur_sigma = blur_sigma
+        
+        kernel_key = (adj_blur_size, adj_blur_sigma)
+        if kernel_key not in kernel_groups:
+            kernel_groups[kernel_key] = []
+        kernel_groups[kernel_key].append(idx)
     
-    # Process in batches based on the GPU batch size
-    try:
-        torch.cat(all_tensors[:1000])
-        num_batches = (total_maps + gpu_batch_size - 1) // gpu_batch_size
-    except Exception as e:
-        # TODO: Pad all clickmaps to the same size, blur, then crop after.
-        num_batches = total_maps
-        gpu_batch_size = 1
+    print(f"Processing {len(kernel_groups)} different kernel sizes...")
     
-    print(f"Processing in {num_batches} batches of up to {gpu_batch_size} maps each...")
-    for batch_idx in tqdm(range(num_batches), desc="Processing GPU batches"):
-        # Get batch indices
-        start_idx = batch_idx * gpu_batch_size
-        end_idx = min(start_idx + gpu_batch_size, total_maps)
-        current_batch_size = end_idx - start_idx
+    # Process each kernel group separately
+    for (kernel_size, kernel_sigma), image_indices in tqdm(kernel_groups.items(), desc="Processing kernel groups"):
+        print(f"Processing {len(image_indices)} images with kernel size {kernel_size}, sigma {kernel_sigma}")
         
-        # Create batch tensor
-        batch_tensors = all_tensors[start_idx:end_idx]
-        batch_tensor = torch.cat(batch_tensors, dim=0).unsqueeze(1).to('cuda')
+        # Create kernel for this group
+        kernel = circle_kernel(kernel_size, kernel_sigma, 'cuda')
         
-        # Apply blurring to this batch
-        blurred_tensor = convolve(batch_tensor, kernel, double_conv=True)
+        # Process images in this group in batches
+        group_batch_size = min(gpu_batch_size, len(image_indices))
+        num_batches = (len(image_indices) + group_batch_size - 1) // group_batch_size
         
-        # Convert back to numpy
-        blurred_maps = blurred_tensor.squeeze(1).cpu().numpy()
+        for batch_idx in range(num_batches):
+            # Get batch indices for this kernel group
+            batch_start = batch_idx * group_batch_size
+            batch_end = min(batch_start + group_batch_size, len(image_indices))
+            batch_image_indices = image_indices[batch_start:batch_end]
+            
+            # Get tensors for this batch
+            batch_tensors = [all_tensors[idx] for idx in batch_image_indices]
+            
+            try:
+                # Try to concatenate tensors (works if all have same shape)
+                batch_tensor = torch.cat(batch_tensors, dim=0).unsqueeze(1).to('cuda')
+                
+                # Apply blurring to this batch
+                blurred_tensor = convolve(batch_tensor, kernel, double_conv=True)
+                
+                # Convert back to numpy and update results
+                blurred_maps = blurred_tensor.squeeze(1).cpu().numpy()
+                
+                for i, img_idx in enumerate(batch_image_indices):
+                    all_clickmaps[img_idx] = blurred_maps[i:i+1]  # Keep the same shape with extra dimension
+                
+                # Clean up GPU memory for this batch
+                del batch_tensor, blurred_tensor
+                torch.cuda.empty_cache()
+                
+            except Exception as e:
+                # If concatenation fails (different shapes), process individually
+                print(f"Batch processing failed, processing {len(batch_tensors)} images individually: {e}")
+                for i, img_idx in enumerate(batch_image_indices):
+                    tensor = batch_tensors[i].unsqueeze(1).to('cuda')
+                    blurred_tensor = convolve(tensor, kernel, double_conv=True)
+                    all_clickmaps[img_idx] = blurred_tensor.squeeze(1).cpu().numpy()
+                    
+                    # Clean up GPU memory
+                    del tensor, blurred_tensor
+                    torch.cuda.empty_cache()
         
-        # Update results
-        for i in range(current_batch_size):
-            map_idx = start_idx + i
-            all_clickmaps[map_idx] = blurred_maps[i:i+1]  # Keep the same shape with extra dimension
-        
-        # Clean up GPU memory for this batch
-        del batch_tensor, blurred_tensor
+        # Clean up kernel for this group
+        del kernel
         torch.cuda.empty_cache()
     
-    # Clean up remaining GPU memory
-    del kernel
-    torch.cuda.empty_cache()
-    
-    print(f"Finished blurring {total_maps} clickmaps. Kept {len(keep_index)} images.")
+    print(f"Finished blurring {total_maps} clickmaps with adaptive kernel sizing. Kept {len(keep_index)} images.")
     return final_clickmaps, all_clickmaps, categories, keep_index, click_counts
 
 
