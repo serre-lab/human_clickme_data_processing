@@ -814,13 +814,12 @@ def prepare_maps_batched_gpu(
                             continue
                             
                         item_tensor = batch_tensor[current_idx : current_idx + num_maps]
-
+                        import pdb; pdb.set_trace()
                         try:
                             # Process with proper error handling
                             if native_size is not None:
                                 short_side = min(native_size)
                                 scale = short_side / min(image_shape)
-                                import pdb; pdb.set_trace()
                                 adj_blur_size = int(np.round(blur_size * scale))
                                 if not adj_blur_size % 2:
                                     adj_blur_size += 1
