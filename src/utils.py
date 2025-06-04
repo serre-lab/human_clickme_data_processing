@@ -1660,6 +1660,8 @@ def process_all_maps_multi_thresh_gpu(
     image_shape = config["image_shape"]
     min_subjects = config["min_subjects"]
     min_clicks = config["min_clicks"]
+    max_kernel_size = config.get("max_kernel_size", 51)
+    blur_sigma_function = config.get("blur_sigma_function", lambda x: blur_sigma)
     
     # Get GPU batch size for processing
     gpu_batch_size = config.get("gpu_batch_size", 4096)
