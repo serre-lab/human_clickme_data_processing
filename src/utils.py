@@ -1760,13 +1760,35 @@ def process_all_maps_multi_thresh_gpu(
     # Convert all maps to tensors
     all_tensors = [torch.from_numpy(maps).float() for maps in all_clickmaps]
     
-    # Create circular kernel
-    if blur_size % 2 == 0:
-        adjusted_blur_size = blur_size + 1  # Ensure odd kernel size
+    # Create adaptive circular kernel based on image size
+    if metadata:
+        # Use the first image to calculate scale (assuming all images have similar native sizes)
+        first_key = list(final_clickmaps.keys())[0]
+        if first_key in metadata:
+            native_size = metadata[first_key]
+            short_side = min(native_size)
+            scale = short_side / min(image_shape)
+            adjusted_blur_size = int(np.round(blur_size * scale))
+            if not adjusted_blur_size % 2:
+                adjusted_blur_size += 1
+            adjusted_blur_size = min(adjusted_blur_size, max_kernel_size)
+            adj_blur_sigma = blur_sigma_function(adjusted_blur_size) if blur_sigma_function else blur_sigma
+        else:
+            # Fallback to fixed size if metadata not available
+            if blur_size % 2 == 0:
+                adjusted_blur_size = blur_size + 1
+            else:
+                adjusted_blur_size = blur_size
+            adj_blur_sigma = blur_sigma
     else:
-        adjusted_blur_size = blur_size
+        # Fallback to fixed size if no metadata
+        if blur_size % 2 == 0:
+            adjusted_blur_size = blur_size + 1
+        else:
+            adjusted_blur_size = blur_size
+        adj_blur_sigma = blur_sigma
         
-    kernel = circle_kernel(adjusted_blur_size, blur_sigma, 'cuda')
+    kernel = circle_kernel(adjusted_blur_size, adj_blur_sigma, 'cuda')
     
     # Process in batches based on the GPU batch size
     try:
