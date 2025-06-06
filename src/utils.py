@@ -1755,42 +1755,37 @@ def process_all_maps_multi_thresh_gpu(
     if return_before_blur:
         return final_clickmaps, all_clickmaps, categories, keep_index, click_counts, clickmap_bins
     
-    # Step 2: Prepare for batch blurring on GPU
+    # Step 2: Prepare for batch blurring on GPU with adaptive kernel sizing
     total_maps = len(all_clickmaps)
-    print(f"Preparing to blur {total_maps} image clickmaps using GPU...")
+    print(f"Preparing to blur {total_maps} image clickmaps using GPU with adaptive kernel sizing...")
     
     # Convert all maps to tensors
     all_tensors = [torch.from_numpy(maps).float() for maps in all_clickmaps]
     
-    # Create adaptive circular kernel based on image size
-    if metadata:
-        # Use the first image to calculate scale (assuming all images have similar native sizes)
-        first_key = list(final_clickmaps.keys())[0]
-        if first_key in metadata:
-            native_size = metadata[first_key]
+    # Group images by their required kernel size to batch efficiently
+    kernel_groups = {}
+    for idx, key in enumerate(keep_index):
+        if metadata and key in metadata:
+            # Calculate adaptive kernel size for this specific image
+            native_size = metadata[key]
             short_side = min(native_size)
             scale = short_side / min(image_shape)
-            adjusted_blur_size = int(np.round(blur_size * scale))
-            if not adjusted_blur_size % 2:
-                adjusted_blur_size += 1
-            adjusted_blur_size = min(adjusted_blur_size, max_kernel_size)
-            adj_blur_sigma = blur_sigma_function(adjusted_blur_size) if blur_sigma_function else blur_sigma
+            adj_blur_size = int(np.round(blur_size * scale))
+            if not adj_blur_size % 2:
+                adj_blur_size += 1
+            adj_blur_size = min(adj_blur_size, max_kernel_size)
+            adj_blur_sigma = blur_sigma_function(adj_blur_size)
         else:
-            # Fallback to fixed size if metadata not available
-            if blur_size % 2 == 0:
-                adjusted_blur_size = blur_size + 1
-            else:
-                adjusted_blur_size = blur_size
-            adj_blur_sigma = blur_sigma
-    else:
-        # Fallback to fixed size if no metadata
-        if blur_size % 2 == 0:
-            adjusted_blur_size = blur_size + 1
-        else:
-            adjusted_blur_size = blur_size
-        adj_blur_sigma = blur_sigma
+            # Use default kernel size for images without metadata
+            adj_blur_size = blur_size if blur_size % 2 == 1 else blur_size + 1
+            adj_blur_sigma = blur_sigma_function(adj_blur_size)
         
-    kernel = circle_kernel(adjusted_blur_size, adj_blur_sigma, 'cuda')
+        kernel_key = (adj_blur_size, adj_blur_sigma)
+        if kernel_key not in kernel_groups:
+            kernel_groups[kernel_key] = []
+        kernel_groups[kernel_key].append(idx)
+    
+    print(f"Processing {len(kernel_groups)} different kernel sizes...")
     
     # Process in batches based on the GPU batch size
     try:
@@ -1802,15 +1797,25 @@ def process_all_maps_multi_thresh_gpu(
         num_batches = total_maps
         gpu_batch_size = 1
     
-    print(f"Processing in {num_batches} batches of up to {gpu_batch_size} maps each...")
-    for batch_idx in range(num_batches):
-        # Get batch indices
-        start_idx = batch_idx * gpu_batch_size
-        end_idx = min(start_idx + gpu_batch_size, total_maps)
-        current_batch_size = end_idx - start_idx
+    # Process each kernel group separately
+    for (kernel_size, kernel_sigma), image_indices in tqdm(kernel_groups.items(), desc="Processing kernel groups"):
+        print(f"Processing {len(image_indices)} images with kernel size {kernel_size}, sigma {kernel_sigma}")
         
-        # Get tensors for this batch
-        batch_tensors = all_tensors[start_idx:end_idx]
+        # Create kernel for this group
+        kernel = circle_kernel(kernel_size, kernel_sigma, 'cuda')
+        
+        # Process images in this group in batches
+        group_batch_size = min(gpu_batch_size, len(image_indices))
+        num_batches = (len(image_indices) + group_batch_size - 1) // group_batch_size
+        
+        for batch_idx in range(num_batches):
+            # Get batch indices for this kernel group
+            batch_start = batch_idx * group_batch_size
+            batch_end = min(batch_start + group_batch_size, len(image_indices))
+            batch_image_indices = image_indices[batch_start:batch_end]
+            
+            # Get tensors for this batch
+            batch_tensors = [all_tensors[idx] for idx in batch_image_indices]
         
         # Track original shapes and flatten all maps for processing
         original_shapes = []
