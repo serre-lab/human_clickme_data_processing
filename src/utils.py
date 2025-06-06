@@ -1670,6 +1670,9 @@ def process_all_maps_multi_thresh_gpu(
     # Get GPU batch size for processing
     gpu_batch_size = config.get("gpu_batch_size", 4096)
     
+    # Get max GPU memory usage for shape batches (in GB)
+    max_gpu_memory_gb = config.get("max_gpu_memory_gb", 8)
+    
     print(f"Processing {len(clickmaps)} unique images with GPU (batch size: {gpu_batch_size})...")
     
     # Step 1: Prepare binary maps and average them
@@ -1825,34 +1828,54 @@ def process_all_maps_multi_thresh_gpu(
             for shape, tensor_data in shape_groups.items():
                 indices, tensors, img_indices = zip(*tensor_data)
                 
-                try:
-                    # Try to concatenate tensors of the same shape
-                    shape_batch_tensor = torch.cat(tensors, dim=0).unsqueeze(1).to('cuda')
+                # Calculate memory-safe batch size for this shape group
+                # Estimate memory usage: shape[0] * shape[1] * shape[2] * 4 bytes per float32
+                memory_per_tensor = shape[0] * shape[1] * shape[2] * 4  # bytes
+                # Target max configurable GB per batch to be safe (leave room for intermediate tensors)
+                max_memory_bytes = max_gpu_memory_gb * 1024 * 1024 * 1024  # Convert GB to bytes
+                safe_batch_size = min(len(tensors), max(1, max_memory_bytes // memory_per_tensor))
+                
+                # Process in smaller sub-batches if needed
+                num_shape_batches = (len(tensors) + safe_batch_size - 1) // safe_batch_size
+                
+                if num_shape_batches > 1:
+                    print(f"  Shape {shape}: splitting {len(tensors)} tensors into {num_shape_batches} batches of max {safe_batch_size} (estimated {memory_per_tensor/(1024**3):.2f} GB per tensor)")
+                
+                for shape_batch_idx in range(num_shape_batches):
+                    start_idx = shape_batch_idx * safe_batch_size
+                    end_idx = min(start_idx + safe_batch_size, len(tensors))
                     
-                    # Apply blurring to this shape batch
-                    blurred_tensor = convolve(shape_batch_tensor, kernel, double_conv=True)
+                    batch_tensors_subset = tensors[start_idx:end_idx]
+                    batch_img_indices_subset = img_indices[start_idx:end_idx]
                     
-                    # Convert back to numpy and update results
-                    blurred_maps = blurred_tensor.squeeze(1).cpu().numpy()
-                    
-                    for i, img_idx in enumerate(img_indices):
-                        all_clickmaps[img_idx] = blurred_maps[i:i+1]  # Keep the same shape with extra dimension
-                    
-                    # Clean up GPU memory for this shape batch
-                    del shape_batch_tensor, blurred_tensor
-                    torch.cuda.empty_cache()
-                    
-                except Exception as e:
-                    # If concatenation still fails, process individually
-                    print(f"Shape batch processing failed for shape {shape}, processing {len(tensors)} images individually: {e}")
-                    for i, (tensor, img_idx) in enumerate(zip(tensors, img_indices)):
-                        gpu_tensor = tensor.unsqueeze(1).to('cuda')
-                        blurred_tensor = convolve(gpu_tensor, kernel, double_conv=True)
-                        all_clickmaps[img_idx] = blurred_tensor.squeeze(1).cpu().numpy()
+                    try:
+                        # Try to concatenate tensors of the same shape
+                        shape_batch_tensor = torch.cat(batch_tensors_subset, dim=0).unsqueeze(1).to('cuda')
                         
-                        # Clean up GPU memory
-                        del gpu_tensor, blurred_tensor
+                        # Apply blurring to this shape batch
+                        blurred_tensor = convolve(shape_batch_tensor, kernel, double_conv=True)
+                        
+                        # Convert back to numpy and update results
+                        blurred_maps = blurred_tensor.squeeze(1).cpu().numpy()
+                        
+                        for i, img_idx in enumerate(batch_img_indices_subset):
+                            all_clickmaps[img_idx] = blurred_maps[i:i+1]  # Keep the same shape with extra dimension
+                        
+                        # Clean up GPU memory for this shape batch
+                        del shape_batch_tensor, blurred_tensor
                         torch.cuda.empty_cache()
+                        
+                    except Exception as e:
+                        # If concatenation still fails, process individually
+                        print(f"Shape batch processing failed for shape {shape} (batch {shape_batch_idx+1}/{num_shape_batches}), processing {len(batch_tensors_subset)} images individually: {e}")
+                        for i, (tensor, img_idx) in enumerate(zip(batch_tensors_subset, batch_img_indices_subset)):
+                            gpu_tensor = tensor.unsqueeze(1).to('cuda')
+                            blurred_tensor = convolve(gpu_tensor, kernel, double_conv=True)
+                            all_clickmaps[img_idx] = blurred_tensor.squeeze(1).cpu().numpy()
+                            
+                            # Clean up GPU memory
+                            del gpu_tensor, blurred_tensor
+                            torch.cuda.empty_cache()
         
         # Clean up kernel for this group
         del kernel
