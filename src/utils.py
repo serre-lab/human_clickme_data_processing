@@ -1793,10 +1793,12 @@ def process_all_maps_multi_thresh_gpu(
     
     # Process each kernel group separately
     for (kernel_size, kernel_sigma), image_indices in tqdm(kernel_groups.items(), desc="Processing kernel groups"):
-        print(f"Processing {len(image_indices)} images with kernel size {kernel_size}, sigma {kernel_sigma}")
+        print(f"Processing {len(image_indices)} images with kernel size {kernel_size}, sigma {kernel_size}")
+        # print(f"Processing {len(image_indices)} images with kernel size {kernel_size}, sigma {kernel_sigma}")
         
         # Create kernel for this group
-        kernel = circle_kernel(kernel_size, kernel_sigma, 'cuda')
+        # kernel = circle_kernel(kernel_size, kernel_sigma, 'cuda')
+        kernel = circle_kernel(kernel_size, kernel_size, 'cuda')
         
         # Process images in this group in batches
         group_batch_size = min(gpu_batch_size, len(image_indices))
