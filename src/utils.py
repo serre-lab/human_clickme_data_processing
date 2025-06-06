@@ -1588,7 +1588,8 @@ def process_all_maps_gpu(
         print(f"Processing {len(image_indices)} images with kernel size {kernel_size}, sigma {kernel_sigma}")
         
         # Create kernel for this group
-        kernel = circle_kernel(kernel_size, kernel_sigma, 'cuda')
+        # kernel = circle_kernel(kernel_size, kernel_sigma, 'cuda')
+        kernel = circle_kernel(kernel_size, kernel_size, 'cuda')  # Matching kernel size and kernel sigma
         
         # Process images in this group in batches
         group_batch_size = min(gpu_batch_size, len(image_indices))
