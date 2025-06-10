@@ -13,3 +13,5 @@ jay_imagenet_val_0.1_images/
 co3d_val_images/
 co3d_masks
 jay_work_in_progress/
+jay_imagenet_train_04_30_2025_dimensions.npy
+jay_imagenet_train_0.1_dimensions.npy

@@ -194,6 +194,7 @@ if __name__ == "__main__":
     parser.add_argument('--correlation-batch-size', type=int, default=None, help='Override correlation batch size')
     parser.add_argument('--correlation-jobs', type=int, default=None, help='Override number of parallel jobs for correlation')
     parser.add_argument('--metric', type=str, default=None, help='Metric to use for correlation')
+    parser.add_argument('--time_based_bins', action='store_true', help='Enable time based bin threshold instead of count based')
     args = parser.parse_args()
     
     # Increase file descriptor limit
@@ -225,6 +226,10 @@ if __name__ == "__main__":
     if "filter_duplicates" not in config:
         config["filter_duplicates"] = args.filter_duplicates
 
+    # Add time_based_bins to config if not present
+    if "time_based_bins" not in config:
+        config["time_based_bins"] = args.time_based_bins
+        
     if args.metric is not None:
         config["metric"] = args.metric
         print(f"Overwriting metric to {args.metric}")
@@ -370,6 +375,7 @@ if __name__ == "__main__":
         fast_duplicate_detection=fast_duplicate_detection,
         return_before_blur=True,
         average_maps=False,
+        time_based_bins=config['time_based_bins']
     )
     # Apply mask filtering if needed
     if final_keep_index and config["mask_dir"]:

@@ -21,6 +21,7 @@ if __name__ == "__main__":
     parser.add_argument('--max-workers', type=int, default=None, help='Maximum number of CPU workers')
     parser.add_argument('--profile', action='store_true', help='Enable performance profiling')
     parser.add_argument('--filter-duplicates', action='store_false', help='Filter duplicate participant submissions, keeping only the first submission per image')
+    parser.add_argument('--time_based_bins', action='store_true', help='Enable time based bin threshold instead of count based')
     args = parser.parse_args()
     
     # Start profiling if requested
@@ -42,6 +43,10 @@ if __name__ == "__main__":
     if "filter_duplicates" not in config:
         config["filter_duplicates"] = args.filter_duplicates
     
+    # Add time_based_bins to config if not present
+    if "time_based_bins" not in config:
+        config["time_based_bins"] = args.time_based_bins
+
     # Load clickme data
     print(f"Loading clickme data...")
     clickme_data = utils.process_clickme_data(
@@ -229,9 +234,9 @@ if __name__ == "__main__":
                 config=config,
                 metadata=metadata,
                 create_clickmap_func=create_clickmap_func,
-                fast_duplicate_detection=fast_duplicate_detection
+                fast_duplicate_detection=fast_duplicate_detection,
+                time_based_bins = config["time_based_bins"]
             )
-
             # Apply mask filtering if needed
             if batch_final_keep_index and config["mask_dir"]:
                 print("Applying mask filtering...")
@@ -382,7 +387,8 @@ if __name__ == "__main__":
             config=config,
             metadata=metadata,
             create_clickmap_func=create_clickmap_func,
-            fast_duplicate_detection=fast_duplicate_detection
+            fast_duplicate_detection=fast_duplicate_detection,
+            time_based_bins = config["time_based_bins"],
         )
 
         # Apply mask filtering if needed
