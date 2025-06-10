@@ -1649,7 +1649,8 @@ def process_all_maps_multi_thresh_gpu(
         fast_duplicate_detection=None,
         average_maps=True,
         thresholds=10,
-        return_before_blur=False
+        return_before_blur=False,
+        time_based_bins=False,
         ):
     """
     Simplified function to blur clickmaps on GPU in batches with adaptive kernel sizing
@@ -1665,7 +1666,7 @@ def process_all_maps_multi_thresh_gpu(
     min_subjects = config["min_subjects"]
     min_clicks = config["min_clicks"]
     max_kernel_size = config.get("max_kernel_size", 51)
-    blur_sigma_function = config.get("blur_sigma_function", lambda x: blur_sigma)
+    blur_sigma_function = config.get("blur_sigma_function", lambda x: x)
     
     # Get GPU batch size for processing
     gpu_batch_size = config.get("gpu_batch_size", 4096)
@@ -1685,47 +1686,82 @@ def process_all_maps_multi_thresh_gpu(
     final_clickmaps = {}
     clickmap_bins = {}
     click_counts = {}  # Track click counts for each image
-    
+
     # Preprocess all clickmaps first to binary maps
     for key, trials in clickmaps.items():
         if len(trials) < min_subjects:
             continue
-        
-        # Get max count then do thresholds from that
-        lens = [len(x) for x in trials]
-        max_count = max(lens)
-        # min_count = max(int(min(lens) * .1), 1)
-        # bins = np.linspace(min_count, max_count + 1, thresholds).astype(int)
-        mean_lens = int(np.mean(lens))
-        below_mean = np.linspace(mean_lens * .1, mean_lens + 1, thresholds // 2).astype(int)
-        above_mean = np.linspace(mean_lens, max_count + 1, thresholds // 2).astype(int)
-        bins = np.concatenate([below_mean, above_mean])
-        # bins = np.concatenate([below_mean, above_mean])
-        bin_clickmaps = []
-        bin_counts = []
-        
-        for bin in bins:
-            # Threshold trials
-            thresholded_trials = [x[:bin] for x in trials]
-            bin_counts.append(sum([len(x) for x in thresholded_trials]))
-
-            # Create binary clickmaps
-            if metadata and key in metadata:
-                native_size = metadata[key]
-                binary_maps = np.asarray([create_clickmap_func([trial], native_size[::-1]) for trial in thresholded_trials])
-            else:
-                binary_maps = np.asarray([create_clickmap_func([trial], tuple(image_shape)) for trial in thresholded_trials])
-            
-            # Only keep maps with enough valid pixels using mask
-            mask = binary_maps.sum((-2, -1)) >= min_clicks
-            binary_maps = binary_maps[mask]
-            
-            # If we have enough valid maps, average them and keep this image
-            if len(binary_maps) >= min_subjects:
-                if average_maps:
-                    bin_clickmaps.append(np.array(binary_maps).mean(0, keepdims=True))
+        if time_based_bins:
+            lens = [len(x) for x in trials]
+            bins = []
+            for trial in trials:
+                max_count = len(trial)
+                half_count = int(max_count/2)
+                below_mean = np.linspace(max(half_count * .1, 1), half_count + 1, thresholds //2).astype(int)
+                above_mean = np.linspace(half_count, max_count + 1, thresholds // 2).astype(int)
+                trial_bin = np.concatenate([below_mean, above_mean])
+                bins.append(trial_bin)
+            bin_clickmaps = []
+            bin_counts = []
+            for i in range(thresholds):
+                thresholded_trials = []
+                for j, trial in enumerate(trials):
+                    thresholded_trials.append(trial[:bins[j][i]])
+                bin_counts.append(sum([len(x) for x in thresholded_trials]))
+                # Create binary clickmaps
+                if metadata and key in metadata:
+                    native_size = metadata[key]
+                    binary_maps = np.asarray([create_clickmap_func([trial], native_size[::-1]) for trial in thresholded_trials])
                 else:
-                    bin_clickmaps.append(np.array(binary_maps))
+                    binary_maps = np.asarray([create_clickmap_func([trial], tuple(image_shape)) for trial in thresholded_trials])
+                
+                # Only keep maps with enough valid pixels using mask
+                mask = binary_maps.sum((-2, -1)) >= min_clicks
+                binary_maps = binary_maps[mask]
+                
+                # If we have enough valid maps, average them and keep this image
+                if len(binary_maps) >= min_subjects:
+                    if average_maps:
+                        bin_clickmaps.append(np.array(binary_maps).mean(0, keepdims=True))
+                    else:
+                        bin_clickmaps.append(np.array(binary_maps))
+
+        else:
+            # Get max count then do thresholds from that
+            lens = [len(x) for x in trials]
+            max_count = max(lens)
+            # min_count = max(int(min(lens) * .1), 1)
+            # bins = np.linspace(min_count, max_count + 1, thresholds).astype(int)
+            mean_lens = int(np.mean(lens))
+            below_mean = np.linspace(mean_lens * .1, mean_lens + 1, thresholds // 2).astype(int)
+            above_mean = np.linspace(mean_lens, max_count + 1, thresholds // 2).astype(int)
+            bins = np.concatenate([below_mean, above_mean])
+            # bins = np.concatenate([below_mean, above_mean])
+            bin_clickmaps = []
+            bin_counts = []
+            
+            for bin in bins:
+                # Threshold trials
+                thresholded_trials = [x[:bin] for x in trials]
+                bin_counts.append(sum([len(x) for x in thresholded_trials]))
+
+                # Create binary clickmaps
+                if metadata and key in metadata:
+                    native_size = metadata[key]
+                    binary_maps = np.asarray([create_clickmap_func([trial], native_size[::-1]) for trial in thresholded_trials])
+                else:
+                    binary_maps = np.asarray([create_clickmap_func([trial], tuple(image_shape)) for trial in thresholded_trials])
+                
+                # Only keep maps with enough valid pixels using mask
+                mask = binary_maps.sum((-2, -1)) >= min_clicks
+                binary_maps = binary_maps[mask]
+                
+                # If we have enough valid maps, average them and keep this image
+                if len(binary_maps) >= min_subjects:
+                    if average_maps:
+                        bin_clickmaps.append(np.array(binary_maps).mean(0, keepdims=True))
+                    else:
+                        bin_clickmaps.append(np.array(binary_maps))
         
         # Skip if we don't have any valid bin_clickmaps
         if not bin_clickmaps:
@@ -1754,7 +1790,6 @@ def process_all_maps_multi_thresh_gpu(
             all_clickmaps.append(np.stack(bin_clickmaps, axis=0))
         else:
             all_clickmaps.append(np.concatenate(bin_clickmaps, axis=0))
-    
     if not all_clickmaps:
         print("No valid clickmaps to process")
         return {}, [], [], [], {}
@@ -1791,28 +1826,25 @@ def process_all_maps_multi_thresh_gpu(
         if kernel_key not in kernel_groups:
             kernel_groups[kernel_key] = []
         kernel_groups[kernel_key].append(idx)
-    
     print(f"Processing {len(kernel_groups)} different kernel sizes...")
-    
+
     # Process each kernel group separately
     for (kernel_size, kernel_sigma), image_indices in tqdm(kernel_groups.items(), desc="Processing kernel groups"):
-        print(f"Processing {len(image_indices)} images with kernel size {kernel_size}, sigma {kernel_size}")
+        print(f"Processing {len(image_indices)} images with kernel size {kernel_size}, sigma {kernel_sigma}")
         # print(f"Processing {len(image_indices)} images with kernel size {kernel_size}, sigma {kernel_sigma}")
         
         # Create kernel for this group
         # kernel = circle_kernel(kernel_size, kernel_sigma, 'cuda')
-        kernel = circle_kernel(kernel_size, kernel_size, 'cuda')
+        kernel = circle_kernel(kernel_size, kernel_sigma, 'cuda')
         
         # Process images in this group in batches
         group_batch_size = min(gpu_batch_size, len(image_indices))
         num_batches = (len(image_indices) + group_batch_size - 1) // group_batch_size
-        
         for batch_idx in range(num_batches):
             # Get batch indices for this kernel group
             batch_start = batch_idx * group_batch_size
             batch_end = min(batch_start + group_batch_size, len(image_indices))
             batch_image_indices = image_indices[batch_start:batch_end]
-            
             # Get tensors for this batch
             batch_tensors = [all_tensors[idx] for idx in batch_image_indices]
             
@@ -1823,11 +1855,9 @@ def process_all_maps_multi_thresh_gpu(
                 if shape_key not in shape_groups:
                     shape_groups[shape_key] = []
                 shape_groups[shape_key].append((i, tensor, batch_image_indices[i]))
-            
             # Process each shape group separately
             for shape, tensor_data in shape_groups.items():
                 indices, tensors, img_indices = zip(*tensor_data)
-                
                 # Calculate memory-safe batch size for this shape group
                 # Estimate memory usage: shape[0] * shape[1] * shape[2] * 4 bytes per float32
                 memory_per_tensor = shape[0] * shape[1] * shape[2] * 4  # bytes
@@ -1847,7 +1877,6 @@ def process_all_maps_multi_thresh_gpu(
                     
                     batch_tensors_subset = tensors[start_idx:end_idx]
                     batch_img_indices_subset = img_indices[start_idx:end_idx]
-                    
                     try:
                         # Try to concatenate tensors of the same shape
                         shape_batch_tensor = torch.cat(batch_tensors_subset, dim=0).unsqueeze(1).to('cuda')
@@ -1857,10 +1886,8 @@ def process_all_maps_multi_thresh_gpu(
                         
                         # Convert back to numpy and update results
                         blurred_maps = blurred_tensor.squeeze(1).cpu().numpy()
-                        
                         for i, img_idx in enumerate(batch_img_indices_subset):
-                            all_clickmaps[img_idx] = blurred_maps[i:i+1]  # Keep the same shape with extra dimension
-                        
+                            all_clickmaps[img_idx] = blurred_maps[i*thresholds:(i+1)*thresholds]  # Keep the same shape with extra dimension
                         # Clean up GPU memory for this shape batch
                         del shape_batch_tensor, blurred_tensor
                         torch.cuda.empty_cache()
@@ -1880,7 +1907,7 @@ def process_all_maps_multi_thresh_gpu(
         # Clean up kernel for this group
         del kernel
         torch.cuda.empty_cache()
-    
+
     return final_clickmaps, all_clickmaps, categories, keep_index, click_counts, clickmap_bins
 
 
