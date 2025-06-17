@@ -5,17 +5,17 @@ center_crop:
 - 224
 class_filter_file: false
 # clickme_data: clickme_datasets/dump_co3d_combined_03_13_2025.npz
-clickme_data: /cifs/data/tserre_lrs/projects/projects/prj_video_imagenet/human_clickme_data_processing/clickme_datasets/dump_co3d_combined_03_13_2025.npz
-correlation_batch_size: 1024
+clickme_data: clickme_datasets/dump_co3d_05_28_2025_unique.npz
+correlation_batch_size: 8
 debug: false
 display_image_keys: auto
-example_image_output_dir: co3d_val_images
-experiment_name: co3d_val
+example_image_output_dir: co3d_constancy_val_images
+experiment_name: co3d_constancy_val
 file_exclusion_filter: ILSVRC2012_val
-file_inclusion_filter: CO3D_ClickMe2
+file_inclusion_filter: null  # CO3D_ClickMe2
 filter_mobile: true
 gpu_batch_size: 4096
-image_path: /cifs/data/tserre_lrs/projects/projects/prj_video_imagenet/CO3D_ClickMe2
+image_path: /media/data_cifs/projects/prj_video_imagenet/CO3D_ClickMe2
 image_shape:
 - 256
 - 256
@@ -33,9 +33,8 @@ parallel_save: true
 participant_filter: false
 percentile_thresh: 50
 preprocess_db_data: false
-processed_clickme_file: co3d_val_processed.npz
-processed_clickmap_bins: co3d_val_clickmap_bins.npy
-processed_medians: co3d_val_medians.json
+processed_clickme_file: co3d_constancy_val_processed.npz
+processed_clickmap_bins: co3d_constancy_val_clickmap_bins.npy
+processed_medians: co3d_constancy_val_medians.json
 remove_string: false
 multi_thresh_gpu: true
-time_based_bins: true
