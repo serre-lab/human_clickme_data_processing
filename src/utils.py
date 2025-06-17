@@ -314,20 +314,28 @@ def process_clickmap_files_parallel(
         process_max="trim",
         n_jobs=-1):
     """Parallelized version of process_clickmap_files using joblib"""
-    
+    image_file_names = []
     def process_single_row(row):
         """Helper function to process a single row"""
         image_file_name = os.path.sep.join(row['image_path'].split(os.path.sep)[-2:])
-        
         # Handle CO3D_ClickmeV2 special case
-        # if file_inclusion_filter == "CO3D_ClickmeV2" or file_inclusion_filter == "CO3D_ClickMe2":
-        #     import pdb;pdb.set_trace()
-        #     image_files = glob(os.path.join(image_path, "**", "*.png"))
-        #     if not np.any([image_file_name in x for x in image_files]):
-        #         return None
+        if file_inclusion_filter == "CO3D_ClickmeV2" or file_inclusion_filter == "CO3D_ClickMe2" :
+            image_files = glob(os.path.join(image_path, "**", "*.png"))
+            if not np.any([image_file_name in x for x in image_files]):
+                return None
+        elif file_inclusion_filter == 'CO3D_Constancy':
+            image_files = glob(os.path.join(image_path, "*.png"))
+            class_name = image_file_name.split('/')[0]
+            folder_image_file_name = image_file_name.split('/')[1]
+            if class_name not in folder_image_file_name:
+                folder_image_file_name = f'{class_name}_{folder_image_file_name}'
+            if not np.any([folder_image_file_name in x for x in image_files]):
+                return None
+            image_file_name = folder_image_file_name
+            image_file_names.append(folder_image_file_name)  
         # elif file_inclusion_filter and file_inclusion_filter not in image_file_name:
         #     return None
-        if file_inclusion_filter and file_inclusion_filter not in image_file_name:
+        elif file_inclusion_filter and file_inclusion_filter not in image_file_name:
             return None
 
         if isinstance(file_exclusion_filter, list):
@@ -378,7 +386,6 @@ def process_clickmap_files_parallel(
             if image_file_name not in proc_clickmaps:
                 proc_clickmaps[image_file_name] = []
             proc_clickmaps[image_file_name].append(tuples_list)
-
     # Count number of maps per image
     for image in proc_clickmaps:
         number_of_maps.append(len(proc_clickmaps[image]))
@@ -1697,9 +1704,10 @@ def process_all_maps_multi_thresh_gpu(
             for trial in trials:
                 max_count = len(trial)
                 half_count = int(max_count/2)
-                below_mean = np.linspace(max(half_count * .1, 1), half_count + 1, thresholds //2).astype(int)
-                above_mean = np.linspace(half_count, max_count + 1, thresholds // 2).astype(int)
-                trial_bin = np.concatenate([below_mean, above_mean])
+                #below_mean = np.linspace(max(half_count * .1, min_clicks), half_count, thresholds //2).astype(int)
+                #above_mean = np.linspace(half_count+1, max_count + 1, thresholds // 2).astype(int)
+                #trial_bin = np.concatenate([below_mean, above_mean])
+                trial_bin = np.linspace(max(half_count * .1, min_clicks), max_count, thresholds).astype(int)
                 bins.append(trial_bin)
             bin_clickmaps = []
             bin_counts = []
@@ -1717,14 +1725,14 @@ def process_all_maps_multi_thresh_gpu(
                 
                 # Only keep maps with enough valid pixels using mask
                 mask = binary_maps.sum((-2, -1)) >= min_clicks
+                org_number = binary_maps.sum((-2, -1))
                 binary_maps = binary_maps[mask]
-                
                 # If we have enough valid maps, average them and keep this image
-                if len(binary_maps) >= min_subjects:
-                    if average_maps:
-                        bin_clickmaps.append(np.array(binary_maps).mean(0, keepdims=True))
-                    else:
-                        bin_clickmaps.append(np.array(binary_maps))
+                # if len(binary_maps) >= min_subjects:
+                if average_maps:
+                    bin_clickmaps.append(np.array(binary_maps).mean(0, keepdims=True))
+                else:
+                    bin_clickmaps.append(np.array(binary_maps))
 
         else:
             # Get max count then do thresholds from that
@@ -1734,7 +1742,7 @@ def process_all_maps_multi_thresh_gpu(
             # bins = np.linspace(min_count, max_count + 1, thresholds).astype(int)
             mean_lens = int(np.mean(lens))
             below_mean = np.linspace(mean_lens * .1, mean_lens + 1, thresholds // 2).astype(int)
-            above_mean = np.linspace(mean_lens, max_count + 1, thresholds // 2).astype(int)
+            above_mean = np.linspace(mean_lens + 1, max_count + 1, thresholds // 2).astype(int)
             bins = np.concatenate([below_mean, above_mean])
             # bins = np.concatenate([below_mean, above_mean])
             bin_clickmaps = []
@@ -1883,7 +1891,6 @@ def process_all_maps_multi_thresh_gpu(
                         
                         # Apply blurring to this shape batch
                         blurred_tensor = convolve(shape_batch_tensor, kernel, double_conv=True)
-                        
                         # Convert back to numpy and update results
                         blurred_maps = blurred_tensor.squeeze(1).cpu().numpy()
                         for i, img_idx in enumerate(batch_img_indices_subset):
@@ -1907,7 +1914,6 @@ def process_all_maps_multi_thresh_gpu(
         # Clean up kernel for this group
         del kernel
         torch.cuda.empty_cache()
-
     return final_clickmaps, all_clickmaps, categories, keep_index, click_counts, clickmap_bins
 
 

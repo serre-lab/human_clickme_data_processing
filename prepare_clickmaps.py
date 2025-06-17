@@ -278,16 +278,16 @@ if __name__ == "__main__":
                     )
                     
                     # Also save individual NPY files for compatibility
-                    print("Saving individual NPY files in addition to HDF5...")
-                    npy_saved_count = utils.save_clickmaps_parallel(
-                        all_clickmaps=batch_all_clickmaps,
-                        final_keep_index=batch_final_keep_index,
-                        output_dir=output_dir,
-                        experiment_name=f"{config['experiment_name']}{batch_suffix}",
-                        image_path=config["image_path"],
-                        n_jobs=config["n_jobs"],
-                        file_inclusion_filter=config.get("file_inclusion_filter")
-                    )
+                    # print("Saving individual NPY files in addition to HDF5...")
+                    # npy_saved_count = utils.save_clickmaps_parallel(
+                    #     all_clickmaps=batch_all_clickmaps,
+                    #     final_keep_index=batch_final_keep_index,
+                    #     output_dir=output_dir,
+                    #     experiment_name=f"{config['experiment_name']}{batch_suffix}",
+                    #     image_path=config["image_path"],
+                    #     n_jobs=config["n_jobs"],
+                    #     file_inclusion_filter=config.get("file_inclusion_filter")
+                    # )
                 else:
                     # Use optimized HDF5 saving with compression
                     saved_count = utils.save_clickmaps_to_hdf5(
@@ -309,6 +309,10 @@ if __name__ == "__main__":
                         n_jobs=config["n_jobs"],
                         file_inclusion_filter=config.get("file_inclusion_filter")
                     )
+                    
+                # Save clickmap bins
+                batch_bins_path = os.path.join(output_dir, f"{config['processed_clickmap_bins'].replace('.npy', '')}{batch_suffix}.npy")
+                np.save(batch_bins_path, batch_clickmap_bins)
                 
                 print(f"Saved {saved_count} files in batch {batch_num+1}")
                 
@@ -363,8 +367,7 @@ if __name__ == "__main__":
         with open(os.path.join(output_dir, f"{config['experiment_name']}_click_counts.json"), 'w') as f:
             f.write(click_counts_json)
         
-        # Save clickmap bins
-        np.save(os.path.join(output_dir, config["processed_clickmap_bins"]), batch_clickmap_bins)
+
 
         # Save individual click counts to their own directory
         for img_name, count in all_click_counts.items():
@@ -423,7 +426,6 @@ if __name__ == "__main__":
             for img_name, count in click_counts.items():
                 count_file = os.path.join(click_counts_dir, f"{img_name.replace('/', '_')}.npy")
                 np.save(count_file, count)
-                
             # Save with appropriate method based on output format
             if output_format == "hdf5":
                 # Use optimized HDF5 saving with compression
@@ -438,16 +440,16 @@ if __name__ == "__main__":
                 )
                 
                 # Also save individual NPY files for compatibility
-                print("Saving individual NPY files in addition to HDF5...")
-                npy_saved_count = utils.save_clickmaps_parallel(
-                    all_clickmaps=all_clickmaps,
-                    final_keep_index=final_keep_index,
-                    output_dir=output_dir,
-                    experiment_name=config["experiment_name"],
-                    image_path=config["image_path"],
-                    n_jobs=config["n_jobs"],
-                    file_inclusion_filter=config.get("file_inclusion_filter")
-                )
+                # print("Saving individual NPY files in addition to HDF5...")
+                # npy_saved_count = utils.save_clickmaps_parallel(
+                #     all_clickmaps=all_clickmaps,
+                #     final_keep_index=final_keep_index,
+                #     output_dir=output_dir,
+                #     experiment_name=config["experiment_name"],
+                #     image_path=config["image_path"],
+                #     n_jobs=config["n_jobs"],
+                #     file_inclusion_filter=config.get("file_inclusion_filter")
+                # )
             else:
                 # Use parallel saving for non-HDF5 format
                 saved_count = utils.save_clickmaps_to_hdf5(
