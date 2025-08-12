@@ -23,11 +23,11 @@ mask_dir: null
 mask_threshold: 0.
 max_clicks: 1000000  # Set to an impossibly high number to keep all maps
 metadata_file: false
-metric: auc
+metric: spearman
 min_clicks: 1
-min_subjects: 6
+min_subjects: 4
 n_jobs: -1
-null_iterations: 100
+null_iterations: 10 # Potentially lower this number for speed up
 parallel_prepare_maps: true
 parallel_save: true
 participant_filter: false
@@ -38,4 +38,8 @@ processed_clickmap_bins: co3d_constancy_val_clickmap_bins.npy
 processed_medians: co3d_constancy_val_medians.json
 remove_string: false
 multi_thresh_gpu: true
+constancy: true
+camera_path: clickme_datasets/constancy_params.json
+depth_path: /oscar/data/tserre/Users/pzhou10/CVM/onevision/assets/constancy_depths
+save_json: true
 time_based_bins: true
