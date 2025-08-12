@@ -1,8 +1,8 @@
 assets: assets
 blur_size: 21
 center_crop:
-- 256
-- 256
+- 224
+- 224
 class_filter_file: false
 clickme_data: clickme_datasets/train_combined_04_30_2025.npz
 correlation_batch_size: 4000

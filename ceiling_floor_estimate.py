@@ -12,8 +12,9 @@ import gc
 import torch
 from joblib import Parallel, delayed
 from scipy.stats import spearmanr
-import resource  # Add resource module for file descriptor limits
+# import resource  # Add resource module for file descriptor limits
 from sklearn.metrics import average_precision_score
+from torchvision.transforms import functional as tvF
 
 
 def auc(test_map, reference_map, thresholds=10, metric="iou"):
@@ -21,8 +22,8 @@ def auc(test_map, reference_map, thresholds=10, metric="iou"):
     scores = []
 
     # Normalize each map to [0,1]
-    test_map = (test_map - test_map.min()) / (test_map.max() - test_map.min())
-    reference_map = (reference_map - reference_map.min()) / (reference_map.max() - reference_map.min())
+    test_map = (test_map - test_map.min()) / (test_map.max() - test_map.min()+1e-8)
+    reference_map = (reference_map - reference_map.min()) / (reference_map.max() - reference_map.min()+1e-8)
 
     # Create evenly spaced thresholds from 0 to 1
     # if thresholds == 1:
@@ -100,11 +101,260 @@ def rankorder(test_map, reference_map, threshold=0.):
     return mean_rank
 
 
-def compute_correlation_batch(batch_indices, all_clickmaps, metric="auc", n_iterations=10, device='cuda', blur_size=11, blur_sigma=1.5, floor=False):
+def compute_rotation_correlation_batch(batch_indices, all_data, all_names, metric="auc", n_iterations=10, device='cuda', blur_size=11, blur_sigma=1.5, floor=False, camera_path='',config=None):
+    batch_results = {-3:[], -2:[], -1:[], 0:[], 1:[], 2:[], 3:[], 4:[]}
+    all_rotation_results = {}
+    plot_infos = []
+    for i in tqdm(batch_indices, desc="Computing multi-angle correlations", total=len(batch_indices)):
+        img_name = all_names[i]
+        img_idx = int(img_name.split('_')[-1].split('.')[0])
+        all_rotation_results[img_name] = {-3:[], -2:[], -1:[], 0:[], 1:[], 2:[], 3:[], 4:[]}
+        target_img_ids, target_img_diffs = utils.get_rot_target(img_idx)
+        for j, target_img_idx in enumerate(target_img_ids):
+            target_img_diff = target_img_diffs[j]
+            if floor:
+                rand_i = np.random.choice([rand_i for rand_i in range(len(all_names)) if rand_i != i])
+                target_img_name = all_names[rand_i]
+            else:
+                target_img_name = f"{'_'.join(img_name.split('_')[:-1])}_{str(target_img_idx).zfill(5)}.png"             
+            if target_img_name not in all_data:
+                print("Not found", target_img_name)
+                continue
+            data = all_data[img_name]
+            clickmaps = data['clickmap']
+            w2c = data['w2c']
+            Ks = data['k']
+            depth_map = data['depth_map']
+            target_data = all_data[target_img_name]
+            target_clickmaps = target_data['clickmap']
+            target_w2c = target_data['w2c']
+            target_Ks = target_data['k']
+            target_depth_map = target_data['depth_map']
+            level_scores = []
+            for k, clickmap_at_k in enumerate(clickmaps):
+                if metric == "spearman" and k < (len(clickmaps)-1):
+                    continue
+                rand_scores = []     
+                n = len(clickmap_at_k)
+                target_clickmap_at_k = target_clickmaps[k]
+                target_n = len(target_clickmap_at_k)
+                for iteration in range(n_iterations):
+                    test_rand_perm = np.random.permutation(n)
+                    fh = test_rand_perm[:(n//2)]
+                    test_map = clickmap_at_k[fh].mean(0)
+                    if not floor and target_img_name == img_name:
+                        target_rand_perm = test_rand_perm
+                    else:
+                        target_rand_perm = np.random.permutation(target_n)
+                    sh = target_rand_perm[(target_n//2):]
+                    reference_map = target_clickmap_at_k[sh].mean(0)
+                    # Save for visualization 
+                    if k == (len(clickmaps)-1) and iteration == (n_iterations-1):
+                        unprojected_map = test_map.copy()
+                        unprojected_map = utils.blur_maps_for_cf(
+                            unprojected_map[None, None],
+                            blur_size,
+                            blur_sigma,
+                            gpu_batch_size=2).squeeze()
+                    #Project before blurring
+
+                    if target_img_name != img_name:
+                            test_map = utils.project_img_gpu(test_map, depth_map, w2c, target_w2c, Ks, target_Ks, device=device)
+                    
+                    blur_clickmaps = utils.blur_maps_for_cf(
+                        np.stack((test_map, reference_map), axis=0)[None],
+                        blur_size,
+                        blur_sigma,
+                        gpu_batch_size=2).squeeze()
+                    test_map = blur_clickmaps[0]
+                    reference_map = blur_clickmaps[1]
+                    if k == (len(clickmaps)-1) and iteration == (n_iterations-1):
+                        org_test_map = test_map.copy()
+                        org_ref_map = reference_map.copy()
+                    # if target_img_name != img_name:
+                    #    test_map = utils.project_img_gpu(test_map, depth_map, w2c, target_w2c, Ks, target_Ks, device=device)
+                    if config:
+                        image_shape = config['image_shape']
+                        center_crop = config['center_crop']
+                        if center_crop:
+                            test_map = torch.tensor(test_map)
+                            reference_map = torch.tensor(reference_map)
+                            test_map = tvF.resize(test_map, min(image_shape))
+                            test_map = tvF.center_crop(test_map, center_crop)
+                            reference_map = tvF.resize(reference_map, min(image_shape))
+                            reference_map = tvF.center_crop(reference_map, center_crop)
+                            test_map = test_map.numpy().squeeze()
+                            reference_map = reference_map.numpy().squeeze()
+                    # Use scipy's spearman correlation
+                    if metric == "auc":
+                        score = auc(test_map.flatten(), reference_map.flatten())
+                    elif metric == "rankorder":
+                        score = rankorder(test_map.flatten(), reference_map.flatten())
+                    elif metric == "spearman":
+                        score, _ = spearmanr(test_map.flatten(), reference_map.flatten())
+                        if np.isnan(score):
+                            continue
+                    else:
+                        raise ValueError(f"Invalid metric: {metric}")
+                    rand_scores.append(score)
+
+                    # Explicitly free memory
+                    if 'blur_clickmaps' in locals():
+                        del blur_clickmaps
+                if len(rand_scores) < 1:
+                    rand_scores = 0
+                else:
+                    rand_scores = np.nanmean(np.asarray(rand_scores))
+                level_scores.append(rand_scores)
+                gc.collect()
+            angle_score = np.nanmean(np.asarray(level_scores))
+            batch_results[target_img_diff].append(angle_score)
+            all_rotation_results[img_name][target_img_diff] = angle_score
+
+            if not floor:
+                img = Image.open(os.path.join(config["image_path"], img_name))
+                target_img = Image.open(os.path.join(config["image_path"], target_img_name))                        
+                image_output_dir = config["example_image_output_dir"]
+                image_output_name = f"project_{img_name.replace('/', '_').replace('.png', '')}_{target_img_name.replace('/', '_')}"
+                projected_img = np.asarray(img)
+                if target_img_name != img_name:
+                    projected_img =  np.moveaxis(projected_img, -1, 0)
+                    projected_img = utils.project_img_gpu(projected_img, depth_map, w2c, target_w2c, Ks, target_Ks, device=device)
+                    projected_img =  np.moveaxis(projected_img, 0, -1)
+                title = f"{img_name}_{round(angle_score, 3)}"
+                plot_infos.append({'output_name':image_output_name, 'title':title,
+                                    'img':np.asarray(img), 'projected_img':projected_img,
+                                    'org_test_map':org_test_map, 'target_img':np.asarray(target_img),
+                                    'org_ref_map':org_ref_map, 'reference_map':reference_map,
+                                    'test_map': test_map, 'unprojected_map':unprojected_map})
+
+
+    return batch_results, all_rotation_results, plot_infos
+
+def compute_scale_correlation_batch(batch_indices, all_data, all_names, metric="auc", n_iterations=10, device='cuda', blur_size=11, blur_sigma=1.5, floor=False, camera_path='', config=None):
+    batch_results = {-2:[], -1:[], 0:[], 1:[], 2:[]}
+    scale_results = {}
+    plot_infos=[]
+    for i in tqdm(batch_indices, desc="Computing multi-scale correlations", total=len(batch_indices)):
+        img_name = all_names[i]
+        img_idx = int(img_name.split('_')[-1].split('.')[0])
+        scale_results[img_name] = {-2:[], -1:[], 0:[], 1:[], 2:[]}
+        data = all_data[img_name]
+        scale = data["scale"]
+        clickmaps = data["clickmap"]
+        zoom = data["zoom"]
+        target_img_ids, target_img_diffs = utils.get_scale_target(img_idx, zoom)
+
+        for j, target_img_idx in enumerate(target_img_ids):
+            target_img_diff = target_img_diffs[j]
+            target_img_name = f"{'_'.join(img_name.split('_')[:-1])}_{str(target_img_idx).zfill(5)}.png"             
+            if floor:
+                rand_i = np.random.choice([rand_i for rand_i in range(len(all_names)) if rand_i != i])
+                target_img_name = all_names[rand_i]
+            target_data = all_data[target_img_name]
+            target_clickmaps = target_data["clickmap"]
+            target_scale = target_data["scale"]
+            target_zoom = target_data['zoom']
+            level_scores = []
+            scale_diff = scale / target_scale
+            for k, clickmap_at_k in enumerate(clickmaps):
+                if metric == "spearman" and k < (len(clickmaps)-1):
+                    continue
+                rand_scores = []
+                n = len(clickmap_at_k)
+                target_clickmap_at_k = target_clickmaps[k]
+                target_n = len(target_clickmap_at_k)
+                for iteration in range(n_iterations):
+                    test_rand_perm = np.random.permutation(n)
+                    fh = test_rand_perm[:(n // 2)]
+                    # sh = test_rand_perm[(n//2):]
+                    test_map = clickmap_at_k[fh].mean(0)
+                    if not floor and target_img_name == img_name:
+                        target_rand_perm = test_rand_perm
+                    else:
+                        target_rand_perm = np.random.permutation(target_n)
+                    sh = target_rand_perm[(target_n//2):]
+                    reference_map = target_clickmap_at_k[sh].mean(0)
+                    if k == (len(clickmaps)-1) and iteration == (n_iterations - 1):
+                        unscaled_map = test_map.copy()
+                        unscaled_map = utils.blur_maps_for_cf(
+                            unscaled_map[None, None],
+                            blur_size,
+                            blur_sigma,
+                            gpu_batch_size=2).squeeze()
+
+                    # Scale before blurring, need to scale kernel size
+                    if scale_diff != 1:
+                        test_map = utils.sparse_scale(test_map, scale_diff, device).cpu().numpy()
+                    blur_clickmaps = utils.blur_maps_for_cf(
+                        np.stack((test_map, reference_map), axis=0)[None],
+                        int(blur_size/scale_diff),
+                        int(blur_sigma/scale_diff),
+                        gpu_batch_size=2).squeeze()
+                    
+                    test_map = blur_clickmaps[0]
+                    reference_map = blur_clickmaps[1]
+                    if k == (len(clickmaps)-1) and iteration == (n_iterations - 1):
+                        org_test_map = test_map.copy()
+                        org_ref_map = reference_map.copy()
+                    if config:
+                        image_shape = config['image_shape']
+                        center_crop = config['center_crop']
+                        if center_crop:
+                            test_map = torch.tensor(test_map)
+                            reference_map = torch.tensor(reference_map)
+                            test_map = tvF.resize(test_map, min(image_shape))
+                            test_map = tvF.center_crop(test_map, center_crop)
+                            reference_map = tvF.resize(reference_map, min(image_shape))
+                            reference_map = tvF.center_crop(reference_map, center_crop)
+                            test_map = test_map.numpy().squeeze()
+                            reference_map = reference_map.numpy().squeeze()
+                    # if scale != 1:
+                    #     test_map = utils.sparse_scale(test_map, scale, device).numpy()
+                    # Use scipy's spearman correlation
+                    if metric == "auc":
+                        score = auc(test_map.flatten(), reference_map.flatten())
+                    elif metric == "rankorder":
+                        score = rankorder(test_map.flatten(), reference_map.flatten())
+                    elif metric == "spearman":
+                        score, _ = spearmanr(test_map.flatten(), reference_map.flatten())
+                    else:
+                        raise ValueError(f"Invalid metric: {metric}")
+                    rand_scores.append(score)
+
+                    # Explicitly free memory
+                    if 'blur_clickmaps' in locals():
+                        del blur_clickmaps
+                rand_scores = np.nanmean(np.asarray(rand_scores))
+                level_scores.append(rand_scores)
+                gc.collect()
+            scale_results[img_name][target_img_diff] = np.nanmean(np.asarray(level_scores))
+            batch_results[target_img_diff].append(np.nanmean(np.asarray(level_scores)))
+            if not floor:
+                img = Image.open(os.path.join(config["image_path"], img_name))
+                target_img = Image.open(os.path.join(config["image_path"], target_img_name))                        
+                image_output_dir = config["example_image_output_dir"]
+                image_output_name = f"scale_{img_name.replace('/', '_').replace('.png', '')}_{target_img_name.replace('/', '_')}"
+                scaled_img = np.asarray(img)
+                if target_img_name != img_name:
+                    scaled_img = np.moveaxis(scaled_img, -1, 0)
+                    scaled_img = utils.scale_img(scaled_img, scale_diff, device).numpy()
+                    scaled_img =  np.moveaxis(scaled_img, 0, -1)
+                title = f"{img_name}_scale_{target_img_diff}_{round(batch_results[target_img_diff][-1], 3)}"
+                plot_infos.append({'output_name':image_output_name, 'title':title,
+                                    'img':np.asarray(img), 'scaled_img':scaled_img,
+                                    'unscaled_map':unscaled_map, 'org_test_map': org_test_map,
+                                    'target_img':np.asarray(target_img), 'org_ref_map':org_ref_map,
+                                    'reference_map':reference_map, 'test_map': test_map})
+    return batch_results, scale_results, plot_infos
+
+def compute_correlation_batch(batch_indices, all_clickmaps, all_names, metric="auc", n_iterations=10, device='cuda', blur_size=11, blur_sigma=1.5, floor=False, config=None):
     """Compute split-half correlations for a batch of clickmaps in parallel"""
     batch_results = []
+    all_scores = {}
     for i in tqdm(batch_indices, desc="Computing split-half correlations", total=len(batch_indices)):
         clickmaps = all_clickmaps[i]
+        img_name = all_names[i]
         level_corrs = []
         if floor:
             rand_i = np.random.choice([j for j in range(len(all_clickmaps)) if j != i])
@@ -122,7 +372,7 @@ def compute_correlation_batch(batch_indices, all_clickmaps, metric="auc", n_iter
                     rand_perm = np.random.permutation(len(all_clickmaps[rand_i][k]))
                     sh = rand_perm[(n // 2):]
                     reference_map = all_clickmaps[rand_i][k][sh].mean(0)  # Take maps from the same level in a random other image
-                    
+                    #TODO Add adjusted blur size for imagenet images, add resize and center crop
                     # Ensure reference_map has the same shape as test_map
                     if reference_map.shape != test_map.shape:
                         # Resize reference_map to match test_map's shape
@@ -154,7 +404,18 @@ def compute_correlation_batch(batch_indices, all_clickmaps, metric="auc", n_iter
                         gpu_batch_size=2).squeeze()
                     test_map = blur_clickmaps[0]
                     reference_map = blur_clickmaps[1]
-                
+                if config:
+                    image_shape = config['image_shape']
+                    center_crop = config['center_crop']
+                    if center_crop:
+                        test_map = torch.tensor(test_map)
+                        reference_map = torch.tensor(reference_map)
+                        test_map = tvF.resize(test_map, min(image_shape))
+                        test_map = tvF.center_crop(test_map, center_crop)
+                        reference_map = tvF.resize(reference_map, min(image_shape))
+                        reference_map = tvF.center_crop(reference_map, center_crop)
+                        test_map = test_map.numpy().squeeze()
+                        reference_map = reference_map.numpy().squeeze()
                 # Use scipy's spearman correlation
                 if metric == "auc":
                     score = auc(test_map.flatten(), reference_map.flatten())
@@ -172,12 +433,11 @@ def compute_correlation_batch(batch_indices, all_clickmaps, metric="auc", n_iter
                 
             rand_corrs = np.asarray(rand_corrs).mean()  # Take the mean of the random correlations
             level_corrs.append(rand_corrs)
-            
             # Free memory
             gc.collect()
-            
         batch_results.append(np.asarray(level_corrs).mean())  # Integrate over the levels
-    return batch_results
+        all_scores[img_name] = batch_results[-1]
+    return batch_results, all_scores
 
 
 if __name__ == "__main__":
@@ -195,17 +455,18 @@ if __name__ == "__main__":
     parser.add_argument('--correlation-jobs', type=int, default=None, help='Override number of parallel jobs for correlation')
     parser.add_argument('--metric', type=str, default=None, help='Metric to use for correlation')
     parser.add_argument('--time_based_bins', action='store_true', help='Enable time based bin threshold instead of count based')
+    parser.add_argument('--save_json', default=False, action='store_true')
     args = parser.parse_args()
     
     # Increase file descriptor limit
-    try:
-        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
-        print(f"Current file descriptor limits: soft={soft}, hard={hard}")
-        new_soft = min(args.max_open_files, hard)
-        resource.setrlimit(resource.RLIMIT_NOFILE, (new_soft, hard))
-        print(f"Increased file descriptor soft limit to {new_soft}")
-    except (ValueError, resource.error) as e:
-        print(f"Warning: Could not increase file descriptor limit: {e}")
+    # try:
+    #     soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    #     print(f"Current file descriptor limits: soft={soft}, hard={hard}")
+    #     new_soft = min(args.max_open_files, hard)
+    #     resource.setrlimit(resource.RLIMIT_NOFILE, (new_soft, hard))
+    #     print(f"Increased file descriptor soft limit to {new_soft}")
+    # except (ValueError, resource.error) as e:
+    #     print(f"Warning: Could not increase file descriptor limit: {e}")
     
     # Start profiling if requested
     if args.profile:
@@ -225,11 +486,16 @@ if __name__ == "__main__":
     # Add filter_duplicates to config if not present
     if "filter_duplicates" not in config:
         config["filter_duplicates"] = args.filter_duplicates
+    if "save_json" not in config:
+        config["save_json"] = args.save_json
 
     # Add time_based_bins to config if not present
     if "time_based_bins" not in config:
         config["time_based_bins"] = args.time_based_bins
-        
+
+    if "constancy" not in config:
+        config["constancy"] = False
+
     if args.metric is not None:
         config["metric"] = args.metric
         print(f"Overwriting metric to {args.metric}")
@@ -440,55 +706,349 @@ if __name__ == "__main__":
     #     n_jobs = adjusted_n_jobs
     
     # Process correlation batches in parallel
-    ceiling_results = Parallel(n_jobs=n_jobs, prefer="threads")(
-        delayed(compute_correlation_batch)(
-            batch_indices=batch,
-            all_clickmaps=all_clickmaps,
-            metric=metric,
-            n_iterations=null_iterations,
-            device=device,
-            blur_size=config["blur_size"],
-            blur_sigma=config.get("blur_sigma", config["blur_size"]),
-            floor=False
-        ) for batch in tqdm(batches, desc="Computing ceiling batches", total=len(batches))
-    )
-    
-    # Force garbage collection between major operations
-    gc.collect()
-    
-    floor_results = Parallel(n_jobs=n_jobs, prefer="threads")(
-        delayed(compute_correlation_batch)(
-            batch_indices=batch,
-            all_clickmaps=all_clickmaps,
-            metric=metric,
-            n_iterations=null_iterations,
-            device=device,
-            blur_size=config["blur_size"],
-            blur_sigma=config.get("blur_sigma", config["blur_size"]),
-            floor=True
-        ) for batch in tqdm(batches, desc="Computing floor batches", total=len(batches))
-    )
-    
-    # Flatten the results
-    all_ceilings = np.concatenate(ceiling_results)
-    all_floors = np.concatenate(floor_results)
+    if not config['constancy']:
+        ceiling_returns = Parallel(n_jobs=n_jobs, prefer="threads")(
+            delayed(compute_correlation_batch)(
+                batch_indices=batch,
+                all_clickmaps=all_clickmaps,
+                all_names=final_keep_index,
+                metric=metric,
+                n_iterations=null_iterations,
+                device=device,
+                blur_size=config["blur_size"],
+                blur_sigma=config.get("blur_sigma", config["blur_size"]),
+                floor=False,
+                config=config,
+            ) for batch in tqdm(batches, desc="Computing ceiling batches", total=len(batches))
+        )
+        ceiling_results, all_ceilings = zip(*ceiling_returns)
+        # Force garbage collection between major operations
+        gc.collect()
+        floor_returns = Parallel(n_jobs=n_jobs, prefer="threads")(
+            delayed(compute_correlation_batch)(
+                batch_indices=batch,
+                all_clickmaps=all_clickmaps,
+                all_names=final_keep_index,
+                metric=metric,
+                n_iterations=null_iterations,
+                device=device,
+                blur_size=config["blur_size"],
+                blur_sigma=config.get("blur_sigma", config["blur_size"]),
+                floor=True,
+                config=config,
+            ) for batch in tqdm(batches, desc="Computing floor batches", total=len(batches))
+        )
+        floor_results, all_floors = zip(*floor_returns)
+        all_img_ceilings = {}
+        all_img_floors = {}
+        for img_ceilings in all_ceilings:
+            for img_name, score in img_ceilings.items():
+                all_img_ceilings[img_name] = score
+        for img_ceilings in all_floors:
+            for img_name, score in img_ceilings.items():
+                all_img_floors[img_name] = score            
+        # Flatten the results
+        all_ceilings = np.concatenate(ceiling_results)
+        all_floors = np.concatenate(floor_results)
 
-    # Compute the mean of the ceilings and floors
-    mean_ceiling = all_ceilings.mean()
-    mean_floor = all_floors.mean()
+        # Compute the mean of the ceilings and floors
+        mean_ceiling = all_ceilings.mean()
+        mean_floor = all_floors.mean()
 
-    # Compute the ratio of the mean of the ceilings to the mean of the floors
-    ratio = mean_ceiling / mean_floor
-    print(f"Mean ceiling: {mean_ceiling}, Mean floor: {mean_floor}, Ratio: {ratio}")
+        # Compute the ratio of the mean of the ceilings to the mean of the floors
+        ratio = mean_ceiling / mean_floor
+        print(f"Mean ceiling: {mean_ceiling}, Mean floor: {mean_floor}, Ratio: {ratio}")
 
-    # Save the results
-    np.savez(
-        os.path.join(output_dir, f"{config['experiment_name']}_{config['metric']}_ceiling_floor_results.npz"),
-        mean_ceiling=mean_ceiling,
-        mean_floor=mean_floor,
-        all_ceilings=all_ceilings,
-        all_floors=all_floors,
-        ratio=ratio)
+        # Save the results
+        np.savez(
+            os.path.join(output_dir, f"{config['experiment_name']}_{config['metric']}_ceiling_floor_results.npz"),
+            mean_ceiling=mean_ceiling,
+            mean_floor=mean_floor,
+            all_ceilings=all_ceilings,
+            all_floors=all_floors,
+            all_img_ceilings=all_img_ceilings,
+            all_img_floors=all_img_floors,
+            ratio=ratio)
+        if config['save_json']:
+            # Save as json
+            with open(os.path.join(output_dir, f"{config['experiment_name']}_{config['metric']}_ceiling_floor_results.json"), 'w') as f:
+                output_json = {"all_imgs": final_keep_index, 'mean_ceiling':mean_ceiling, 'mean_floor':mean_floor,
+                                'all_ceilings':all_ceilings, 'all_floors':all_floors, 'all_img_ceilings':all_img_ceilings, 
+                                'all_img_floors':all_img_floors}
+                for key, value in output_json.items():
+                    if isinstance(value, np.ndarray):
+                        output_json[key] = value.tolist()
+                output_content = json.dumps(output_json, indent=4)
+                f.write(output_content)      
+    else:
+        all_names = final_keep_index
+        depth_root = config['depth_path']
+        with open(config['camera_path'], 'r') as f:
+            all_dict = json.load(f)
+            scales_dict = all_dict['scale']
+            w2c_dict = all_dict['w2c']
+            k_dict = all_dict['K']
+
+        all_data = {}
+        for i, name in enumerate(all_names):
+            clickmap = all_clickmaps[i]
+            img_idx = int(name.split('.')[0].split('_')[-1])
+            zoom_level = img_idx  % 3
+            # if zoom_level != 2:
+            #     target_img_idx = img_idx+(2-zoom_level)
+            # else:
+            #     target_img_idx = img_idx
+            # target_img_name = f"{'_'.join(name.split('.')[0].split('_')[:-1])}_{str(target_img_idx).zfill(5)}.png"
+            # if target_img_name not in all_names:
+            #     continue
+            depth_path = os.path.join(depth_root, f"depth_{name.replace('.png', '.npy')}")
+            depth_map = np.load(depth_path)
+            all_data[name] = {"clickmap": clickmap, "scale":scales_dict[name], "zoom":zoom_level, 'img_idx':img_idx,
+                            "w2c":np.array(w2c_dict[name]), "k":np.array(k_dict[name]), 'depth_map':depth_map,}
+        
+        # Scale Constancy
+        scale_ceiling_returns = Parallel(n_jobs=n_jobs, prefer="threads")(
+            delayed(compute_scale_correlation_batch)(
+                batch_indices=batch,
+                all_data=all_data,
+                all_names=all_names,
+                metric=metric,
+                n_iterations=null_iterations,
+                device=device,
+                blur_size=config["blur_size"],
+                blur_sigma=config.get("blur_sigma", config["blur_size"]),
+                floor=False,
+                camera_path=config['camera_path'],
+                config=config
+            ) for batch in tqdm(batches, desc="Computing ceiling batches", total=len(batches))
+        )
+        scale_ceiling_results, scale_ceiling, scale_plot_infos = zip(*scale_ceiling_returns)
+        # Force garbage collection between major operations
+        gc.collect()
+        for scale_plot_info in scale_plot_infos:
+            for info in scale_plot_info:
+                # Save visualization
+                f = plt.figure()
+                plt.axis("off")
+                plt.title(info['title'])
+                plt.subplot(2, 4, 1)
+                plt.imshow(info['img'])
+                plt.axis("off")
+                plt.subplot(2, 4, 2)
+                plt.imshow(info['scaled_img'])
+                plt.axis("off")
+                plt.subplot(2, 4, 3)
+                plt.imshow(info['unscaled_map'])
+                plt.axis("off")
+                plt.subplot(2, 4, 4)
+                plt.imshow(info['org_test_map'])
+                plt.axis("off")
+                plt.subplot(2, 4, 5)
+                plt.imshow(info['target_img'])
+                plt.axis("off")
+                plt.subplot(2, 4, 6)
+                plt.imshow(info['org_ref_map'])
+                plt.axis("off")
+                plt.subplot(2, 4, 7)
+                plt.imshow(info['test_map'])
+                plt.axis("off")
+                plt.subplot(2, 4, 8)
+                plt.imshow(info['reference_map'])
+                plt.axis("off")
+                plt.savefig(os.path.join(config["example_image_output_dir"], info['output_name']))
+                plt.close()
+
+        scale_floor_returns = Parallel(n_jobs=n_jobs, prefer="threads")(
+            delayed(compute_scale_correlation_batch)(
+                batch_indices=batch,
+                all_data=all_data,
+                all_names=all_names,
+                metric=metric,
+                n_iterations=null_iterations,
+                device=device,
+                blur_size=config["blur_size"],
+                blur_sigma=config.get("blur_sigma", config["blur_size"]),
+                floor=True,
+                camera_path=config['camera_path'],
+                config=config
+            ) for batch in tqdm(batches, desc="Computing floor batches", total=len(batches))
+        )
+        scale_floor_results, scale_floor, _ = zip(*scale_floor_returns)
+        gc.collect()
+
+        all_scale_ceilings_img = {}
+        all_scale_ceilings = {}
+        mean_scale_ceilings = {}
+        for sc in scale_ceiling_results:
+            for scale in sc:
+                if scale not in all_scale_ceilings:
+                    all_scale_ceilings[scale] = []
+                all_scale_ceilings[scale] += sc[scale]
+        for scale, score in all_scale_ceilings.items():
+            mean_scale_ceilings[scale] = np.mean(score)
+
+        for sc in scale_ceiling:
+            for img_name, scores in sc.items():
+                all_scale_ceilings_img[img_name] = scores
+        
+        all_scale_floor_img = {}
+        all_scale_floor = {}
+        mean_scale_floor = {}
+        for sc in scale_floor_results:
+            for scale in sc:
+                if scale not in all_scale_floor:
+                    all_scale_floor[scale] = []
+                all_scale_floor[scale] += sc[scale]
+        for scale, score in all_scale_floor.items():
+            mean_scale_floor[scale] = np.mean(score)
+
+        all_scale_ratios = {}
+        for scale, score in mean_scale_ceilings.items():
+            all_scale_ratios[scale] = score/mean_scale_floor[scale]
+
+        for sc in scale_floor:
+            for img_name, scores in sc.items():
+                all_scale_floor_img[img_name] = scores
+        
+        # Rotation Constancy
+        rot_ceiling_returns = Parallel(n_jobs=n_jobs, prefer="threads")(
+            delayed(compute_rotation_correlation_batch)(
+                batch_indices=batch,
+                all_data=all_data,
+                all_names=all_names,
+                metric=metric,
+                n_iterations=null_iterations,
+                device=device,
+                blur_size=config["blur_size"],
+                blur_sigma=config.get("blur_sigma", config["blur_size"]),
+                floor=False,
+                camera_path=config['camera_path'],
+                config=config
+            ) for batch in tqdm(batches, desc="Computing ceiling batches", total=len(batches))
+        )
+        rot_ceiling_results, rot_ceiling, rot_plot_infos = zip(*rot_ceiling_returns)
+        # Force garbage collection between major operations
+        gc.collect()
+        for rot_plot_info in rot_plot_infos:
+            for info in rot_plot_info:
+                # Save visualization
+                f = plt.figure()
+                plt.axis("off")
+                plt.title(info['title'])
+                plt.subplot(2, 4, 1)
+                plt.imshow(info['img'])
+                plt.axis("off")
+                plt.subplot(2, 4, 2)
+                plt.imshow(info['projected_img'])
+                plt.axis("off")
+                plt.subplot(2, 4, 3)
+                plt.imshow(info['unprojected_map'])
+                plt.axis("off")
+                plt.subplot(2, 4, 4)
+                plt.imshow(info['org_test_map'])
+                plt.axis("off")
+                plt.subplot(2, 4, 5)
+                plt.imshow(info['target_img'])
+                plt.axis("off")
+                plt.subplot(2, 4, 6)
+                plt.imshow(info['org_ref_map'])
+                plt.axis("off")
+                plt.subplot(2, 4, 7)
+                plt.imshow(info['test_map'])
+                plt.axis("off")
+                plt.subplot(2, 4, 8)
+                plt.imshow(info['reference_map'])
+                plt.axis("off")
+                plt.savefig(os.path.join(config["example_image_output_dir"], info['output_name']))
+                plt.close()
+
+        rot_floor_returns = Parallel(n_jobs=n_jobs, prefer="threads")(
+            delayed(compute_rotation_correlation_batch)(
+                batch_indices=batch,
+                all_data=all_data,
+                all_names=all_names,
+                metric=metric,
+                n_iterations=null_iterations,
+                device=device,
+                blur_size=config["blur_size"],
+                blur_sigma=config.get("blur_sigma", config["blur_size"]),
+                floor=True,
+                camera_path=config['camera_path'],
+                config=config
+            ) for batch in tqdm(batches, desc="Computing floor batches", total=len(batches))
+        )
+        rot_floor_results, rot_floor, _ = zip(*rot_floor_returns)
+
+        all_rot_ceilings_img = {}
+        all_rot_ceilings_angle = {}
+        mean_rot_ceilings_angle = {}
+
+        for rc in rot_ceiling:
+            for img_name, scores in rc.items():
+                all_rot_ceilings_img[img_name] = scores
+        
+        for rc in rot_ceiling_results:
+            for angle, scores in rc.items():
+                if angle not in all_rot_ceilings_angle:
+                    all_rot_ceilings_angle[angle] = []
+                all_rot_ceilings_angle[angle] += scores
+        
+        for angle, scores in all_rot_ceilings_angle.items():
+            mean_rot_ceilings_angle[angle] = np.mean(scores)
+        print(mean_rot_ceilings_angle)
+        all_rot_floor_img = {}
+        all_rot_floor_angle = {}
+        mean_rot_floor_angle = {}
+
+        for rc in rot_floor:
+            for img_name, scores in rc.items():
+                all_rot_floor_img[img_name] = scores
+        
+        for rc in rot_floor_results:
+            for angle, scores in rc.items():
+                if angle not in all_rot_floor_angle:
+                    all_rot_floor_angle[angle] = []
+                all_rot_floor_angle[angle] += scores
+        
+        for angle, scores in all_rot_floor_angle.items():
+            mean_rot_floor_angle[angle] = np.mean(scores)
+
+        all_rotation_ratios = {}
+        for angle, score in mean_rot_ceilings_angle.items():
+            all_rotation_ratios[angle] = score/mean_rot_floor_angle[angle]
+        
+        # Save the results
+        np.savez(
+            os.path.join(output_dir, f"{config['experiment_name']}_{config['metric']}_constancy_ceiling_floor_results.npz"),
+            all_imgs = all_names,
+            mean_scale_ceilings=mean_scale_ceilings,
+            mean_scale_floor=mean_scale_floor,
+            zoom_scale_ceiling=all_scale_ceilings,
+            zoom_scale_floor=all_scale_floor,
+            all_scale_ceiling=all_scale_ceilings_img,
+            all_scale_floor=all_scale_floor_img,
+            scale_ratio=all_scale_ratios,
+            all_rotation_ceilings=all_rot_ceilings_img,
+            all_rotation_floor=all_rot_floor_img,
+            angle_rotation_ceilings=all_rot_ceilings_angle,
+            angle_rotation_floor=all_rot_floor_angle,
+            mean_rotation_ceilings=mean_rot_ceilings_angle,
+            mean_rotation_floor=mean_rot_floor_angle,
+            rotation_ratio=all_rotation_ratios,
+            ) 
+        if config['save_json']:
+            # Save as json
+            with open(os.path.join(output_dir, f"{config['experiment_name']}_{config['metric']}_constancy_ceiling_floor_results.json"), 'w') as f:
+                output_json = {"all_imgs": all_names, "zoom_scale_ceiling": all_scale_ceilings, "zoom_scale_floor": all_scale_floor, 
+                                "mean_scale_ceilings":mean_scale_ceilings, "mean_scale_floor":mean_scale_floor, "all_scale_ceiling":all_scale_ceilings_img,
+                                "all_scale_floor": all_scale_floor_img, "scale_ratio":all_scale_ratios, "all_rotation_ceilings":all_rot_ceilings_img,
+                                "all_rotation_floor":all_rot_floor_img, "angle_rotation_ceilings": all_rot_ceilings_angle, "angle_rotation_floor": all_rot_floor_angle,
+                                "mean_rotation_ceilings": mean_rot_ceilings_angle, "mean_rotation_floor": mean_rot_floor_angle, "rotation_ratio": all_rotation_ratios}
+                for key, value in output_json.items():
+                    if isinstance(value, np.ndarray):
+                        output_json[key] = value.tolist()
+                output_content = json.dumps(output_json, indent=4)
+                f.write(output_content)
 
     # End profiling if it was enabled
     if args.profile:
