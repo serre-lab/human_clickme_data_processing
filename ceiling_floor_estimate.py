@@ -48,7 +48,7 @@ def auc(test_map, reference_map, thresholds=10, metric="iou"):
     
     # Return the area under the curve (trapezoidal integration)
     # We're integrating over normalized threshold range [0,1]
-    return np.trapz(scores, x=thresholds) if len(thresholds) > 1 else np.mean(scores)
+    return np.trapezoid(scores, x=thresholds) if len(thresholds) > 1 else np.mean(scores)
 
 
 def rankorder(test_map, reference_map, threshold=0.):
