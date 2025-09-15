@@ -12,10 +12,11 @@ from glob import glob
 from train_subject_classifier import RNN
 from accelerate import Accelerator
 from joblib import Parallel, delayed
+import joblib
 import psutil
+import h5py
 from PIL import Image
 from scipy.ndimage import maximum_filter
-
 
 # Near the top of the file (around line 10), add torch.cuda memory management functions
 try:
@@ -376,10 +377,15 @@ def process_clickmap_files_parallel(
         return (image_file_name, tuples_list)
 
     # Process rows in parallel
-    results = Parallel(n_jobs=1)(
-        delayed(process_single_row)(row) 
-        for _, row in tqdm(clickme_data.iterrows(), total=len(clickme_data), desc="Processing clickmaps")
-    )
+    # results = Parallel(n_jobs=1)(
+    #     delayed(process_single_row)(row) 
+    #     for _, row in tqdm(clickme_data.iterrows(), total=len(clickme_data), desc="Processing clickmaps")
+    # )
+
+    results = []
+    for _, row in tqdm(clickme_data.iterrows(), total=len(clickme_data), desc="Processing clickmaps"):
+        single_row_result = process_single_row(row)
+        results.append(single_row_result)
 
     # Combine results
     proc_clickmaps = {}
@@ -1662,19 +1668,22 @@ def process_all_maps_multi_thresh_gpu(
         thresholds=10,
         return_before_blur=False,
         time_based_bins=False,
+        save_to_disk=False,
+        maximum_length=5000,
         ):
     """
     Simplified function to blur clickmaps on GPU in batches with adaptive kernel sizing
     """
-    import torch
-    from tqdm import tqdm
-    import numpy as np
-    
+    if save_to_disk:
+        assert return_before_blur
+        temp_file = h5py.File(config['temp_dir'], 'w')
+        temp_group = temp_file.create_group("clickmaps")
     # Extract basic parameters
     blur_size = config["blur_size"]
     blur_sigma = config.get("blur_sigma", blur_size)
     image_shape = config["image_shape"]
     min_subjects = config["min_subjects"]
+    max_subjects = config["max_subjects"]
     min_clicks = config["min_clicks"]
     max_kernel_size = config.get("max_kernel_size", 51)
     blur_sigma_function = config.get("blur_sigma_function", lambda x: x)
@@ -1697,11 +1706,13 @@ def process_all_maps_multi_thresh_gpu(
     final_clickmaps = {}
     clickmap_bins = {}
     click_counts = {}  # Track click counts for each image
-
+    total_maps = 0
+    if save_to_disk:
+        save_count = 0
     # Preprocess all clickmaps first to binary maps
-    for key, trials in clickmaps.items():
+    for clickmap_idx, (key, trials) in tqdm(enumerate(clickmaps.items()), "Pre-processing on CPU"):
         if len(trials) < min_subjects:
-            print("Not enough subjects", key, len(trials))
+            # print("Not enough subjects", key, len(trials))
             continue
         if time_based_bins:
             lens = [len(x) for x in trials]
@@ -1709,9 +1720,6 @@ def process_all_maps_multi_thresh_gpu(
             for trial in trials:
                 max_count = len(trial)
                 half_count = int(max_count/2)
-                #below_mean = np.linspace(max(half_count * .1, min_clicks), half_count, thresholds //2).astype(int)
-                #above_mean = np.linspace(half_count+1, max_count + 1, thresholds // 2).astype(int)
-                #trial_bin = np.concatenate([below_mean, above_mean])
                 trial_bin = np.linspace(max(half_count * .1, min_clicks), max_count, thresholds).astype(int)
                 bins.append(trial_bin)
             bin_clickmaps = []
@@ -1799,11 +1807,20 @@ def process_all_maps_multi_thresh_gpu(
         click_counts[key] = len(trials)  # Store total clicks for this image
         clickmap_bins[key] = np.asarray(bin_counts)
         # Add to all_clickmaps with the appropriate method
-        if return_before_blur:
+        if save_to_disk:
+            temp_group.create_dataset(f"clickmap_{str(clickmap_idx).zfill(8)}", data=np.stack(bin_clickmaps, axis=0))
+        elif return_before_blur:
+            bin_clickmaps = np.stack(bin_clickmaps, axis=0)
+            if bin_clickmaps.shape[1] < min_subjects:
+                continue
+            bin_clickmaps = bin_clickmaps[:, :max_subjects, :, :]
             all_clickmaps.append(np.stack(bin_clickmaps, axis=0))
         else:
             all_clickmaps.append(np.concatenate(bin_clickmaps, axis=0))
-    if not all_clickmaps:
+    if save_to_disk:
+        temp_file.close()
+
+    if not save_to_disk and not all_clickmaps:
         print("No valid clickmaps to process")
         return {}, [], [], [], {}
     
@@ -1921,7 +1938,6 @@ def process_all_maps_multi_thresh_gpu(
         torch.cuda.empty_cache()
     return final_clickmaps, all_clickmaps, categories, keep_index, click_counts, clickmap_bins
 
-
 def blur_maps_for_cf(all_clickmaps, blur_size, blur_sigma, gpu_batch_size, native_size=None):
     # Step 2: Prepare for batch blurring on GPU
     total_maps = len(all_clickmaps)
@@ -2021,7 +2037,7 @@ def blur_maps_for_cf(all_clickmaps, blur_size, blur_sigma, gpu_batch_size, nativ
     torch.cuda.empty_cache()    
     return all_clickmaps
 
-def sparse_scale(img, scale, device='cpu'):
+def sparse_scale(img, scale, device='cpu', pad=True):
     if isinstance(img, np.ndarray):
         img = torch.tensor(img).to(device)
     input_shape = img.shape
@@ -2054,15 +2070,17 @@ def sparse_scale(img, scale, device='cpu'):
     
     count_img[count_img==0] = 1
     scaled_img = scaled_img/count_img
-
-    pad_h = (org_h - new_h) // 2
-    pad_w = (org_w - new_w) // 2
-    diff_h = org_h - new_h - pad_h*2
-    diff_w = org_w - new_w - pad_w*2
-    padded_img = F.pad(scaled_img, (pad_h, pad_h+diff_h, pad_w, pad_w+diff_w))
-    padded_img = padded_img.reshape(input_shape)
-    return padded_img
-
+    if pad:
+        pad_h = (org_h - new_h) // 2
+        pad_w = (org_w - new_w) // 2
+        diff_h = org_h - new_h - pad_h*2
+        diff_w = org_w - new_w - pad_w*2
+        padded_img = F.pad(scaled_img, (pad_h, pad_h+diff_h, pad_w, pad_w+diff_w))
+        padded_img = padded_img.reshape(input_shape)
+        return padded_img
+    else:
+        return scaled_img
+        
 def scale_img(img, scale, device='cpu'):
     if isinstance(img, np.ndarray):
         img = torch.tensor(img)
@@ -2101,17 +2119,19 @@ def to_torch(x, device, dtype):
         return x.to(device, dtype=dtype)
     return torch.as_tensor(x, device=device, dtype=dtype)
 
-def project_img_gpu(img, depth, w2c_s, w2c_t, K_s, K_t, device):
-    was_tensor = isinstance(img, torch.Tensor)
-    org_dtype = img.dtype if hasattr(img, 'dtype') else 'float32'
+def project_img_gpu(img, depth, target_depth, w2c_s, w2c_t, K_s, K_t, device):
 
+    org_dtype = img.dtype if hasattr(img, 'dtype') else 'float32'
+    input_shape = img.shape
+    was_tensor = isinstance(img, torch.Tensor)
+    
     # Move everything to torch
     if isinstance(img, torch.Tensor):
         img = img
     else:
         img = torch.tensor(img).float()
     dtype = img.dtype
-    input_shape = img.shape
+    
     img = img.to(device)
     depth = to_torch(depth, device, dtype)
     # Convert to numpy to avoid lazy tensor operation in parallel
@@ -2119,7 +2139,6 @@ def project_img_gpu(img, depth, w2c_s, w2c_t, K_s, K_t, device):
         K_s = K_s.cpu().numpy()
     K_s_inv = np.linalg.inv(K_s)
     K_s_inv = to_torch(K_s_inv, device, dtype)
-    # K_s = to_torch(K_s, device, dtype)
     K_t = to_torch(K_t, device, dtype)
     w2c_s = to_torch(w2c_s, device, dtype)
     w2c_t = to_torch(w2c_t, device, dtype)
@@ -2128,10 +2147,8 @@ def project_img_gpu(img, depth, w2c_s, w2c_t, K_s, K_t, device):
         img = img.unsqueeze(0)  # (1,H,W)
     elif img.ndim > 3:
         img = img.reshape(-1, img.shape[-2], img.shape[-1])
-
     C, H, W = img.shape
     assert depth.shape[-2:] == (H, W), "depth must match HxW of img"
-
     R_s, T_s = w2c_s[:3, :3], w2c_s[:3, 3]
     R_t, T_t = w2c_t[:3, :3], w2c_t[:3, 3]
 
@@ -2141,6 +2158,7 @@ def project_img_gpu(img, depth, w2c_s, w2c_t, K_s, K_t, device):
         torch.arange(W, device=device, dtype=dtype),
         indexing='ij'
     )
+
     pixels_h = torch.stack([xs, ys, torch.ones_like(xs)], dim=0).reshape(3, -1)  # (3, N)
     depth_flat = depth.reshape(-1)  # (N,)
 
@@ -2164,9 +2182,10 @@ def project_img_gpu(img, depth, w2c_s, w2c_t, K_s, K_t, device):
     # ---- Valid mask ----
     valid = (
         (x_t >= 0) & (x_t < W) &
-        (y_t >= 0) & (y_t < H) &
-        (z_proj > 0)
+        (y_t >= 0) & (y_t < H) # &
+        # (z_proj > 0)
     )
+
 
     if not valid.any():
         out = torch.zeros_like(img)
@@ -2177,6 +2196,7 @@ def project_img_gpu(img, depth, w2c_s, w2c_t, K_s, K_t, device):
     x_t = x_t[valid]
     y_t = y_t[valid]
     z_t = z_proj[valid]
+
     img_flat = img.view(img.shape[0], -1)[:, valid]  # (C, N_valid)
 
     # ---- Z-buffer via scatter_reduce (amin) ----
@@ -2184,7 +2204,9 @@ def project_img_gpu(img, depth, w2c_s, w2c_t, K_s, K_t, device):
     num_pixels = H * W
 
     # Per-target-pixel min depth
-    z_min = torch.full((num_pixels,), float('inf'), device=device, dtype=z_t.dtype)
+    # z_min = torch.full((num_pixels,), float('inf'), device=device, dtype=z_t.dtype)
+    # Use this to mask any point that's behind the actual object
+    z_min = torch.tensor(target_depth*1.1).reshape(-1).to(device).to(z_t.dtype)
     # PyTorch >= 1.12: Tensor.scatter_reduce_
     z_min = z_min.scatter_reduce(0, flat_indices, z_t, reduce='amin', include_self=True)
 
@@ -2202,9 +2224,6 @@ def project_img_gpu(img, depth, w2c_s, w2c_t, K_s, K_t, device):
     # Restore original shape/dtype
     if not was_tensor:
         target = target.detach().cpu().numpy().astype(org_dtype)
-    else:
-        target = target.detach().cpu().astype(org_dtype)
-
     target = target.reshape(input_shape)
     return target
 
@@ -2231,3 +2250,4 @@ def get_rot_target(img_idx):
         target_img_diffs.append(i)
 
     return target_img_ids, target_img_diffs
+

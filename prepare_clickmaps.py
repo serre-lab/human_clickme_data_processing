@@ -47,6 +47,9 @@ if __name__ == "__main__":
     if "time_based_bins" not in config:
         config["time_based_bins"] = args.time_based_bins
 
+    if "max_subjects" not in config:
+        config["max_subjects"] = float('inf')
+    
     # Load clickme data
     print(f"Loading clickme data...")
     clickme_data = utils.process_clickme_data(

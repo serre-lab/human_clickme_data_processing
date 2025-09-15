@@ -1,0 +1,2 @@
+python prepare_clickmaps.py configs/imgnet_configs/imagenet_train_oscar.yaml
+python prepare_clickmaps.py configs/imgnet_configs/imagenet_val_oscar.yaml

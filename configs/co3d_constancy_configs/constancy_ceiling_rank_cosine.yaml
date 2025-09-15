@@ -10,7 +10,7 @@ correlation_batch_size: 128
 debug: false
 display_image_keys: auto
 example_image_output_dir: co3d_constancy_val_images
-experiment_name: co3d_constancy_val
+experiment_name: co3d_constancy_val_obs
 file_exclusion_filter: ILSVRC2012_val
 file_inclusion_filter: CO3D_Constancy  # CO3D_ClickMe2
 filter_mobile: true
@@ -23,11 +23,11 @@ mask_dir: null
 mask_threshold: 0.
 max_clicks: 1000000  # Set to an impossibly high number to keep all maps
 metadata_file: false
-metric: spearman
+metric: rank_cosine
 min_clicks: 1
 min_subjects: 4
 n_jobs: -1
-null_iterations: 10 # Potentially lower this number for speed up
+null_iterations: 20 # Potentially lower this number for speed up
 parallel_prepare_maps: true
 parallel_save: true
 participant_filter: false
