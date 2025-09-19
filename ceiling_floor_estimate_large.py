@@ -549,23 +549,23 @@ if __name__ == "__main__":
     #     print(f"Reducing parallel jobs from {n_jobs} to {adjusted_n_jobs} to prevent 'too many files open' error")
     #     n_jobs = adjusted_n_jobs
     
-    # Process correlation batches in parallel
-    # ceiling_returns = Parallel(n_jobs=n_jobs, prefer="threads")(
-    #     delayed(compute_correlation_batch)(
-    #         batch_indices=batch,
-    #         all_clickmaps=all_clickmaps,
-    #         all_names=final_keep_index,
-    #         metric=metric,
-    #         n_iterations=null_iterations,
-    #         device=device,
-    #         blur_size=config["blur_size"],
-    #         blur_sigma=config.get("blur_sigma", config["blur_size"]),
-    #         floor=False,
-    #         config=config,
-    #         metadata=metadata,
-    #     ) for batch in tqdm(batches, desc="Computing ceiling batches", total=len(batches))
-    # )
-    # ceiling_results, all_ceilings = zip(*ceiling_returns)
+    Process correlation batches in parallel
+    ceiling_returns = Parallel(n_jobs=n_jobs, prefer="threads")(
+        delayed(compute_correlation_batch)(
+            batch_indices=batch,
+            all_clickmaps=all_clickmaps,
+            all_names=final_keep_index,
+            metric=metric,
+            n_iterations=null_iterations,
+            device=device,
+            blur_size=config["blur_size"],
+            blur_sigma=config.get("blur_sigma", config["blur_size"]),
+            floor=False,
+            config=config,
+            metadata=metadata,
+        ) for batch in tqdm(batches, desc="Computing ceiling batches", total=len(batches))
+    )
+    ceiling_results, all_ceilings = zip(*ceiling_returns)
     # Force garbage collection between major operations
     gc.collect()
 
@@ -587,75 +587,45 @@ if __name__ == "__main__":
     floor_results, all_floors = zip(*floor_returns)
     all_img_ceilings = {}
     all_img_floors = {}
-    # for img_ceilings in all_ceilings:
-    #     for img_name, score in img_ceilings.items():
-    #         all_img_ceilings[img_name] = score
+    for img_ceilings in all_ceilings:
+        for img_name, score in img_ceilings.items():
+            all_img_ceilings[img_name] = score
     for img_ceilings in all_floors:
         for img_name, score in img_ceilings.items():
             all_img_floors[img_name] = score            
     # Flatten the results
-    # all_ceilings = np.concatenate(ceiling_results)
+    all_ceilings = np.concatenate(ceiling_results)
     all_floors = np.concatenate(floor_results)
 
     # Compute the mean of the ceilings and floors
-    # mean_ceiling = all_ceilings.mean()
+    mean_ceiling = all_ceilings.mean()
     mean_floor = all_floors.mean()
 
     # Compute the ratio of the mean of the ceilings to the mean of the floors
-    # ratio = mean_ceiling / mean_floor
-    # print(f"Mean ceiling: {mean_ceiling}, Mean floor: {mean_floor}, Ratio: {ratio}")
+    ratio = mean_ceiling / mean_floor
+    print(f"Mean ceiling: {mean_ceiling}, Mean floor: {mean_floor}, Ratio: {ratio}")
 
     # Save the results
     np.savez(
-        os.path.join(output_dir, f"{config['experiment_name']}_{config['metric']}_floor_results.npz"),
+        os.path.join(output_dir, f"{config['experiment_name']}_{config['metric']}_ceiling_floor_results.npz"),
+        mean_ceiling=mean_ceiling,
         mean_floor=mean_floor,
+        all_ceilings=all_ceilings,
         all_floors=all_floors,
-        all_img_floors=all_img_floors)
+        all_img_ceilings=all_img_ceilings,
+        all_img_floors=all_img_floors,
+        ratio=ratio)
     if config['save_json']:
         # Save as json
-        with open(os.path.join(output_dir, f"{config['experiment_name']}_{config['metric']}_floor_results.json"), 'w') as f:
-            output_json = {"all_imgs": final_keep_index, 'mean_floor':mean_floor,
-                            'all_floors':all_floors, 'all_img_floors':all_img_floors}
+        with open(os.path.join(output_dir, f"{config['experiment_name']}_{config['metric']}_ceiling_floor_results.json"), 'w') as f:
+            output_json = {"all_imgs": final_keep_index, 'mean_ceiling':mean_ceiling, 'mean_floor':mean_floor,
+                            'all_ceilings':all_ceilings, 'all_floors':all_floors, 'all_img_ceilings':all_img_ceilings, 
+                            'all_img_floors':all_img_floors}
             for key, value in output_json.items():
                 if isinstance(value, np.ndarray):
                     output_json[key] = value.tolist()
             output_content = json.dumps(output_json, indent=4)
             f.write(output_content)
-    # np.savez(
-    #     os.path.join(output_dir, f"{config['experiment_name']}_{config['metric']}_ceiling_results.npz"),
-    #     mean_ceiling=mean_ceiling,
-    #     all_ceilings=all_ceilings,
-    #     all_img_ceilings=all_img_ceilings)
-    # if config['save_json']:
-    #     # Save as json
-    #     with open(os.path.join(output_dir, f"{config['experiment_name']}_{config['metric']}_ceiling_results.json"), 'w') as f:
-    #         output_json = {"all_imgs": final_keep_index, 'mean_ceiling':mean_ceiling,
-    #                         'all_ceilings':all_ceilings, 'all_img_ceilings':all_img_ceilings}
-    #         for key, value in output_json.items():
-    #             if isinstance(value, np.ndarray):
-    #                 output_json[key] = value.tolist()
-    #         output_content = json.dumps(output_json, indent=4)
-    #         f.write(output_content)
-    # np.savez(
-    #     os.path.join(output_dir, f"{config['experiment_name']}_{config['metric']}_ceiling_floor_results.npz"),
-    #     mean_ceiling=mean_ceiling,
-    #     mean_floor=mean_floor,
-    #     all_ceilings=all_ceilings,
-    #     all_floors=all_floors,
-    #     all_img_ceilings=all_img_ceilings,
-    #     all_img_floors=all_img_floors,
-    #     ratio=ratio)
-    # if config['save_json']:
-    #     # Save as json
-    #     with open(os.path.join(output_dir, f"{config['experiment_name']}_{config['metric']}_ceiling_floor_results.json"), 'w') as f:
-    #         output_json = {"all_imgs": final_keep_index, 'mean_ceiling':mean_ceiling, 'mean_floor':mean_floor,
-    #                         'all_ceilings':all_ceilings, 'all_floors':all_floors, 'all_img_ceilings':all_img_ceilings, 
-    #                         'all_img_floors':all_img_floors}
-    #         for key, value in output_json.items():
-    #             if isinstance(value, np.ndarray):
-    #                 output_json[key] = value.tolist()
-    #         output_content = json.dumps(output_json, indent=4)
-    #         f.write(output_content)
     
     # Delete temp file to save disk
     if os.path.exists(temp_dir):
