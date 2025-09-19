@@ -598,7 +598,7 @@ if __name__ == "__main__":
         config["constancy"] = False
     
     if "max_subjects" not in config:
-        config["max_subjects"] = float('inf')
+        config["max_subjects"] = -1
 
     if args.metric is not None:
         config["metric"] = args.metric
@@ -723,7 +723,6 @@ if __name__ == "__main__":
         min_clicks=config["min_clicks"],
         max_clicks=config["max_clicks"],
         n_jobs=config["n_jobs"])
-    
     # Apply filters if necessary
     if config["class_filter_file"]:
         print("Filtering classes...")

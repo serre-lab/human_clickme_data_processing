@@ -163,6 +163,7 @@ def filter_for_foreground_masks(
 
 def process_clickme_data(data_file, filter_mobile, catch_thresh=0.95):
     if "csv" in data_file:
+        df = pd.read_csv(data_file)
         return pd.read_csv(data_file)
     elif "npz" in data_file:
         print("Load npz")
@@ -339,8 +340,6 @@ def process_clickmap_files_parallel(
                 return None
             image_file_name = folder_image_file_name
             image_file_names.append(folder_image_file_name)  
-        # elif file_inclusion_filter and file_inclusion_filter not in image_file_name:
-        #     return None
         elif file_inclusion_filter and file_inclusion_filter not in image_file_name:
             return None
 
@@ -352,9 +351,10 @@ def process_clickmap_files_parallel(
 
         clickmap = row["clicks"]
         if isinstance(clickmap, str):
-            clean_string = re.sub(r'[{}"]', '', clickmap)
-            tuple_strings = clean_string.split(', ')
-            data_list = tuple_strings[0].strip("()").split("),(")
+            clean_string = re.sub(r'[{}"\[\]]', '', clickmap)
+            # tuple_strings = clean_string.split(', ')
+            # data_list = tuple_strings.strip("()").split("),(")
+            data_list = clean_string.strip("()").split("), (")
             if len(data_list) == 1:  # Remove empty clickmaps
                 return None
             tuples_list = [tuple(map(int, pair.split(','))) for pair in data_list]
@@ -1813,7 +1813,9 @@ def process_all_maps_multi_thresh_gpu(
             bin_clickmaps = np.stack(bin_clickmaps, axis=0)
             if bin_clickmaps.shape[1] < min_subjects:
                 continue
-            bin_clickmaps = bin_clickmaps[:, :max_subjects, :, :]
+            if max_subjects > 0:
+                max_subjects = min(max_subjects, bin_clickmaps.shape[1])
+                bin_clickmaps = bin_clickmaps[:, :max_subjects, :, :]
             all_clickmaps.append(np.stack(bin_clickmaps, axis=0))
         else:
             all_clickmaps.append(np.concatenate(bin_clickmaps, axis=0))
@@ -2250,4 +2252,3 @@ def get_rot_target(img_idx):
         target_img_diffs.append(i)
 
     return target_img_ids, target_img_diffs
-

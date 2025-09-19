@@ -173,7 +173,6 @@ def compute_correlation_batch(batch_indices, all_clickmaps, all_names, metric="a
             rand_i = np.random.randint(len(all_clickmaps) - 1)
             if rand_i >= i:
                 rand_i += 1
-            rand_clickmaps = all_clickmaps[rand_i]
             rand_name = all_names[rand_i]
             rand_hd5_name = f"clickmap_{str(rand_i).zfill(8)}"
             random_map = all_clickmaps[rand_hd5_name]
@@ -320,7 +319,7 @@ if __name__ == "__main__":
         config_file = utils.get_config(sys.argv)
         config = utils.process_config(config_file)
     if "max_subjects" not in config:
-        config["max_subjects"] = float('inf')    
+        config["max_subjects"] = -1 
     # Add filter_duplicates to config if not present
     if "filter_duplicates" not in config:
         config["filter_duplicates"] = args.filter_duplicates
@@ -391,7 +390,6 @@ if __name__ == "__main__":
     image_output_dir = config["example_image_output_dir"]
     temp_dir = config["temp_dir"]
 
-    os.makedirs(temp_dir, exist_ok=True)
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(image_output_dir, exist_ok=True)
     os.makedirs(os.path.join(output_dir, config["experiment_name"]), exist_ok=True)
@@ -552,26 +550,7 @@ if __name__ == "__main__":
     #     n_jobs = adjusted_n_jobs
     
     # Process correlation batches in parallel
-    ceiling_returns = Parallel(n_jobs=n_jobs, prefer="threads")(
-        delayed(compute_correlation_batch)(
-            batch_indices=batch,
-            all_clickmaps=all_clickmaps,
-            all_names=final_keep_index,
-            metric=metric,
-            n_iterations=null_iterations,
-            device=device,
-            blur_size=config["blur_size"],
-            blur_sigma=config.get("blur_sigma", config["blur_size"]),
-            floor=False,
-            config=config,
-            metadata=metadata,
-        ) for batch in tqdm(batches, desc="Computing ceiling batches", total=len(batches))
-    )
-    ceiling_results, all_ceilings = zip(*ceiling_returns)
-    # Force garbage collection between major operations
-    gc.collect()
-
-    # floor_returns = Parallel(n_jobs=n_jobs, prefer="threads")(
+    # ceiling_returns = Parallel(n_jobs=n_jobs, prefer="threads")(
     #     delayed(compute_correlation_batch)(
     #         batch_indices=batch,
     #         all_clickmaps=all_clickmaps,
@@ -581,27 +560,46 @@ if __name__ == "__main__":
     #         device=device,
     #         blur_size=config["blur_size"],
     #         blur_sigma=config.get("blur_sigma", config["blur_size"]),
-    #         floor=True,
+    #         floor=False,
     #         config=config,
     #         metadata=metadata,
-    #     ) for batch in tqdm(batches, desc="Computing floor batches", total=len(batches))
+    #     ) for batch in tqdm(batches, desc="Computing ceiling batches", total=len(batches))
     # )
-    # floor_results, all_floors = zip(*floor_returns)
+    # ceiling_results, all_ceilings = zip(*ceiling_returns)
+    # Force garbage collection between major operations
+    gc.collect()
+
+    floor_returns = Parallel(n_jobs=n_jobs, prefer="threads")(
+        delayed(compute_correlation_batch)(
+            batch_indices=batch,
+            all_clickmaps=all_clickmaps,
+            all_names=final_keep_index,
+            metric=metric,
+            n_iterations=null_iterations,
+            device=device,
+            blur_size=config["blur_size"],
+            blur_sigma=config.get("blur_sigma", config["blur_size"]),
+            floor=True,
+            config=config,
+            metadata=metadata,
+        ) for batch in tqdm(batches, desc="Computing floor batches", total=len(batches))
+    )
+    floor_results, all_floors = zip(*floor_returns)
     all_img_ceilings = {}
-    #all_img_floors = {}
-    for img_ceilings in all_ceilings:
-        for img_name, score in img_ceilings.items():
-            all_img_ceilings[img_name] = score
-    # for img_ceilings in all_floors:
+    all_img_floors = {}
+    # for img_ceilings in all_ceilings:
     #     for img_name, score in img_ceilings.items():
-    #         all_img_floors[img_name] = score            
+    #         all_img_ceilings[img_name] = score
+    for img_ceilings in all_floors:
+        for img_name, score in img_ceilings.items():
+            all_img_floors[img_name] = score            
     # Flatten the results
-    all_ceilings = np.concatenate(ceiling_results)
-    # all_floors = np.concatenate(floor_results)
+    # all_ceilings = np.concatenate(ceiling_results)
+    all_floors = np.concatenate(floor_results)
 
     # Compute the mean of the ceilings and floors
-    mean_ceiling = all_ceilings.mean()
-    # mean_floor = all_floors.mean()
+    # mean_ceiling = all_ceilings.mean()
+    mean_floor = all_floors.mean()
 
     # Compute the ratio of the mean of the ceilings to the mean of the floors
     # ratio = mean_ceiling / mean_floor
@@ -609,20 +607,35 @@ if __name__ == "__main__":
 
     # Save the results
     np.savez(
-        os.path.join(output_dir, f"{config['experiment_name']}_{config['metric']}_ceiling_results.npz"),
-        mean_ceiling=mean_ceiling,
-        all_ceilings=all_ceilings,
-        all_img_ceilings=all_img_ceilings)
+        os.path.join(output_dir, f"{config['experiment_name']}_{config['metric']}_floor_results.npz"),
+        mean_floor=mean_floor,
+        all_floors=all_floors,
+        all_img_floors=all_img_floors)
     if config['save_json']:
         # Save as json
-        with open(os.path.join(output_dir, f"{config['experiment_name']}_{config['metric']}_ceiling_results.json"), 'w') as f:
-            output_json = {"all_imgs": final_keep_index, 'mean_ceiling':mean_ceiling,
-                            'all_ceilings':all_ceilings, 'all_img_ceilings':all_img_ceilings}
+        with open(os.path.join(output_dir, f"{config['experiment_name']}_{config['metric']}_floor_results.json"), 'w') as f:
+            output_json = {"all_imgs": final_keep_index, 'mean_floor':mean_floor,
+                            'all_floors':all_floors, 'all_img_floors':all_img_floors}
             for key, value in output_json.items():
                 if isinstance(value, np.ndarray):
                     output_json[key] = value.tolist()
             output_content = json.dumps(output_json, indent=4)
             f.write(output_content)
+    # np.savez(
+    #     os.path.join(output_dir, f"{config['experiment_name']}_{config['metric']}_ceiling_results.npz"),
+    #     mean_ceiling=mean_ceiling,
+    #     all_ceilings=all_ceilings,
+    #     all_img_ceilings=all_img_ceilings)
+    # if config['save_json']:
+    #     # Save as json
+    #     with open(os.path.join(output_dir, f"{config['experiment_name']}_{config['metric']}_ceiling_results.json"), 'w') as f:
+    #         output_json = {"all_imgs": final_keep_index, 'mean_ceiling':mean_ceiling,
+    #                         'all_ceilings':all_ceilings, 'all_img_ceilings':all_img_ceilings}
+    #         for key, value in output_json.items():
+    #             if isinstance(value, np.ndarray):
+    #                 output_json[key] = value.tolist()
+    #         output_content = json.dumps(output_json, indent=4)
+    #         f.write(output_content)
     # np.savez(
     #     os.path.join(output_dir, f"{config['experiment_name']}_{config['metric']}_ceiling_floor_results.npz"),
     #     mean_ceiling=mean_ceiling,
