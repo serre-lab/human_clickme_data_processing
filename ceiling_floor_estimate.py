@@ -184,15 +184,14 @@ def compute_rotation_correlation_batch(batch_indices, all_data, all_names, metri
                 for iteration in range(n_iterations):
                     test_rand_perm = np.random.permutation(n)
                     fh = test_rand_perm[:(n//2)]
-                    fh = random.choices(fh, k=n)
+                    fh = list(fh) + random.choices(fh, k=n//2)
                     test_map = clickmap_at_k[fh].mean(0)
                     if not floor and target_img_name == img_name:
                         target_rand_perm = test_rand_perm
                     else:
                         target_rand_perm = np.random.permutation(target_n)
                     sh = target_rand_perm[(target_n//2):]
-                    sh = random.choices(sh, k=target_n)
-
+                    sh =  list(sh) + random.choices(sh, k=target_n//2)
                     reference_map = target_clickmap_at_k[sh].mean(0)
                     # Save for visualization 
                     if k == (len(clickmaps)-1) and iteration == (n_iterations-1):
@@ -320,6 +319,7 @@ def compute_scale_correlation_batch(batch_indices, all_data, all_names, metric="
                     test_rand_perm = np.random.permutation(n)
                     fh = test_rand_perm[:(n // 2)]
                     fh = random.choices(fh, k=n)
+                    fh =  list(fh) + random.choices(fh, k=n//2)
                     # sh = test_rand_perm[(n//2):]
                     test_map = clickmap_at_k[fh].mean(0)
                     if not floor and target_img_name == img_name:
@@ -327,7 +327,7 @@ def compute_scale_correlation_batch(batch_indices, all_data, all_names, metric="
                     else:
                         target_rand_perm = np.random.permutation(target_n)
                     sh = target_rand_perm[(target_n//2):]
-                    sh = random.choices(sh, k=target_n)
+                    sh =  list(sh) + random.choices(sh, k=target_n//2)
 
                     reference_map = target_clickmap_at_k[sh].mean(0)
                     if k == (len(clickmaps)-1) and iteration == (n_iterations - 1):
@@ -469,13 +469,13 @@ def compute_correlation_batch(batch_indices, all_clickmaps, all_names, metric="a
                 rand_perm = np.random.permutation(n)
                 fh = rand_perm[:(n // 2)]
                 # Add bootstrapping to max fh/sh size to original img
-                fh = random.choices(fh, k=n)
+                fh = list(fh) + random.choices(fh, k=n//2)
                 # Create the test and reference maps
                 test_map = clickmap_at_k[fh].mean(0)
                 if floor:
                     rand_perm = np.random.permutation(rand_n)
                     sh = rand_perm[(rand_n // 2):]
-                    sh = random.choices(sh, k=rand_n)
+                    sh =  list(sh) + random.choices(sh, k=rand_n//2)
                     reference_map = rand_clickmap_at_k[sh].mean(0)  # Take maps from the same level in a random other image
                     reference_map = utils.blur_maps_for_cf(
                         reference_map[None, None],
