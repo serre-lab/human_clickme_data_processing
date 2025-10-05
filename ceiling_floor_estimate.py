@@ -423,7 +423,6 @@ def compute_correlation_batch(batch_indices, all_clickmaps, all_names, metric="a
     for i in tqdm(batch_indices, desc="Computing split-half correlations", total=len(batch_indices)):
         clickmaps = all_clickmaps[i]
         img_name = all_names[i]
-        print(img_name)
 
         level_corrs = []
         #TODO modify for speed up
@@ -537,7 +536,6 @@ def compute_correlation_batch(batch_indices, all_clickmaps, all_names, metric="a
             level_corrs.append(rand_corrs)
             # Free memory
             gc.collect()
-        print(level_corrs)
         batch_results.append(np.asarray(level_corrs).mean())  # Integrate over the levels
         all_scores[img_name] = batch_results[-1]
     return batch_results, all_scores
