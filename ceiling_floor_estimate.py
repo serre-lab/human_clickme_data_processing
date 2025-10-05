@@ -423,6 +423,8 @@ def compute_correlation_batch(batch_indices, all_clickmaps, all_names, metric="a
     for i in tqdm(batch_indices, desc="Computing split-half correlations", total=len(batch_indices)):
         clickmaps = all_clickmaps[i]
         img_name = all_names[i]
+        print(img_name)
+
         level_corrs = []
         #TODO modify for speed up
         if metadata and img_name in metadata:
@@ -465,7 +467,7 @@ def compute_correlation_batch(batch_indices, all_clickmaps, all_names, metric="a
             if floor:
                 rand_clickmap_at_k = rand_clickmaps[k]
                 rand_n = len(rand_clickmap_at_k)
-            for _ in range(n_iterations):
+            for n_iter in range(n_iterations):
                 rand_perm = np.random.permutation(n)
                 fh = rand_perm[:(n // 2)]
                 # Add bootstrapping to max fh/sh size to original img
@@ -527,7 +529,6 @@ def compute_correlation_batch(batch_indices, all_clickmaps, all_names, metric="a
                 else:
                     raise ValueError(f"Invalid metric: {metric}")
                 rand_corrs.append(score)
-                
                 # Explicitly free memory
                 if 'blur_clickmaps' in locals():
                     del blur_clickmaps
@@ -536,6 +537,7 @@ def compute_correlation_batch(batch_indices, all_clickmaps, all_names, metric="a
             level_corrs.append(rand_corrs)
             # Free memory
             gc.collect()
+        print(level_corrs)
         batch_results.append(np.asarray(level_corrs).mean())  # Integrate over the levels
         all_scores[img_name] = batch_results[-1]
     return batch_results, all_scores

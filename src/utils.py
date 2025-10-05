@@ -1801,6 +1801,8 @@ def process_all_maps_multi_thresh_gpu(
                 # continue
 
         # Only add to tracking structures if we can successfully process this image
+        if len(bin_clickmaps[0]) < min_subjects:
+            continue
         categories.append(key.split("/")[0])
         keep_index.append(key)
         final_clickmaps[key] = trials
@@ -1811,8 +1813,6 @@ def process_all_maps_multi_thresh_gpu(
             temp_group.create_dataset(f"clickmap_{str(clickmap_idx).zfill(8)}", data=np.stack(bin_clickmaps, axis=0))
         elif return_before_blur:
             bin_clickmaps = np.stack(bin_clickmaps, axis=0)
-            if bin_clickmaps.shape[1] < min_subjects:
-                continue
             if max_subjects > 0:
                 max_subjects = min(max_subjects, bin_clickmaps.shape[1])
                 bin_clickmaps = bin_clickmaps[:, :max_subjects, :, :]

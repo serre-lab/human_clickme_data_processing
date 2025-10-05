@@ -8,6 +8,9 @@ if __name__ == "__main__":
     clickme_data = process_clickme_data(clickme_data_file, True)
     total_maps = len(clickme_data)
     total_numbers = {}
+    target_img_names = ["ILSVRC2012_val_00008676.JPEG", "ILSVRC2012_val_00009263.JPEG", "ILSVRC2012_val_00009305.JPEG", "ILSVRC2012_val_00013865.JPEG"
+                        "ILSVRC2012_val_00021166.JPEG", "ILSVRC2012_val_00023616.JPEG", "ILSVRC2012_val_00024753.JPEG", "ILSVRC2012_val_00027647.JPEG",
+                        "ILSVRC2012_val_00034111.JPEG", "ILSVRC2012_val_00038455.JPEG"]
     for _, row in tqdm(clickme_data.iterrows(), total=len(clickme_data), desc="Processing clickmaps"):
         image_path = row['image_path']
         image_file_name = os.path.sep.join(row['image_path'].split(os.path.sep)[-2:])
@@ -28,7 +31,9 @@ if __name__ == "__main__":
         sampled_names = []
         for img_path, number in image_paths.items():
             numbers.append(number)
-            if number > 20:
+            img_name = img_path.split('/')[-1]
+            if img_name in target_img_names:
+            # if number > 20:
                 sampled_names.append(img_path)
                 sampled_img_paths[cls_name].append(img_path)
         numbers = np.array(numbers)
@@ -51,7 +56,7 @@ if __name__ == "__main__":
         sampled_clickme_data["image_path"].isin(allowed_files)
     ]
     print(len(sampled_clickme_data))
-    sampled_clickme_data.to_csv(os.path.join('clickme_datasets', 'sampled_imgnet_val.csv'))
+    sampled_clickme_data.to_csv(os.path.join('clickme_datasets', 'bottom_imgnet_val.csv'))
 
     
         
