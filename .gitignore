@@ -19,3 +19,4 @@ jay_imagenet_train_0.1_dimensions.npy
 clickme_datasets/
 *.csv
 temp/
+logs/
