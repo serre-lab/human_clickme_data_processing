@@ -1824,7 +1824,7 @@ def process_all_maps_multi_thresh_gpu(
 
     if not save_to_disk and not all_clickmaps:
         print("No valid clickmaps to process")
-        return {}, [], [], [], {}
+        return {}, [], [], [], {}, []
     
     if return_before_blur:
         return final_clickmaps, all_clickmaps, categories, keep_index, click_counts, clickmap_bins

@@ -1,4 +1,4 @@
-assets: assets
+assets: imgnet_assets
 temp_dir: temp/imgnet_val.h5
 blur_size: 21
 center_crop:
@@ -43,3 +43,4 @@ processed_clickmap_bins: jay_imagenet_val_combined_08_27_2025_clickmap_bins.npy
 chunk_size: 100000
 batch_size: 14000
 save_json: true
+filter_duplicates: true

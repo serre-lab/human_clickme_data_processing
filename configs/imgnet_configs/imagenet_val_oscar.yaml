@@ -22,7 +22,7 @@ image_shape:
 mask_dir: null
 mask_threshold: 0
 max_clicks: 1000000
-metadata_file: image_metadata/jay_imagenet_val_04_30_2025_dimensions.npy
+metadata_file: image_metadata/jay_filteimagenet_val_04_30_2025_dimensions.npy
 metric: auc
 min_clicks: 1
 min_subjects: 5
