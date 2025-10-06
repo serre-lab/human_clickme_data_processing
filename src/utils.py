@@ -1712,7 +1712,7 @@ def process_all_maps_multi_thresh_gpu(
     # Preprocess all clickmaps first to binary maps
     for clickmap_idx, (key, trials) in tqdm(enumerate(clickmaps.items()), "Pre-processing on CPU"):
         if len(trials) < min_subjects:
-            # print("Not enough subjects", key, len(trials))
+            print("Not enough subjects", key, len(trials))
             continue
         if time_based_bins:
             lens = [len(x) for x in trials]
@@ -1740,11 +1740,13 @@ def process_all_maps_multi_thresh_gpu(
                 # org_number = binary_maps.sum((-2, -1))
                 binary_maps = binary_maps[mask]
                 # If we have enough valid maps, average them and keep this image
-                # if len(binary_maps) >= min_subjects:
-                if average_maps:
-                    bin_clickmaps.append(np.array(binary_maps).mean(0, keepdims=True))
+                if len(binary_maps) >= min_subjects:
+                    if average_maps:
+                        bin_clickmaps.append(np.array(binary_maps).mean(0, keepdims=True))
+                    else:
+                        bin_clickmaps.append(np.array(binary_maps))
                 else:
-                    bin_clickmaps.append(np.array(binary_maps))
+                    print("Not enough subjects", key, len(binary_maps))                    
 
         else:
             # Get max count then do thresholds from that
@@ -1801,8 +1803,6 @@ def process_all_maps_multi_thresh_gpu(
                 # continue
 
         # Only add to tracking structures if we can successfully process this image
-        if len(bin_clickmaps[0]) < min_subjects:
-            continue
         categories.append(key.split("/")[0])
         keep_index.append(key)
         final_clickmaps[key] = trials
