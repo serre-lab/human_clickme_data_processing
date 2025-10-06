@@ -1,4 +1,4 @@
-assets: imgnet_assets
+assets: assets/imgnet_val
 temp_dir: temp/imgnet_val.h5
 blur_size: 21
 center_crop:
