@@ -1712,7 +1712,7 @@ def process_all_maps_multi_thresh_gpu(
     # Preprocess all clickmaps first to binary maps
     for clickmap_idx, (key, trials) in tqdm(enumerate(clickmaps.items()), "Pre-processing on CPU"):
         if len(trials) < min_subjects:
-            print("Not enough subjects", key, len(trials))
+            # print("Not enough subjects", key, len(trials))
             continue
         if time_based_bins:
             lens = [len(x) for x in trials]
@@ -1745,8 +1745,8 @@ def process_all_maps_multi_thresh_gpu(
                         bin_clickmaps.append(np.array(binary_maps).mean(0, keepdims=True))
                     else:
                         bin_clickmaps.append(np.array(binary_maps))
-                else:
-                    print("Not enough subjects", key, len(binary_maps))                    
+                # else:
+                #     print("Not enough subjects", key, len(binary_maps))                    
 
         else:
             # Get max count then do thresholds from that
@@ -1783,8 +1783,8 @@ def process_all_maps_multi_thresh_gpu(
                         bin_clickmaps.append(np.array(binary_maps).mean(0, keepdims=True))
                     else:
                         bin_clickmaps.append(np.array(binary_maps))
-                else:
-                    print("Not enough subjects", key, len(binary_maps))
+                # else:
+                #     print("Not enough subjects", key, len(binary_maps))
         
         # Skip if we don't have any valid bin_clickmaps
         if not bin_clickmaps:
