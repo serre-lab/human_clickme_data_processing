@@ -1,4 +1,4 @@
-assets: assets
+assets: assets/co3d_constancy
 blur_size: 21
 center_crop:
 - 224

@@ -1740,11 +1740,13 @@ def process_all_maps_multi_thresh_gpu(
                 # org_number = binary_maps.sum((-2, -1))
                 binary_maps = binary_maps[mask]
                 # If we have enough valid maps, average them and keep this image
-                # if len(binary_maps) >= min_subjects:
-                if average_maps:
-                    bin_clickmaps.append(np.array(binary_maps).mean(0, keepdims=True))
-                else:
-                    bin_clickmaps.append(np.array(binary_maps))
+                if len(binary_maps) >= min_subjects:
+                    if average_maps:
+                        bin_clickmaps.append(np.array(binary_maps).mean(0, keepdims=True))
+                    else:
+                        bin_clickmaps.append(np.array(binary_maps))
+                # else:
+                #     print("Not enough subjects", key, len(binary_maps))                    
 
         else:
             # Get max count then do thresholds from that
@@ -1781,8 +1783,8 @@ def process_all_maps_multi_thresh_gpu(
                         bin_clickmaps.append(np.array(binary_maps).mean(0, keepdims=True))
                     else:
                         bin_clickmaps.append(np.array(binary_maps))
-                else:
-                    print("Not enough subjects", key, len(binary_maps))
+                # else:
+                #     print("Not enough subjects", key, len(binary_maps))
         
         # Skip if we don't have any valid bin_clickmaps
         if not bin_clickmaps:
@@ -1801,8 +1803,6 @@ def process_all_maps_multi_thresh_gpu(
                 # continue
 
         # Only add to tracking structures if we can successfully process this image
-        if len(bin_clickmaps[0]) < min_subjects:
-            continue
         categories.append(key.split("/")[0])
         keep_index.append(key)
         final_clickmaps[key] = trials
@@ -1824,7 +1824,7 @@ def process_all_maps_multi_thresh_gpu(
 
     if not save_to_disk and not all_clickmaps:
         print("No valid clickmaps to process")
-        return {}, [], [], [], {}
+        return {}, [], [], [], {}, []
     
     if return_before_blur:
         return final_clickmaps, all_clickmaps, categories, keep_index, click_counts, clickmap_bins

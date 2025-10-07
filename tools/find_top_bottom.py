@@ -24,18 +24,22 @@ def get_num_subjects():
     return total_numbers
 
 def plot_clickmap(img, hmp, score, num_subjects, img_name, image_output_dir):
-    f = plt.figure()
-    plt.subplot(1, 2, 1)
-    plt.imshow(np.asarray(img))
-    print(img_name, np.asarray(img).shape)
-    title = f"{img_name}\nSpearman: {score}\nNum Subjects: {num_subjects}"
-    plt.title(title)
-    plt.axis("off")
-    plt.subplot(1, 2, 2)
-    plt.imshow(hmp)
-    plt.axis("off")
-    plt.savefig(os.path.join(image_output_dir, img_name.replace('/', '_')))
-    plt.close()
+    img = np.asarray(img)
+    if img.shape[0] != hmp.shape[0]:
+        print(img_name, img.shape, hmp.shape)
+    # f = plt.figure()
+    # plt.subplot(1, 2, 1)
+    # plt.imshow(np.asarray(img))
+    # print(img_name, np.asarray(img).shape, hmp.shape)
+
+    # title = f"{img_name}\nSpearman: {score}\nNum Subjects: {num_subjects}"
+    # plt.title(title)
+    # plt.axis("off")
+    # plt.subplot(1, 2, 2)
+    # plt.imshow(hmp)
+    # plt.axis("off")
+    # plt.savefig(os.path.join(image_output_dir, img_name.replace('/', '_')))
+    # plt.close()
     return 
 
 if __name__ == "__main__":
@@ -49,8 +53,8 @@ if __name__ == "__main__":
     val_map_files = ['assets/jay_imagenet_val_08_27_2025_batch001.h5', 'assets/jay_imagenet_val_08_27_2025_batch002.h5',
                     'assets/jay_imagenet_val_08_27_2025_batch003.h5', 'assets/jay_imagenet_val_08_27_2025_batch004.h5']
     num_subjects_dict = get_num_subjects()
-    top10 = dict(sorted(scores_dict.items(), key=lambda x: x[1], reverse=True)[:10])
-    bot10 = dict(sorted(scores_dict.items(), key=lambda x: x[1], reverse=False)[:10])
+    top10 = dict(sorted(scores_dict.items(), key=lambda x: x[1], reverse=True)[:1000])
+    bot10 = dict(sorted(scores_dict.items(), key=lambda x: x[1], reverse=False)[:1000])
     top10_maps = []
     bot10_maps = []
     for map_file in val_map_files:

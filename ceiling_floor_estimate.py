@@ -621,7 +621,6 @@ if __name__ == "__main__":
     image_paths = clickme_data['image_path'].unique()
     total_unique_images = len(image_paths)
     print(f"Found {total_unique_images} unique images")
-    
     # Set up GPU configuration
     if args.gpu_batch_size:
         config["gpu_batch_size"] = args.gpu_batch_size
@@ -810,6 +809,7 @@ if __name__ == "__main__":
     
     # Process correlation batches in parallel
     if not config['constancy']:
+        print(f"number of imgs:{len(final_keep_index)}, number of maps:{len(all_clickmaps)}")
         ceiling_returns = Parallel(n_jobs=n_jobs, prefer="threads")(
             delayed(compute_correlation_batch)(
                 batch_indices=batch,

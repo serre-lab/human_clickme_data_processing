@@ -48,7 +48,7 @@ if __name__ == "__main__":
         config["time_based_bins"] = args.time_based_bins
 
     if "max_subjects" not in config:
-        config["max_subjects"] = float('inf')
+        config["max_subjects"] = -1
     
     # Load clickme data
     print(f"Loading clickme data...")
@@ -256,6 +256,7 @@ if __name__ == "__main__":
             # Save results for this batch
             if batch_final_keep_index:
                 print(f"Saving {len(batch_final_keep_index)} processed maps for batch {batch_num+1}...")
+                print(f"Total number of maps: {batch_all_clickmaps}")
                 processed_images_count += len(batch_final_keep_index)
                 
                 # Store click counts
@@ -279,18 +280,6 @@ if __name__ == "__main__":
                         compression_level=config.get("hdf5_compression_level", 0),
                         clickmap_bins=batch_clickmap_bins
                     )
-                    
-                    # Also save individual NPY files for compatibility
-                    # print("Saving individual NPY files in addition to HDF5...")
-                    # npy_saved_count = utils.save_clickmaps_parallel(
-                    #     all_clickmaps=batch_all_clickmaps,
-                    #     final_keep_index=batch_final_keep_index,
-                    #     output_dir=output_dir,
-                    #     experiment_name=f"{config['experiment_name']}{batch_suffix}",
-                    #     image_path=config["image_path"],
-                    #     n_jobs=config["n_jobs"],
-                    #     file_inclusion_filter=config.get("file_inclusion_filter")
-                    # )
                 else:
                     # Use optimized HDF5 saving with compression
                     saved_count = utils.save_clickmaps_to_hdf5(
@@ -413,7 +402,8 @@ if __name__ == "__main__":
         # Save results
         if final_keep_index:
             print(f"Saving {len(final_keep_index)} processed maps...")
-            
+            print(f"Total number of maps: {all_clickmaps}")
+
             # Save click counts to HDF5
             with h5py.File(hdf5_path, 'a') as f:
                 for img_name, count in click_counts.items():
