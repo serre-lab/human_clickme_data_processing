@@ -421,8 +421,8 @@ def compute_correlation_batch(batch_indices, all_clickmaps, all_names, metric="a
     max_kernel_size = config.get("max_kernel_size", 51)
     blur_sigma_function = config.get("blur_sigma_function", lambda x: x)
     for i in tqdm(batch_indices, desc="Computing split-half correlations", total=len(batch_indices)):
-        clickmaps = all_clickmaps[i]
         img_name = all_names[i]
+        clickmaps = all_clickmaps[img_name]
 
         level_corrs = []
         #TODO modify for speed up
@@ -443,8 +443,9 @@ def compute_correlation_batch(batch_indices, all_clickmaps, all_names, metric="a
             rand_i = np.random.randint(len(all_clickmaps) - 1)
             if rand_i >= i:
                 rand_i += 1
-            rand_clickmaps = all_clickmaps[rand_i]
             rand_name = all_names[rand_i]
+            rand_clickmaps = all_clickmaps[rand_name]
+
             if metadata and rand_name in metadata:
                 native_size = metadata[rand_name]
                 short_side = min(native_size)
@@ -656,11 +657,11 @@ if __name__ == "__main__":
     image_output_dir = config["example_image_output_dir"]
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(image_output_dir, exist_ok=True)
-    os.makedirs(os.path.join(output_dir, config["experiment_name"]), exist_ok=True)
+    # os.makedirs(os.path.join(output_dir, config["experiment_name"]), exist_ok=True)
     
     # Create dedicated directory for click counts
-    click_counts_dir = os.path.join(output_dir, f"{config['experiment_name']}_click_counts")
-    os.makedirs(click_counts_dir, exist_ok=True)
+    # click_counts_dir = os.path.join(output_dir, f"{config['experiment_name']}_click_counts")
+    # os.makedirs(click_counts_dir, exist_ok=True)
     
     # Original code for non-HDF5 format
     hdf5_path = os.path.join(output_dir, f"{config['experiment_name']}_ceiling_metadata.h5")
@@ -896,7 +897,7 @@ if __name__ == "__main__":
 
         all_data = {}
         for i, name in enumerate(all_names):
-            clickmap = all_clickmaps[i]
+            clickmap = all_clickmaps[name]
             img_idx = int(name.split('.')[0].split('_')[-1])
             zoom_level = img_idx  % 3
             depth_path = os.path.join(depth_root, f"depth_{name.replace('.png', '.npy')}")

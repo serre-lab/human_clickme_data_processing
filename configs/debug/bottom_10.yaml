@@ -1,4 +1,4 @@
-assets: assets
+assets: assets/debug
 temp_dir: temp
 blur_size: 21
 center_crop:

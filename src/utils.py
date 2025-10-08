@@ -17,6 +17,7 @@ import psutil
 import h5py
 from PIL import Image
 from scipy.ndimage import maximum_filter
+import time
 
 # Near the top of the file (around line 10), add torch.cuda memory management functions
 try:
@@ -1256,10 +1257,6 @@ def save_clickmaps_parallel(all_clickmaps, final_keep_index, output_dir, experim
     int
         Number of successfully saved files
     """
-    from joblib import Parallel, delayed
-    import os
-    import numpy as np
-    from tqdm import tqdm
     
     # Create output directory if it doesn't exist
     save_dir = os.path.join(output_dir, experiment_name)
@@ -1315,11 +1312,7 @@ def save_clickmaps_to_hdf5(all_clickmaps, final_keep_index, hdf5_path, clickmap_
     int
         Number of successfully saved files
     """
-    import os
-    import numpy as np
-    from tqdm import tqdm
-    import h5py
-    import time
+
     
     # Ensure the directory exists
     os.makedirs(os.path.dirname(hdf5_path), exist_ok=True)
@@ -1354,7 +1347,7 @@ def save_clickmaps_to_hdf5(all_clickmaps, final_keep_index, hdf5_path, clickmap_
                 dataset_name = img_name.replace('/', '_')
                 
                 # Get the clickmap
-                hmp = all_clickmaps[i]
+                hmp = all_clickmaps[img_name]
                 bin_clickmaps = clickmap_bins[img_name]
                 # Check if dataset already exists and delete it if it does
                 if dataset_name in f["clickmaps"]:
@@ -1700,7 +1693,7 @@ def process_all_maps_multi_thresh_gpu(
     print("Pre-processing clickmaps on CPU...")
     
     # Prepare data structures
-    all_clickmaps = []
+    all_clickmaps = {}
     keep_index = []
     categories = []
     final_clickmaps = {}
@@ -1740,11 +1733,10 @@ def process_all_maps_multi_thresh_gpu(
                 # org_number = binary_maps.sum((-2, -1))
                 binary_maps = binary_maps[mask]
                 # If we have enough valid maps, average them and keep this image
-                if len(binary_maps) >= min_subjects:
-                    if average_maps:
-                        bin_clickmaps.append(np.array(binary_maps).mean(0, keepdims=True))
-                    else:
-                        bin_clickmaps.append(np.array(binary_maps))
+                if average_maps:
+                    bin_clickmaps.append(np.array(binary_maps).mean(0, keepdims=True))
+                else:
+                    bin_clickmaps.append(np.array(binary_maps))
                 # else:
                 #     print("Not enough subjects", key, len(binary_maps))                    
 
@@ -1778,11 +1770,10 @@ def process_all_maps_multi_thresh_gpu(
                 mask = binary_maps.sum((-2, -1)) >= min_clicks
                 binary_maps = binary_maps[mask]
                 # If we have enough valid maps, average them and keep this image
-                if len(binary_maps) >= min_subjects:
-                    if average_maps:
-                        bin_clickmaps.append(np.array(binary_maps).mean(0, keepdims=True))
-                    else:
-                        bin_clickmaps.append(np.array(binary_maps))
+                if average_maps:
+                    bin_clickmaps.append(np.array(binary_maps).mean(0, keepdims=True))
+                else:
+                    bin_clickmaps.append(np.array(binary_maps))
                 # else:
                 #     print("Not enough subjects", key, len(binary_maps))
         
@@ -1810,21 +1801,21 @@ def process_all_maps_multi_thresh_gpu(
         clickmap_bins[key] = np.asarray(bin_counts)
         # Add to all_clickmaps with the appropriate method
         if save_to_disk:
-            temp_group.create_dataset(f"clickmap_{str(clickmap_idx).zfill(8)}", data=np.stack(bin_clickmaps, axis=0))
+            temp_group.create_dataset(key, data=np.stack(bin_clickmaps, axis=0))
         elif return_before_blur:
             bin_clickmaps = np.stack(bin_clickmaps, axis=0)
             if max_subjects > 0:
                 max_subjects = min(max_subjects, bin_clickmaps.shape[1])
                 bin_clickmaps = bin_clickmaps[:, :max_subjects, :, :]
-            all_clickmaps.append(np.stack(bin_clickmaps, axis=0))
+            all_clickmaps[key] = (np.stack(bin_clickmaps, axis=0))
         else:
-            all_clickmaps.append(np.concatenate(bin_clickmaps, axis=0))
+            all_clickmaps[key] = (np.concatenate(bin_clickmaps, axis=0))
     if save_to_disk:
         temp_file.close()
 
     if not save_to_disk and not all_clickmaps:
         print("No valid clickmaps to process")
-        return {}, [], [], [], {}, []
+        return {}, {}, [], [], {}, {}
     
     if return_before_blur:
         return final_clickmaps, all_clickmaps, categories, keep_index, click_counts, clickmap_bins
@@ -1834,7 +1825,7 @@ def process_all_maps_multi_thresh_gpu(
     print(f"Preparing to blur {total_maps} image clickmaps using GPU with adaptive kernel sizing...")
     
     # Convert all maps to tensors
-    all_tensors = [torch.from_numpy(maps).float() for maps in all_clickmaps]
+    # all_tensors = [torch.from_numpy(maps).float() for maps in all_clickmaps]
     
     # Group images by their required kernel size to batch efficiently
     kernel_groups = {}
@@ -1857,12 +1848,12 @@ def process_all_maps_multi_thresh_gpu(
         kernel_key = (adj_blur_size, adj_blur_sigma)
         if kernel_key not in kernel_groups:
             kernel_groups[kernel_key] = []
-        kernel_groups[kernel_key].append(idx)
+        kernel_groups[kernel_key].append(key)
     print(f"Processing {len(kernel_groups)} different kernel sizes...")
 
     # Process each kernel group separately
-    for (kernel_size, kernel_sigma), image_indices in tqdm(kernel_groups.items(), desc="Processing kernel groups"):
-        print(f"Processing {len(image_indices)} images with kernel size {kernel_size}, sigma {kernel_sigma}")
+    for (kernel_size, kernel_sigma), image_keys in tqdm(kernel_groups.items(), desc="Processing kernel groups"):
+        print(f"Processing {len(image_keys)} images with kernel size {kernel_size}, sigma {kernel_sigma}")
         # print(f"Processing {len(image_indices)} images with kernel size {kernel_size}, sigma {kernel_sigma}")
         
         # Create kernel for this group
@@ -1870,26 +1861,29 @@ def process_all_maps_multi_thresh_gpu(
         kernel = circle_kernel(kernel_size, kernel_sigma, 'cuda')
         
         # Process images in this group in batches
-        group_batch_size = min(gpu_batch_size, len(image_indices))
-        num_batches = (len(image_indices) + group_batch_size - 1) // group_batch_size
+        group_batch_size = min(gpu_batch_size, len(image_keys))
+        num_batches = (len(image_keys) + group_batch_size - 1) // group_batch_size
         for batch_idx in range(num_batches):
             # Get batch indices for this kernel group
             batch_start = batch_idx * group_batch_size
-            batch_end = min(batch_start + group_batch_size, len(image_indices))
-            batch_image_indices = image_indices[batch_start:batch_end]
+            batch_end = min(batch_start + group_batch_size, len(image_keys))
+            batch_image_keys = image_keys[batch_start:batch_end]
             # Get tensors for this batch
-            batch_tensors = [all_tensors[idx] for idx in batch_image_indices]
-            
+            # batch_tensors = [all_tensors[idx] for idx in batch_image_indices]
+            batch_tensors = {}
+            for key in batch_image_keys:
+                single_tensor = torch.from_numpy(all_clickmaps[key]).float()
+                batch_tensors[key] = single_tensor
             # Group batch tensors by shape to handle different dimensions within the same kernel group
             shape_groups = {}
-            for i, tensor in enumerate(batch_tensors):
+            for i, (key, tensor) in enumerate(batch_tensors.items()):
                 shape_key = tuple(tensor.shape)
                 if shape_key not in shape_groups:
                     shape_groups[shape_key] = []
-                shape_groups[shape_key].append((i, tensor, batch_image_indices[i]))
+                shape_groups[shape_key].append((i, tensor, key))
             # Process each shape group separately
             for shape, tensor_data in shape_groups.items():
-                indices, tensors, img_indices = zip(*tensor_data)
+                indices, tensors, img_keys = zip(*tensor_data)
                 # Calculate memory-safe batch size for this shape group
                 # Estimate memory usage: shape[0] * shape[1] * shape[2] * 4 bytes per float32
                 memory_per_tensor = shape[0] * shape[1] * shape[2] * 4  # bytes
@@ -1908,7 +1902,7 @@ def process_all_maps_multi_thresh_gpu(
                     end_idx = min(start_idx + safe_batch_size, len(tensors))
                     
                     batch_tensors_subset = tensors[start_idx:end_idx]
-                    batch_img_indices_subset = img_indices[start_idx:end_idx]
+                    batch_img_keys_subset = img_keys[start_idx:end_idx]
                     try:
                         # Try to concatenate tensors of the same shape
                         shape_batch_tensor = torch.cat(batch_tensors_subset, dim=0).unsqueeze(1).to('cuda')
@@ -1917,8 +1911,9 @@ def process_all_maps_multi_thresh_gpu(
                         blurred_tensor = convolve(shape_batch_tensor, kernel, double_conv=True)
                         # Convert back to numpy and update results
                         blurred_maps = blurred_tensor.squeeze(1).cpu().numpy()
-                        for i, img_idx in enumerate(batch_img_indices_subset):
-                            all_clickmaps[img_idx] = blurred_maps[i*thresholds:(i+1)*thresholds]  # Keep the same shape with extra dimension
+                        for i, img_key in enumerate(batch_img_keys_subset):
+                        
+                            all_clickmaps[img_key] = blurred_maps[i*thresholds:(i+1)*thresholds]  # Keep the same shape with extra dimension
                         # Clean up GPU memory for this shape batch
                         del shape_batch_tensor, blurred_tensor
                         torch.cuda.empty_cache()
@@ -1926,10 +1921,10 @@ def process_all_maps_multi_thresh_gpu(
                     except Exception as e:
                         # If concatenation still fails, process individually
                         print(f"Shape batch processing failed for shape {shape} (batch {shape_batch_idx+1}/{num_shape_batches}), processing {len(batch_tensors_subset)} images individually: {e}")
-                        for i, (tensor, img_idx) in enumerate(zip(batch_tensors_subset, batch_img_indices_subset)):
+                        for i, (tensor, img_key) in enumerate(zip(batch_tensors_subset, batch_img_keys_subset)):
                             gpu_tensor = tensor.unsqueeze(1).to('cuda')
                             blurred_tensor = convolve(gpu_tensor, kernel, double_conv=True)
-                            all_clickmaps[img_idx] = blurred_tensor.squeeze(1).cpu().numpy()
+                            all_clickmaps[img_key] = blurred_tensor.squeeze(1).cpu().numpy()
                             
                             # Clean up GPU memory
                             del gpu_tensor, blurred_tensor

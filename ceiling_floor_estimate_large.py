@@ -151,9 +151,8 @@ def compute_correlation_batch(batch_indices, all_clickmaps, all_names, metric="a
     max_kernel_size = config.get("max_kernel_size", 51)
     blur_sigma_function = config.get("blur_sigma_function", lambda x: x)
     for i in tqdm(batch_indices, desc="Computing split-half correlations", total=len(batch_indices)):
-        hd5_name = f"clickmap_{str(i).zfill(8)}"
-        clickmaps = all_clickmaps[hd5_name]
         img_name = all_names[i]
+        clickmaps = all_clickmaps[img_name]
         level_corrs = []
         if metadata and img_name in metadata:
             native_size = metadata[img_name]
@@ -174,8 +173,7 @@ def compute_correlation_batch(batch_indices, all_clickmaps, all_names, metric="a
             if rand_i >= i:
                 rand_i += 1
             rand_name = all_names[rand_i]
-            rand_hd5_name = f"clickmap_{str(rand_i).zfill(8)}"
-            random_map = all_clickmaps[rand_hd5_name]
+            random_map = all_clickmaps[rand_name]
             if metadata and rand_name in metadata:
                 native_size = metadata[rand_name]
                 short_side = min(native_size)
@@ -549,7 +547,7 @@ if __name__ == "__main__":
     #     print(f"Reducing parallel jobs from {n_jobs} to {adjusted_n_jobs} to prevent 'too many files open' error")
     #     n_jobs = adjusted_n_jobs
     
-    Process correlation batches in parallel
+    # Process correlation batches in parallel
     ceiling_returns = Parallel(n_jobs=n_jobs, prefer="threads")(
         delayed(compute_correlation_batch)(
             batch_indices=batch,

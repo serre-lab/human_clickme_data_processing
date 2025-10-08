@@ -8,6 +8,8 @@ if __name__ == "__main__":
     clickme_data = process_clickme_data(clickme_data_file, True)
     total_maps = len(clickme_data)
     total_numbers = {}
+    map_file = 'assets/jay_imagenet_val_08_27_2025_batch001.h5'
+    
     #target_img_names = ["ILSVRC2012_val_00008676.JPEG", "ILSVRC2012_val_00009263.JPEG", "ILSVRC2012_val_00009305.JPEG", "ILSVRC2012_val_00013865.JPEG"
     #                    "ILSVRC2012_val_00021166.JPEG", "ILSVRC2012_val_00023616.JPEG", "ILSVRC2012_val_00024753.JPEG", "ILSVRC2012_val_00027647.JPEG",
     #                    "ILSVRC2012_val_00034111.JPEG", "ILSVRC2012_val_00038455.JPEG"]

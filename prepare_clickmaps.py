@@ -256,7 +256,7 @@ if __name__ == "__main__":
             # Save results for this batch
             if batch_final_keep_index:
                 print(f"Saving {len(batch_final_keep_index)} processed maps for batch {batch_num+1}...")
-                print(f"Total number of maps: {batch_all_clickmaps}")
+                print(f"Total number of maps: {len(batch_all_clickmaps)}")
                 processed_images_count += len(batch_final_keep_index)
                 
                 # Store click counts
@@ -402,7 +402,7 @@ if __name__ == "__main__":
         # Save results
         if final_keep_index:
             print(f"Saving {len(final_keep_index)} processed maps...")
-            print(f"Total number of maps: {all_clickmaps}")
+            print(f"Total number of maps: {len(all_clickmaps)}")
 
             # Save click counts to HDF5
             with h5py.File(hdf5_path, 'a') as f:
