@@ -38,15 +38,15 @@ def plot_clickmap(img, hmp, score, num_subjects, img_name, image_output_dir):
     return 
 
 if __name__ == "__main__":
-    scores_json = "assets/exp_30_subjects_08_27_2025_spearman_ceiling_floor_results.json"
+    scores_json = "assets/exp/exp_30_subjects_08_27_2025_spearman_ceiling_floor_results.json"
     data_root = "/gpfs/data/shared/imagenet/ILSVRC2012/val"
     image_output_dir = "temp/top_bot_imgs_30"
     os.makedirs(image_output_dir, exist_ok=True)
     with open(scores_json, 'r') as f:
         scores_dict = json.load(f)['all_img_ceilings']
     metadata = np.load("image_metadata/jay_imagenet_val_04_30_2025_dimensions.npy", allow_pickle=True).item()
-    val_map_files = ['assets/imgnet_val/jay_imagenet_val_08_27_2025_batch001.h5', 'assets/imgnet_val/jay_imagenet_val_08_27_2025_batch002.h5',
-                    'assets/imgnet_val/jay_imagenet_val_08_27_2025_batch003.h5', 'assets/imgnet_val/jay_imagenet_val_08_27_2025_batch004.h5']
+    val_map_files = ['assets/imgnet/jay_imagenet_val_08_27_2025_batch001.h5', 'assets/imgnet/jay_imagenet_val_08_27_2025_batch002.h5',
+                    'assets/imgnet/jay_imagenet_val_08_27_2025_batch003.h5', 'assets/imgnet/jay_imagenet_val_08_27_2025_batch004.h5']
     top10 = dict(sorted(scores_dict.items(), key=lambda x: x[1], reverse=True)[:10])
     bot10 = dict(sorted(scores_dict.items(), key=lambda x: x[1], reverse=False)[:10])
     top10_maps = {}
@@ -54,13 +54,16 @@ if __name__ == "__main__":
     for map_file in val_map_files:
         map_content = h5py.File(map_file, 'r')['clickmaps']
         for img_name in top10:
+            img_key = img_name.split('/')[1]
             img_name = img_name.replace('/', '_')
             if img_name in map_content:
-                top10_maps[img_name] = map_content[img_name]['clickmap'][:].mean(0)
+                top10_maps[img_key] = map_content[img_name]['clickmap'][:].mean(0)
         for bot_img_name in bot10:
+            print(bot_img_name)
+            img_key = bot_img_name.split('/')[1]
             bot_img_name = bot_img_name.replace('/', '_')
             if bot_img_name in map_content:
-                bot10_maps[img_name] = map_content[bot_img_name]['clickmap'][:].mean(0)
+                bot10_maps[img_key] = map_content[bot_img_name]['clickmap'][:].mean(0)
 
     top10_paths = []
     bot10_paths = []

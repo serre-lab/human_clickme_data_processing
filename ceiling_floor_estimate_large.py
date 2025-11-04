@@ -150,9 +150,9 @@ def compute_correlation_batch(batch_indices, all_clickmaps, all_names, metric="a
     all_scores = {}
     max_kernel_size = config.get("max_kernel_size", 51)
     blur_sigma_function = config.get("blur_sigma_function", lambda x: x)
-    for i in tqdm(batch_indices, desc="Computing split-half correlations", total=len(batch_indices)):
+    for i in tqdm(batch_indices, desc="Computing split-half correlations", total=len(batch_indices), mininterval=10):
         img_name = all_names[i]
-        clickmaps = all_clickmaps[img_name]
+        clickmaps = all_clickmaps[img_name.replace('/', '_')]
         level_corrs = []
         if metadata and img_name in metadata:
             native_size = metadata[img_name]
@@ -173,7 +173,7 @@ def compute_correlation_batch(batch_indices, all_clickmaps, all_names, metric="a
             if rand_i >= i:
                 rand_i += 1
             rand_name = all_names[rand_i]
-            random_map = all_clickmaps[rand_name]
+            random_map = all_clickmaps[rand_name.replace('/', '_')]
             if metadata and rand_name in metadata:
                 native_size = metadata[rand_name]
                 short_side = min(native_size)
@@ -268,7 +268,7 @@ def compute_correlation_batch(batch_indices, all_clickmaps, all_names, metric="a
             rand_corrs = np.nanmean(np.asarray(rand_corrs))  # Take the mean of the random correlations
             level_corrs.append(rand_corrs)
             # Free memory
-            gc.collect()
+            # gc.collect()
         batch_results.append(np.asarray(level_corrs).mean())  # Integrate over the levels
         all_scores[img_name] = batch_results[-1]
     return batch_results, all_scores
@@ -390,10 +390,10 @@ if __name__ == "__main__":
 
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(image_output_dir, exist_ok=True)
-    os.makedirs(os.path.join(output_dir, config["experiment_name"]), exist_ok=True)
+    # os.makedirs(os.path.join(output_dir, config["experiment_name"]), exist_ok=True)
     # Create dedicated directory for click counts
     click_counts_dir = os.path.join(output_dir, f"{config['experiment_name']}_click_counts")
-    os.makedirs(click_counts_dir, exist_ok=True)
+    # os.makedirs(click_counts_dir, exist_ok=True)
     
     # Original code for non-HDF5 format
     hdf5_path = os.path.join(output_dir, f"{config['experiment_name']}.h5")
@@ -535,17 +535,12 @@ if __name__ == "__main__":
     print(f"Computing split-half correlations in parallel (n_jobs={n_jobs}, batch_size={correlation_batch_size})...")
     temp_file = h5py.File(temp_dir, 'r')
     temp_group = temp_file['clickmaps']
-    all_clickmaps=temp_group
+    all_clickmaps = temp_group
     num_clickmaps = len(temp_group)
+    print(f"Num clickmaps {len(temp_group)}")
     # Prepare batches for correlation computation
     indices = list(range(num_clickmaps))
     batches = [indices[i:i+correlation_batch_size] for i in range(0, len(indices), correlation_batch_size)]
-    
-    # # Reduce the number of jobs if there are many batches to prevent too many files open
-    # adjusted_n_jobs = min(n_jobs, max(1, 20 // len(batches) + 1))
-    # if adjusted_n_jobs < n_jobs:
-    #     print(f"Reducing parallel jobs from {n_jobs} to {adjusted_n_jobs} to prevent 'too many files open' error")
-    #     n_jobs = adjusted_n_jobs
     
     # Process correlation batches in parallel
     ceiling_returns = Parallel(n_jobs=n_jobs, prefer="threads")(
@@ -566,6 +561,23 @@ if __name__ == "__main__":
     ceiling_results, all_ceilings = zip(*ceiling_returns)
     # Force garbage collection between major operations
     gc.collect()
+    all_img_ceilings = {}
+    for img_ceilings in all_ceilings:
+        for img_name, score in img_ceilings.items():
+            all_img_ceilings[img_name] = score
+    all_ceilings = np.concatenate(ceiling_results)
+    mean_ceiling = np.nanmean(all_ceilings)
+    if config['save_json']:
+        # Save as json
+        with open(os.path.join(output_dir, f"{config['experiment_name']}_{config['metric']}_ceiling_results.json"), 'w') as f:
+            output_json = {"all_imgs": final_keep_index, 'mean_ceiling':mean_ceiling,
+                            'all_ceilings':all_ceilings, 'all_img_ceilings':all_img_ceilings
+                        }
+            for key, value in output_json.items():
+                if isinstance(value, np.ndarray):
+                    output_json[key] = value.tolist()
+            output_content = json.dumps(output_json, indent=4)
+            f.write(output_content)
 
     floor_returns = Parallel(n_jobs=n_jobs, prefer="threads")(
         delayed(compute_correlation_batch)(
@@ -583,21 +595,16 @@ if __name__ == "__main__":
         ) for batch in tqdm(batches, desc="Computing floor batches", total=len(batches))
     )
     floor_results, all_floors = zip(*floor_returns)
-    all_img_ceilings = {}
     all_img_floors = {}
-    for img_ceilings in all_ceilings:
-        for img_name, score in img_ceilings.items():
-            all_img_ceilings[img_name] = score
+
     for img_ceilings in all_floors:
         for img_name, score in img_ceilings.items():
             all_img_floors[img_name] = score            
     # Flatten the results
-    all_ceilings = np.concatenate(ceiling_results)
     all_floors = np.concatenate(floor_results)
 
     # Compute the mean of the ceilings and floors
-    mean_ceiling = all_ceilings.mean()
-    mean_floor = all_floors.mean()
+    mean_floor = np.nanmean(all_floors)
 
     # Compute the ratio of the mean of the ceilings to the mean of the floors
     ratio = mean_ceiling / mean_floor

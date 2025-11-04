@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -J ImgNet_Floor
+#SBATCH -J ImgNet_Ceiling_Floor
 #SBATCH -N 1-1
 #SBATCH -n 16
 #SBATCH -t 96:00:00

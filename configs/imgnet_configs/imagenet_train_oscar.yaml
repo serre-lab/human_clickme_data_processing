@@ -1,15 +1,15 @@
-assets: assets/imgnet_train
+assets: assets/imgnet_train_10_15
 blur_size: 21
 center_crop:
 - 224
 - 224
 class_filter_file: false
-clickme_data: /cifs/data/tserre_lrs/projects/projects/prj_video_imagenet/human_clickme_data_processing/clickme_datasets/train_combined_08_27_2025.npz
+clickme_data: /cifs/data/tserre_lrs/projects/projects/prj_video_imagenet/human_clickme_data_processing/clickme_datasets/train_combined_10_15_2025.npz
 correlation_batch_size: 4000
 debug: false
 display_image_keys: auto
-example_image_output_dir: jay_imagenet_train_combined_08_27_2025_images
-experiment_name: jay_imagenet_train_08_27_2025
+example_image_output_dir: jay_imagenet_train_combined_10_15_2025_images
+experiment_name: jay_imagenet_train_10_15_2025
 file_exclusion_filter: ILSVRC2012_val
 file_inclusion_filter: null
 filter_mobile: true
@@ -32,8 +32,8 @@ parallel_save: false
 participant_filter: false
 percentile_thresh: 50
 preprocess_db_data: true
-processed_clickme_file: jay_imagenet_train_combined_08_27_2025_processed.npz
-processed_medians: jay_imagenet_train_combined_08_27_2025_medians.json
+processed_clickme_file: jay_imagenet_train_combined_10_15_2025_processed.npz
+processed_medians: jay_imagenet_train_combined_10_15_2025_medians.json
 remove_string: imagenet/train/
 output_format: "hdf5"
 use_cython: true
@@ -41,4 +41,4 @@ chunk_size: 100000
 batch_size: 14000
 time_based_bins: true
 multi_thresh_gpu: multi_thresh_gpu
-processed_clickmap_bins: jay_imagenet_train_combined_08_27_2025_clickmap_bins.npy
+processed_clickmap_bins: jay_imagenet_train_combined_10_15_2025_clickmap_bins.npy

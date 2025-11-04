@@ -19,11 +19,42 @@ from sklearn.metrics import average_precision_score
 from torchvision.transforms import functional as tvF
 from torchvision.transforms import InterpolationMode
 
-def emd_2d(test_map, ref_map):
-    test_map = (test_map - test_map.min()) / (test_map.max() - test_map.min()+1e-8)
-    ref_map = (ref_map - ref_map.min()) / (ref_map.max() - ref_map.min()+1e-8)
-    return wasserstein_distance_nd(test_map, ref_map)
-    
+# def emd_2d(test_map, ref_map):
+#     test_map = (test_map - test_map.min()) / (test_map.max() - test_map.min()+1e-8)
+#     ref_map = (ref_map - ref_map.min()) / (ref_map.max() - ref_map.min()+1e-8)
+#     return wasserstein_distance_nd(test_map, ref_map)
+
+def emd_2d(ref_map, test_map, eps=0.2, iters=):
+    """
+    Sinkhorn EMD between standardized positive maps. Returns [B].
+    """
+    if s_map.ndim == 4: s_map = s_map.squeeze(1)
+    if c_map.ndim == 4: c_map = c_map.squeeze(1)
+    s = zplus(s_map).squeeze(1).clamp_min(0)
+    c = zplus(c_map).squeeze(1).clamp_min(0)
+
+    B, H, W = s.shape
+    s = s.view(B, -1); c = c.view(B, -1)
+    s = s / (s.sum(dim=1, keepdim=True).clamp_min(1e-8))
+    c = c / (c.sum(dim=1, keepdim=True).clamp_min(1e-8))
+
+    M = _grid_cost(H, W, s.device).unsqueeze(0).expand(B, -1, -1)
+    return _sinkhorn(s, c, M, eps=eps, iters=iters)
+
+def _sinkhorn(a, b, M, eps, iters):
+    """
+    a,b: [B,P] prob vectors; M: [B,P,P] ground cost.
+    Returns: [B] transport cost.
+    """
+    K = torch.exp(-M / eps)
+    u = torch.full_like(a, 1.0 / a.size(1))
+    v = torch.full_like(b, 1.0 / b.size(1))
+    for _ in range(iters):
+        u = a / (K @ v).clamp_min(1e-8)
+        v = b / (K.transpose(1,2) @ u).clamp_min(1e-8)
+    P = torch.diag_embed(u) @ K @ torch.diag_embed(v)
+    return (P * M).sum(dim=(1,2))
+
 def rank_cosine(test_map, ref_map):
     ref_map = ref_map.flatten()
     test_map = test_map.flatten()
@@ -257,7 +288,7 @@ def compute_rotation_correlation_batch(batch_indices, all_data, all_names, metri
                 else:
                     rand_scores = np.nanmean(np.asarray(rand_scores))
                 level_scores.append(rand_scores)
-                gc.collect()
+                # gc.collect()
             angle_score = np.nanmean(np.asarray(level_scores))
             batch_results[target_img_diff].append(angle_score)
             all_rotation_results[img_name][target_img_diff] = angle_score
@@ -393,7 +424,7 @@ def compute_scale_correlation_batch(batch_indices, all_data, all_names, metric="
                         del blur_clickmaps
                 rand_scores = np.nanmean(np.asarray(rand_scores))
                 level_scores.append(rand_scores)
-                gc.collect()
+                # gc.collect()
             scale_results[img_name][target_img_diff] = np.nanmean(np.asarray(level_scores))
             batch_results[target_img_diff].append(np.nanmean(np.asarray(level_scores)))
             if not floor:
@@ -536,7 +567,7 @@ def compute_correlation_batch(batch_indices, all_clickmaps, all_names, metric="a
             rand_corrs = np.nanmean(np.asarray(rand_corrs))  # Take the mean of the random correlations
             level_corrs.append(rand_corrs)
             # Free memory
-            gc.collect()
+            # gc.collect()
         batch_results.append(np.asarray(level_corrs).mean())  # Integrate over the levels
         all_scores[img_name] = batch_results[-1]
     return batch_results, all_scores
