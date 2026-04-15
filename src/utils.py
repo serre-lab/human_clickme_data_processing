@@ -179,6 +179,8 @@ def process_clickme_data(data_file, filter_mobile, catch_thresh=0.95):
         is_mobile_lens = []
         # TODO: Figure out why there's empty entries in this
         for x in data["is_mobile"]:
+            if not isinstance(x, list) and not isinstance(x, np.ndarray):
+                x = [x]
             if len(x):
                 is_mobile.append(x[0])
             else:
@@ -481,7 +483,7 @@ def save_single_clickmap(all_clickmaps, idx, img_name, image_path, file_inclusio
     
     if not image_exists:
         return 0
-    hmp = all_clickmaps[idx]
+    hmp = all_clickmaps[img_name]
     # Save to disk
     np.save(
         os.path.join(save_dir, f"{img_name.replace('/', '_')}.npy"), 
@@ -929,6 +931,7 @@ def process_all_maps_multi_thresh_gpu(
         time_based_bins=False,
         save_to_disk=False,
         maximum_length=5000,
+        save_bins=False,
         ):
     """
     Simplified function to blur clickmaps on GPU in batches with adaptive kernel sizing
@@ -973,91 +976,105 @@ def process_all_maps_multi_thresh_gpu(
         if len(trials) < min_subjects:
             # print("Not enough subjects", key, len(trials))
             continue
-        if time_based_bins:
-            lens = [len(x) for x in trials]
-            bins = []
-            for trial in trials:
-                max_count = len(trial)
-                half_count = int(max_count/2)
-                trial_bin = np.linspace(max(half_count * .1, min_clicks), max_count, thresholds).astype(int)
-                bins.append(trial_bin)
-            bin_clickmaps = []
-            bin_counts = []
-            for i in range(thresholds):
-                thresholded_trials = []
-                for j, trial in enumerate(trials):
-                    thresholded_trials.append(trial[:bins[j][i]])
-                bin_counts.append(sum([len(x) for x in thresholded_trials]))
-                # Create binary clickmaps
-                if metadata and key in metadata:
-                    native_size = metadata[key]
-                    binary_maps = np.asarray([create_clickmap_func([trial], native_size[::-1]) for trial in thresholded_trials])
-                else:
-                    binary_maps = np.asarray([create_clickmap_func([trial], tuple(image_shape)) for trial in thresholded_trials])
-                # Only keep maps with enough valid pixels using mask
-                mask = binary_maps.sum((-2, -1)) >= min_clicks
-                # org_number = binary_maps.sum((-2, -1))
-                binary_maps = binary_maps[mask]
-                # If we have enough valid maps, average them and keep this image
-                if average_maps:
-                    bin_clickmaps.append(np.array(binary_maps).mean(0, keepdims=True))
-                else:
-                    bin_clickmaps.append(np.array(binary_maps))
-                # else:
-                #     print("Not enough subjects", key, len(binary_maps))                    
+        if save_bins:
+            if time_based_bins:
+                lens = [len(x) for x in trials]
+                bins = []
+                for trial in trials:
+                    max_count = len(trial)
+                    half_count = int(max_count/2)
+                    trial_bin = np.linspace(max(half_count * .1, min_clicks), max_count, thresholds).astype(int)
+                    bins.append(trial_bin)
+                bin_clickmaps = []
+                bin_counts = []
+                for i in range(thresholds):
+                    thresholded_trials = []
+                    for j, trial in enumerate(trials):
+                        thresholded_trials.append(trial[:bins[j][i]])
+                    bin_counts.append(sum([len(x) for x in thresholded_trials]))
+                    # Create binary clickmaps
+                    if metadata and key in metadata:
+                        native_size = metadata[key]
+                        binary_maps = np.asarray([create_clickmap_func([trial], native_size[::-1]) for trial in thresholded_trials])
+                    else:
+                        binary_maps = np.asarray([create_clickmap_func([trial], tuple(image_shape)) for trial in thresholded_trials])
+                    # Only keep maps with enough valid pixels using mask
+                    mask = binary_maps.sum((-2, -1)) >= min_clicks
+                    # org_number = binary_maps.sum((-2, -1))
+                    binary_maps = binary_maps[mask]
+                    # If we have enough valid maps, average them and keep this image
+                    if average_maps:
+                        bin_clickmaps.append(np.array(binary_maps).mean(0, keepdims=True))
+                    else:
+                        bin_clickmaps.append(np.array(binary_maps))
+                    # else:
+                    #     print("Not enough subjects", key, len(binary_maps))                    
 
-        else:
-            # Get max count then do thresholds from that
-            lens = [len(x) for x in trials]
-            max_count = max(lens)
-            # min_count = max(int(min(lens) * .1), 1)
-            # bins = np.linspace(min_count, max_count + 1, thresholds).astype(int)
-            mean_lens = int(np.mean(lens))
-            below_mean = np.linspace(mean_lens * .1, mean_lens + 1, thresholds // 2).astype(int)
-            above_mean = np.linspace(mean_lens + 1, max_count + 1, thresholds // 2).astype(int)
-            bins = np.concatenate([below_mean, above_mean])
-            # bins = np.concatenate([below_mean, above_mean])
-            bin_clickmaps = []
-            bin_counts = []
-            
-            for bin in bins:
-                # Threshold trials
-                thresholded_trials = [x[:bin] for x in trials]
-                bin_counts.append(sum([len(x) for x in thresholded_trials]))
-
-                # Create binary clickmaps
-                if metadata and key in metadata:
-                    native_size = metadata[key]
-                    binary_maps = np.asarray([create_clickmap_func([trial], native_size[::-1]) for trial in thresholded_trials])
-                else:
-                    binary_maps = np.asarray([create_clickmap_func([trial], tuple(image_shape)) for trial in thresholded_trials])
+            else:
+                # Get max count then do thresholds from that
+                lens = [len(x) for x in trials]
+                max_count = max(lens)
+                # min_count = max(int(min(lens) * .1), 1)
+                # bins = np.linspace(min_count, max_count + 1, thresholds).astype(int)
+                mean_lens = int(np.mean(lens))
+                below_mean = np.linspace(mean_lens * .1, mean_lens + 1, thresholds // 2).astype(int)
+                above_mean = np.linspace(mean_lens + 1, max_count + 1, thresholds // 2).astype(int)
+                bins = np.concatenate([below_mean, above_mean])
+                # bins = np.concatenate([below_mean, above_mean])
+                bin_clickmaps = []
+                bin_counts = []
                 
-                # Only keep maps with enough valid pixels using mask
-                mask = binary_maps.sum((-2, -1)) >= min_clicks
-                binary_maps = binary_maps[mask]
-                # If we have enough valid maps, average them and keep this image
-                if average_maps:
-                    bin_clickmaps.append(np.array(binary_maps).mean(0, keepdims=True))
-                else:
-                    bin_clickmaps.append(np.array(binary_maps))
-                # else:
-                #     print("Not enough subjects", key, len(binary_maps))
-        
-        # Skip if we don't have any valid bin_clickmaps
-        if not bin_clickmaps:
-            continue
+                for bin in bins:
+                    # Threshold trials
+                    thresholded_trials = [x[:bin] for x in trials]
+                    bin_counts.append(sum([len(x) for x in thresholded_trials]))
+
+                    # Create binary clickmaps
+                    if metadata and key in metadata:
+                        native_size = metadata[key]
+                        binary_maps = np.asarray([create_clickmap_func([trial], native_size[::-1]) for trial in thresholded_trials])
+                    else:
+                        binary_maps = np.asarray([create_clickmap_func([trial], tuple(image_shape)) for trial in thresholded_trials])
+                    
+                    # Only keep maps with enough valid pixels using mask
+                    mask = binary_maps.sum((-2, -1)) >= min_clicks
+                    binary_maps = binary_maps[mask]
+                    # If we have enough valid maps, average them and keep this image
+                    if average_maps:
+                        bin_clickmaps.append(np.array(binary_maps).mean(0, keepdims=True))
+                    else:
+                        bin_clickmaps.append(np.array(binary_maps))
+                    # else:
+                    #     print("Not enough subjects", key, len(binary_maps))
             
-        # For stacking, check if all maps have same shape
-        if return_before_blur:
-            shapes = [m.shape for m in bin_clickmaps]
-            if len(set(str(s) for s in shapes)) > 1:
-                # print(f"Warning: Inconsistent shapes for {key}: {shapes}, fixing.")
-                min_shape = min([s[0] for s in shapes])
-                if min_shape <= 1:
-                    print(f"Minimum shape is 0 for {key}")
-                    sys.exit()
-                bin_clickmaps = [m[:min_shape] for m in bin_clickmaps]
-                # continue
+            # Skip if we don't have any valid bin_clickmaps
+            if not bin_clickmaps:
+                continue
+                
+            # For stacking, check if all maps have same shape
+            if return_before_blur:
+                shapes = [m.shape for m in bin_clickmaps]
+                if len(set(str(s) for s in shapes)) > 1:
+                    # print(f"Warning: Inconsistent shapes for {key}: {shapes}, fixing.")
+                    min_shape = min([s[0] for s in shapes])
+                    if min_shape <= 1:
+                        print(f"Minimum shape is 0 for {key}")
+                        sys.exit()
+                    bin_clickmaps = [m[:min_shape] for m in bin_clickmaps]
+                    # continue
+        else:
+            thresholds = 1
+            if metadata and key in metadata:
+                native_size = metadata[key]
+                binary_maps = np.asarray([create_clickmap_func([trial], native_size[::-1]) for trial in trials])
+            else:
+                binary_maps = np.asarray([create_clickmap_func([trial], tuple(image_shape)) for trial in trials])
+            mask = binary_maps.sum((-2, -1)) >= min_clicks
+            binary_maps = binary_maps[mask]
+            if average_maps:
+                binary_maps = binary_maps.mean(0, keepdims=True)
+            bin_clickmaps = [binary_maps]
+            bin_counts = 1
 
         # Only add to tracking structures if we can successfully process this image
         categories.append(key.split("/")[0])

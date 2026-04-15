@@ -1,5 +1,5 @@
 assets: assets/imgnet_val_10_15
-temp_dir: temp/imgnet_val_10_15.h5
+temp_dir: temp/imgnet_val_10_15_new.h5
 blur_size: 21
 center_crop:
 - 224

@@ -200,6 +200,7 @@ def compute_correlation_batch(batch_indices, all_clickmaps, all_names, metric="a
             for _ in range(n_iterations):
                 rand_perm = np.random.permutation(n)
                 fh = rand_perm[:(n // 2)]
+                fh = list(fh) + random.choices(fh, k=n//2)
                 # Add bootstrapping to max fh/sh size to original img
                 fh = random.choices(fh, k=n)
                 # Create the test and reference maps
@@ -207,7 +208,7 @@ def compute_correlation_batch(batch_indices, all_clickmaps, all_names, metric="a
                 if floor:
                     rand_perm = np.random.permutation(rand_n)
                     sh = rand_perm[(rand_n // 2):]
-                    sh = random.choices(sh, k=rand_n)
+                    sh = list(sh) + random.choices(sh, k=rand_n//2)
                     reference_map = rand_clickmap_at_k[sh].mean(0)  # Take maps from the same level in a random other image
                     reference_map = utils.blur_maps_for_cf(
                         reference_map[None, None],
@@ -221,7 +222,7 @@ def compute_correlation_batch(batch_indices, all_clickmaps, all_names, metric="a
                         gpu_batch_size=1).squeeze()
                 else:
                     sh = rand_perm[(n // 2):]
-                    sh = random.choices(sh, k=n)
+                    sh = list(sh) + random.choices(sh, k=n//2)
                     reference_map = clickmap_at_k[sh].mean(0)
 
                     # Make maps for each

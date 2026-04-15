@@ -1,0 +1,3 @@
+python ceiling_floor_estimate.py configs/imgnet_configs_01_15_26/imagenet_co3d_val_oscar.yaml
+# python ceiling_floor_estimate_large.py configs/imgnet_configs_01_15_26/imagenet_train_oscar.yaml
+python ceiling_floor_estimate_large.py configs/imgnet_configs_01_15_26/imagenet_val_spearman_oscar.yaml
