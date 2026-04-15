@@ -47,6 +47,9 @@ if __name__ == "__main__":
     if "time_based_bins" not in config:
         config["time_based_bins"] = args.time_based_bins
 
+    if "max_subjects" not in config:
+        config["max_subjects"] = -1
+    
     # Load clickme data
     print(f"Loading clickme data...")
     clickme_data = utils.process_clickme_data(
@@ -253,6 +256,7 @@ if __name__ == "__main__":
             # Save results for this batch
             if batch_final_keep_index:
                 print(f"Saving {len(batch_final_keep_index)} processed maps for batch {batch_num+1}...")
+                print(f"Total number of maps: {len(batch_all_clickmaps)}")
                 processed_images_count += len(batch_final_keep_index)
                 
                 # Store click counts
@@ -276,18 +280,6 @@ if __name__ == "__main__":
                         compression_level=config.get("hdf5_compression_level", 0),
                         clickmap_bins=batch_clickmap_bins
                     )
-                    
-                    # Also save individual NPY files for compatibility
-                    # print("Saving individual NPY files in addition to HDF5...")
-                    # npy_saved_count = utils.save_clickmaps_parallel(
-                    #     all_clickmaps=batch_all_clickmaps,
-                    #     final_keep_index=batch_final_keep_index,
-                    #     output_dir=output_dir,
-                    #     experiment_name=f"{config['experiment_name']}{batch_suffix}",
-                    #     image_path=config["image_path"],
-                    #     n_jobs=config["n_jobs"],
-                    #     file_inclusion_filter=config.get("file_inclusion_filter")
-                    # )
                 else:
                     # Use optimized HDF5 saving with compression
                     saved_count = utils.save_clickmaps_to_hdf5(
@@ -410,7 +402,8 @@ if __name__ == "__main__":
         # Save results
         if final_keep_index:
             print(f"Saving {len(final_keep_index)} processed maps...")
-            
+            print(f"Total number of maps: {len(all_clickmaps)}")
+
             # Save click counts to HDF5
             with h5py.File(hdf5_path, 'a') as f:
                 for img_name, count in click_counts.items():
@@ -489,79 +482,79 @@ if __name__ == "__main__":
             np.save(os.path.join(output_dir, config["processed_clickmap_bins"]), clickmap_bins)
         
     # Process visualization for display images if needed
-    if config["display_image_keys"]:
-        if config["display_image_keys"] == "auto":
-            sz_dict = {k: len(v) for k, v in final_clickmaps.items()}
-            arg = np.argsort(list(sz_dict.values()))
-            config["display_image_keys"] = np.asarray(list(sz_dict.keys()))[arg[-10:]]
+    # if config["display_image_keys"]:
+    #     if config["display_image_keys"] == "auto":
+    #         sz_dict = {k: len(v) for k, v in final_clickmaps.items()}
+    #         arg = np.argsort(list(sz_dict.values()))
+    #         config["display_image_keys"] = np.asarray(list(sz_dict.keys()))[arg[-10:]]
             
-        print("Generating visualizations for display images...")
-        for img_name in config["display_image_keys"]:
-            # Find the corresponding heatmap
-            try:
-                if output_format == "hdf5":
-                    # Read from HDF5 file
-                    with h5py.File(hdf5_path, 'r') as f:
-                        dataset_name = img_name.replace('/', '_')
-                        if dataset_name in f["clickmaps"]:
-                            hmp = f["clickmaps"][dataset_name][:]
-                            # Also read click count if available
-                            count_path = os.path.join(output_dir, config["experiment_name"], f"{img_name.replace('/', '_')}_count.npy")
-                            click_count = np.load(count_path) if os.path.exists(count_path) else None
-                        else:
-                            print(f"Heatmap not found for {img_name}")
-                            continue
-                else:
-                    # Read from numpy file
-                    heatmap_path = os.path.join(output_dir, config["experiment_name"], f"{img_name.replace('/', '_')}.npy")
-                    if not os.path.exists(heatmap_path):
-                        print(f"Heatmap not found for {img_name}")
-                        continue
+    #     print("Generating visualizations for display images...")
+    #     for img_name in config["display_image_keys"]:
+    #         # Find the corresponding heatmap
+    #         try:
+    #             if output_format == "hdf5":
+    #                 # Read from HDF5 file
+    #                 with h5py.File(hdf5_path, 'r') as f:
+    #                     dataset_name = img_name.replace('/', '_')
+    #                     if dataset_name in f["clickmaps"]:
+    #                         hmp = f["clickmaps"][dataset_name][:]
+    #                         # Also read click count if available
+    #                         count_path = os.path.join(output_dir, config["experiment_name"], f"{img_name.replace('/', '_')}_count.npy")
+    #                         click_count = np.load(count_path) if os.path.exists(count_path) else None
+    #                     else:
+    #                         print(f"Heatmap not found for {img_name}")
+    #                         continue
+    #             else:
+    #                 # Read from numpy file
+    #                 heatmap_path = os.path.join(output_dir, config["experiment_name"], f"{img_name.replace('/', '_')}.npy")
+    #                 if not os.path.exists(heatmap_path):
+    #                     print(f"Heatmap not found for {img_name}")
+    #                     continue
                         
-                    hmp = np.load(heatmap_path)
-                    # Try to load click count
-                    count_path = os.path.join(output_dir, config["experiment_name"], f"{img_name.replace('/', '_')}_count.npy")
-                    click_count = np.load(count_path) if os.path.exists(count_path) else None
+    #                 hmp = np.load(heatmap_path)
+    #                 # Try to load click count
+    #                 count_path = os.path.join(output_dir, config["experiment_name"], f"{img_name.replace('/', '_')}_count.npy")
+    #                 click_count = np.load(count_path) if os.path.exists(count_path) else None
                     
-                    # If not found, try the dedicated click counts directory
-                    if click_count is None:
-                        count_path = os.path.join(click_counts_dir, f"{img_name.replace('/', '_')}.npy")
-                        click_count = np.load(count_path) if os.path.exists(count_path) else None
+    #                 # If not found, try the dedicated click counts directory
+    #                 if click_count is None:
+    #                     count_path = os.path.join(click_counts_dir, f"{img_name.replace('/', '_')}.npy")
+    #                     click_count = np.load(count_path) if os.path.exists(count_path) else None
                     
-                # Load image
-                if os.path.exists(os.path.join(config["image_path"], img_name)):
-                    img = Image.open(os.path.join(config["image_path"], img_name))
-                elif os.path.exists(os.path.join(config["image_path"].replace(config["file_inclusion_filter"] + os.path.sep, ""), img_name)):
-                    img = Image.open(os.path.join(config["image_path"].replace(config["file_inclusion_filter"] + os.path.sep, ""), img_name))
-                elif os.path.exists(os.path.join(config["image_path"].replace(config["file_inclusion_filter"], ""), img_name)):
-                    img = Image.open(os.path.join(config["image_path"].replace(config["file_inclusion_filter"], ""), img_name))
-                else:
-                    print(f"Image not found for {img_name}")
-                    continue
+    #             # Load image
+    #             if os.path.exists(os.path.join(config["image_path"], img_name)):
+    #                 img = Image.open(os.path.join(config["image_path"], img_name))
+    #             elif os.path.exists(os.path.join(config["image_path"].replace(config["file_inclusion_filter"] + os.path.sep, ""), img_name)):
+    #                 img = Image.open(os.path.join(config["image_path"].replace(config["file_inclusion_filter"] + os.path.sep, ""), img_name))
+    #             elif os.path.exists(os.path.join(config["image_path"].replace(config["file_inclusion_filter"], ""), img_name)):
+    #                 img = Image.open(os.path.join(config["image_path"].replace(config["file_inclusion_filter"], ""), img_name))
+    #             else:
+    #                 print(f"Image not found for {img_name}")
+    #                 continue
                     
-                if metadata:
-                    click_match = [k_ for k_ in final_clickmaps.keys() if img_name in k_]
-                    if click_match:
-                        metadata_size = metadata[click_match[0]]
-                        img = img.resize(metadata_size)
+    #             if metadata:
+    #                 click_match = [k_ for k_ in final_clickmaps.keys() if img_name in k_]
+    #                 if click_match:
+    #                     metadata_size = metadata[click_match[0]]
+    #                     img = img.resize(metadata_size)
                 
-                # Save visualization
-                f = plt.figure()
-                plt.subplot(1, 2, 1)
-                plt.imshow(np.asarray(img))
-                title = f"{img_name}"
-                if click_count is not None:
-                    title += f"\nTotal clicks: {click_count}"
-                plt.title(title)
-                plt.axis("off")
-                plt.subplot(1, 2, 2)
-                plt.imshow(hmp.mean(0))
-                plt.axis("off")
-                plt.savefig(os.path.join(image_output_dir, img_name.replace('/', '_')))
-                plt.close()
-            except Exception as e:
-                print(f"Error processing {img_name}: {str(e)}")
-                continue
+    #             # Save visualization
+    #             f = plt.figure()
+    #             plt.subplot(1, 2, 1)
+    #             plt.imshow(np.asarray(img))
+    #             title = f"{img_name}"
+    #             if click_count is not None:
+    #                 title += f"\nTotal clicks: {click_count}"
+    #             plt.title(title)
+    #             plt.axis("off")
+    #             plt.subplot(1, 2, 2)
+    #             plt.imshow(hmp.mean(0))
+    #             plt.axis("off")
+    #             plt.savefig(os.path.join(image_output_dir, img_name.replace('/', '_')))
+    #             plt.close()
+    #         except Exception as e:
+    #             print(f"Error processing {img_name}: {str(e)}")
+    #             continue
     # End profiling if it was enabled
     if args.profile:
         profiler.disable()

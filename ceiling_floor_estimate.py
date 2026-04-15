@@ -1,4 +1,5 @@
 import os, sys
+import random
 import numpy as np
 from PIL import Image
 import json
@@ -11,11 +12,84 @@ import h5py
 import gc
 import torch
 from joblib import Parallel, delayed
-from scipy.stats import spearmanr
+from scipy.stats import spearmanr, pearsonr, rankdata, wasserstein_distance_nd
+from scipy.spatial.distance import cosine
 # import resource  # Add resource module for file descriptor limits
 from sklearn.metrics import average_precision_score
 from torchvision.transforms import functional as tvF
+from torchvision.transforms import InterpolationMode
 
+# def emd_2d(test_map, ref_map):
+#     test_map = (test_map - test_map.min()) / (test_map.max() - test_map.min()+1e-8)
+#     ref_map = (ref_map - ref_map.min()) / (ref_map.max() - ref_map.min()+1e-8)
+#     return wasserstein_distance_nd(test_map, ref_map)
+
+def emd_2d(ref_map, test_map, eps=0.2, iters=10):
+    """
+    Sinkhorn EMD between standardized positive maps. Returns [B].
+    """
+    if s_map.ndim == 4: s_map = s_map.squeeze(1)
+    if c_map.ndim == 4: c_map = c_map.squeeze(1)
+    s = zplus(s_map).squeeze(1).clamp_min(0)
+    c = zplus(c_map).squeeze(1).clamp_min(0)
+
+    B, H, W = s.shape
+    s = s.view(B, -1); c = c.view(B, -1)
+    s = s / (s.sum(dim=1, keepdim=True).clamp_min(1e-8))
+    c = c / (c.sum(dim=1, keepdim=True).clamp_min(1e-8))
+
+    M = _grid_cost(H, W, s.device).unsqueeze(0).expand(B, -1, -1)
+    return _sinkhorn(s, c, M, eps=eps, iters=iters)
+
+def _sinkhorn(a, b, M, eps, iters):
+    """
+    a,b: [B,P] prob vectors; M: [B,P,P] ground cost.
+    Returns: [B] transport cost.
+    """
+    K = torch.exp(-M / eps)
+    u = torch.full_like(a, 1.0 / a.size(1))
+    v = torch.full_like(b, 1.0 / b.size(1))
+    for _ in range(iters):
+        u = a / (K @ v).clamp_min(1e-8)
+        v = b / (K.transpose(1,2) @ u).clamp_min(1e-8)
+    P = torch.diag_embed(u) @ K @ torch.diag_embed(v)
+    return (P * M).sum(dim=(1,2))
+
+def rank_cosine(test_map, ref_map):
+    ref_map = ref_map.flatten()
+    test_map = test_map.flatten()
+
+    non_zero_pos = np.where(ref_map != 0)[0]
+
+    ref_rank = rankdata(ref_map, method='average')
+    test_rank = rankdata(test_map, method='average')
+
+    ref_rank = ref_rank[non_zero_pos]
+    test_rank = test_rank[non_zero_pos]
+    ref_rank = np.float64(ref_rank)
+    test_rank = np.float64(test_rank)
+
+    if test_rank.size > 1 and ref_rank.size > 1:
+        cosine_score = cosine(ref_rank, test_rank)
+        return cosine_score
+    else:
+        return float('nan')
+
+def rank_pearson(test_map, ref_map):
+    ref_map = ref_map.flatten()
+    test_map = test_map.flatten()
+
+    non_zero_pos = np.where(ref_map != 0)[0]
+    ref_rank = rankdata(ref_map, method='average')
+    test_rank = rankdata(test_map, method='average')
+
+    ref_rank = ref_rank[non_zero_pos]
+    test_rank = test_rank[non_zero_pos]
+    if test_rank.size > 1 and ref_rank.size > 1:
+        pearson_score = pearsonr(ref_rank, test_rank)
+        return pearson_score.statistic
+    else:
+        return float('nan')
 
 def auc(test_map, reference_map, thresholds=10, metric="iou"):
     """Compute the area under the IOU curve for a test map and a reference map"""
@@ -48,7 +122,7 @@ def auc(test_map, reference_map, thresholds=10, metric="iou"):
     
     # Return the area under the curve (trapezoidal integration)
     # We're integrating over normalized threshold range [0,1]
-    return np.trapezoid(scores, x=thresholds) if len(thresholds) > 1 else np.mean(scores)
+    return np.trapz(scores, x=thresholds) if len(thresholds) > 1 else np.mean(scores)
 
 
 def rankorder(test_map, reference_map, threshold=0.):
@@ -132,24 +206,28 @@ def compute_rotation_correlation_batch(batch_indices, all_data, all_names, metri
             target_depth_map = target_data['depth_map']
             level_scores = []
             for k, clickmap_at_k in enumerate(clickmaps):
-                if metric == "spearman" and k < (len(clickmaps)-1):
+                if metric != "auc" and k < (len(clickmaps)-1):
                     continue
                 rand_scores = []     
                 n = len(clickmap_at_k)
                 target_clickmap_at_k = target_clickmaps[k]
                 target_n = len(target_clickmap_at_k)
                 for iteration in range(n_iterations):
-                    test_rand_perm = np.random.permutation(n)
-                    fh = test_rand_perm[:(n//2)]
-                    test_map = clickmap_at_k[fh].mean(0)
-                    if not floor and target_img_name == img_name:
-                        target_rand_perm = test_rand_perm
-                    else:
-                        target_rand_perm = np.random.permutation(target_n)
-                    sh = target_rand_perm[(target_n//2):]
+                    rand_perm = np.random.permutation(n)
+                    fh = rand_perm[:(n//2)]
+                    fh = list(fh) + random.choices(fh, k=n//2)
+                    if target_img_name != img_name:
+                        rand_perm = np.random.permutation(target_n)
+                    sh = rand_perm[(target_n//2):]
+                    sh = list(sh) + random.choices(sh, k=target_n//2)
                     reference_map = target_clickmap_at_k[sh].mean(0)
+                    test_map = clickmap_at_k[fh].mean(0)
+                
+                    reference_map = target_clickmap_at_k[sh].mean(0)
+                    test_map = clickmap_at_k[fh].mean(0)
+
                     # Save for visualization 
-                    if k == (len(clickmaps)-1) and iteration == (n_iterations-1):
+                    if k == (len(clickmaps)-1):
                         unprojected_map = test_map.copy()
                         unprojected_map = utils.blur_maps_for_cf(
                             unprojected_map[None, None],
@@ -158,8 +236,8 @@ def compute_rotation_correlation_batch(batch_indices, all_data, all_names, metri
                             gpu_batch_size=2).squeeze()
                     #Project before blurring
 
-                    if target_img_name != img_name:
-                            test_map = utils.project_img_gpu(test_map, depth_map, w2c, target_w2c, Ks, target_Ks, device=device)
+                    if target_img_name != img_name and not floor:
+                            test_map = utils.project_img_gpu(test_map, depth_map, target_depth_map, w2c, target_w2c, Ks, target_Ks, device=device)
                     
                     blur_clickmaps = utils.blur_maps_for_cf(
                         np.stack((test_map, reference_map), axis=0)[None],
@@ -168,7 +246,7 @@ def compute_rotation_correlation_batch(batch_indices, all_data, all_names, metri
                         gpu_batch_size=2).squeeze()
                     test_map = blur_clickmaps[0]
                     reference_map = blur_clickmaps[1]
-                    if k == (len(clickmaps)-1) and iteration == (n_iterations-1):
+                    if k == (len(clickmaps)-1):
                         org_test_map = test_map.copy()
                         org_ref_map = reference_map.copy()
                     # if target_img_name != img_name:
@@ -177,11 +255,11 @@ def compute_rotation_correlation_batch(batch_indices, all_data, all_names, metri
                         image_shape = config['image_shape']
                         center_crop = config['center_crop']
                         if center_crop:
-                            test_map = torch.tensor(test_map)
-                            reference_map = torch.tensor(reference_map)
-                            test_map = tvF.resize(test_map, min(image_shape))
+                            test_map = torch.tensor(test_map)[None, :, :]
+                            reference_map = torch.tensor(reference_map)[None, :, :]
+                            test_map = tvF.resize(test_map, min(image_shape), interpolation=InterpolationMode.NEAREST_EXACT)
                             test_map = tvF.center_crop(test_map, center_crop)
-                            reference_map = tvF.resize(reference_map, min(image_shape))
+                            reference_map = tvF.resize(reference_map, min(image_shape), interpolation=InterpolationMode.NEAREST_EXACT)
                             reference_map = tvF.center_crop(reference_map, center_crop)
                             test_map = test_map.numpy().squeeze()
                             reference_map = reference_map.numpy().squeeze()
@@ -192,21 +270,27 @@ def compute_rotation_correlation_batch(batch_indices, all_data, all_names, metri
                         score = rankorder(test_map.flatten(), reference_map.flatten())
                     elif metric == "spearman":
                         score, _ = spearmanr(test_map.flatten(), reference_map.flatten())
-                        if np.isnan(score):
-                            continue
+                    elif metric == "rank_pearson":
+                        score = rank_pearson(test_map, reference_map)
+                    elif metric == "rank_cosine":
+                        score = rank_cosine(test_map, reference_map)
+                    elif metric == "emd":
+                        score = emd_2d(test_map, reference_map)
                     else:
                         raise ValueError(f"Invalid metric: {metric}")
+                    if np.isnan(score):
+                            continue
                     rand_scores.append(score)
 
-                    # Explicitly free memory
-                    if 'blur_clickmaps' in locals():
-                        del blur_clickmaps
+                # Explicitly free memory
+                if 'blur_clickmaps' in locals():
+                    del blur_clickmaps
                 if len(rand_scores) < 1:
                     rand_scores = 0
                 else:
                     rand_scores = np.nanmean(np.asarray(rand_scores))
                 level_scores.append(rand_scores)
-                gc.collect()
+                # gc.collect()
             angle_score = np.nanmean(np.asarray(level_scores))
             batch_results[target_img_diff].append(angle_score)
             all_rotation_results[img_name][target_img_diff] = angle_score
@@ -219,7 +303,7 @@ def compute_rotation_correlation_batch(batch_indices, all_data, all_names, metri
                 projected_img = np.asarray(img)
                 if target_img_name != img_name:
                     projected_img =  np.moveaxis(projected_img, -1, 0)
-                    projected_img = utils.project_img_gpu(projected_img, depth_map, w2c, target_w2c, Ks, target_Ks, device=device)
+                    projected_img = utils.project_img_gpu(projected_img, depth_map, target_depth_map, w2c, target_w2c, Ks, target_Ks, device=device)
                     projected_img =  np.moveaxis(projected_img, 0, -1)
                 title = f"{img_name}_{round(angle_score, 3)}"
                 plot_infos.append({'output_name':image_output_name, 'title':title,
@@ -251,6 +335,9 @@ def compute_scale_correlation_batch(batch_indices, all_data, all_names, metric="
             if floor:
                 rand_i = np.random.choice([rand_i for rand_i in range(len(all_names)) if rand_i != i])
                 target_img_name = all_names[rand_i]
+            if target_img_name not in all_data:
+                print("Not found", target_img_name)
+                continue
             target_data = all_data[target_img_name]
             target_clickmaps = target_data["clickmap"]
             target_scale = target_data["scale"]
@@ -258,24 +345,25 @@ def compute_scale_correlation_batch(batch_indices, all_data, all_names, metric="
             level_scores = []
             scale_diff = scale / target_scale
             for k, clickmap_at_k in enumerate(clickmaps):
-                if metric == "spearman" and k < (len(clickmaps)-1):
+                if (metric != 'auc') and k < (len(clickmaps)-1):
                     continue
                 rand_scores = []
                 n = len(clickmap_at_k)
                 target_clickmap_at_k = target_clickmaps[k]
                 target_n = len(target_clickmap_at_k)
+
                 for iteration in range(n_iterations):
-                    test_rand_perm = np.random.permutation(n)
-                    fh = test_rand_perm[:(n // 2)]
-                    # sh = test_rand_perm[(n//2):]
-                    test_map = clickmap_at_k[fh].mean(0)
-                    if not floor and target_img_name == img_name:
-                        target_rand_perm = test_rand_perm
-                    else:
-                        target_rand_perm = np.random.permutation(target_n)
-                    sh = target_rand_perm[(target_n//2):]
+                    rand_perm = np.random.permutation(n)
+                    fh = rand_perm[:(n//2)]
+                    fh = list(fh) + random.choices(fh, k=n//2)
+                    if target_img_name != img_name:
+                        rand_perm = np.random.permutation(target_n)
+                    sh = rand_perm[(target_n//2):]
+                    sh = list(sh) + random.choices(sh, k=target_n//2)
                     reference_map = target_clickmap_at_k[sh].mean(0)
-                    if k == (len(clickmaps)-1) and iteration == (n_iterations - 1):
+                    test_map = clickmap_at_k[fh].mean(0)
+
+                    if k == (len(clickmaps)-1):
                         unscaled_map = test_map.copy()
                         unscaled_map = utils.blur_maps_for_cf(
                             unscaled_map[None, None],
@@ -283,29 +371,33 @@ def compute_scale_correlation_batch(batch_indices, all_data, all_names, metric="
                             blur_sigma,
                             gpu_batch_size=2).squeeze()
 
-                    # Scale before blurring, need to scale kernel size
-                    if scale_diff != 1:
-                        test_map = utils.sparse_scale(test_map, scale_diff, device).cpu().numpy()
+                    if scale_diff != 1 and not floor:
+                        test_map = utils.sparse_scale(test_map, scale_diff, device).cpu().numpy().squeeze()
+                        # if scale_diff > 1:
+                        #     reference_map = torch.tensor(reference_map)
+                        #     reference_map = tvF.center_crop(reference_map, test_map.shape)
+                        #     reference_map = reference_map.numpy()
+
                     blur_clickmaps = utils.blur_maps_for_cf(
                         np.stack((test_map, reference_map), axis=0)[None],
-                        int(blur_size/scale_diff),
-                        int(blur_sigma/scale_diff),
+                        int(blur_size),
+                        int(blur_sigma),
                         gpu_batch_size=2).squeeze()
                     
                     test_map = blur_clickmaps[0]
                     reference_map = blur_clickmaps[1]
-                    if k == (len(clickmaps)-1) and iteration == (n_iterations - 1):
+                    if k == (len(clickmaps)-1):
                         org_test_map = test_map.copy()
                         org_ref_map = reference_map.copy()
                     if config:
                         image_shape = config['image_shape']
                         center_crop = config['center_crop']
-                        if center_crop:
-                            test_map = torch.tensor(test_map)
-                            reference_map = torch.tensor(reference_map)
-                            test_map = tvF.resize(test_map, min(image_shape))
+                        if center_crop and test_map.shape[-1] > center_crop[-1]:
+                            test_map = torch.tensor(test_map)[None]
+                            reference_map = torch.tensor(reference_map)[None]
+                            test_map = tvF.resize(test_map, min(image_shape), interpolation=InterpolationMode.NEAREST_EXACT)
                             test_map = tvF.center_crop(test_map, center_crop)
-                            reference_map = tvF.resize(reference_map, min(image_shape))
+                            reference_map = tvF.resize(reference_map, min(image_shape), interpolation=InterpolationMode.NEAREST_EXACT)
                             reference_map = tvF.center_crop(reference_map, center_crop)
                             test_map = test_map.numpy().squeeze()
                             reference_map = reference_map.numpy().squeeze()
@@ -318,16 +410,22 @@ def compute_scale_correlation_batch(batch_indices, all_data, all_names, metric="
                         score = rankorder(test_map.flatten(), reference_map.flatten())
                     elif metric == "spearman":
                         score, _ = spearmanr(test_map.flatten(), reference_map.flatten())
+                    elif metric == "rank_pearson":
+                        score = rank_pearson(test_map, reference_map)
+                    elif metric == "rank_cosine":
+                        score = rank_cosine(test_map, reference_map)
+                    elif metric == "emd":
+                        score = emd_2d(test_map, reference_map)
                     else:
                         raise ValueError(f"Invalid metric: {metric}")
+                    
                     rand_scores.append(score)
-
-                    # Explicitly free memory
-                    if 'blur_clickmaps' in locals():
-                        del blur_clickmaps
+                # Explicitly free memory
+                if 'blur_clickmaps' in locals():
+                    del blur_clickmaps
                 rand_scores = np.nanmean(np.asarray(rand_scores))
                 level_scores.append(rand_scores)
-                gc.collect()
+                # gc.collect()
             scale_results[img_name][target_img_diff] = np.nanmean(np.asarray(level_scores))
             batch_results[target_img_diff].append(np.nanmean(np.asarray(level_scores)))
             if not floor:
@@ -348,59 +446,90 @@ def compute_scale_correlation_batch(batch_indices, all_data, all_names, metric="
                                     'reference_map':reference_map, 'test_map': test_map})
     return batch_results, scale_results, plot_infos
 
-def compute_correlation_batch(batch_indices, all_clickmaps, all_names, metric="auc", n_iterations=10, device='cuda', blur_size=11, blur_sigma=1.5, floor=False, config=None):
+def compute_correlation_batch(batch_indices, all_clickmaps, all_names, metric="auc", n_iterations=10, device='cuda', blur_size=11, blur_sigma=1.5, floor=False, config=None, metadata=None):
     """Compute split-half correlations for a batch of clickmaps in parallel"""
     batch_results = []
     all_scores = {}
+    max_kernel_size = config.get("max_kernel_size", 51)
+    blur_sigma_function = config.get("blur_sigma_function", lambda x: x)
     for i in tqdm(batch_indices, desc="Computing split-half correlations", total=len(batch_indices)):
-        clickmaps = all_clickmaps[i]
         img_name = all_names[i]
+        clickmaps = all_clickmaps[img_name]
+
         level_corrs = []
+        #TODO modify for speed up
+        if metadata and img_name in metadata:
+            native_size = metadata[img_name]
+            short_side = min(native_size)
+            scale = short_side / min(clickmaps[-1].shape[-2:])
+            adj_blur_size = int(np.round(blur_size * scale))
+            if not adj_blur_size % 2:
+                adj_blur_size += 1
+            adj_blur_size = min(adj_blur_size, max_kernel_size)
+            adj_blur_sigma = blur_sigma_function(adj_blur_size)
+        else:
+            adj_blur_size = blur_size
+            adj_blur_sigma = blur_sigma
+
         if floor:
-            rand_i = np.random.choice([j for j in range(len(all_clickmaps)) if j != i])
-        for k, clickmap_at_k in enumerate(clickmaps):
+            rand_i = np.random.randint(len(all_clickmaps) - 1)
+            if rand_i >= i:
+                rand_i += 1
+            rand_name = all_names[rand_i]
+            rand_clickmaps = all_clickmaps[rand_name]
+
+            if metadata and rand_name in metadata:
+                native_size = metadata[rand_name]
+                short_side = min(native_size)
+                scale = short_side / min(rand_clickmaps[-1].shape[-2:])
+                rand_adj_blur_size = int(np.round(blur_size * scale))
+                if not adj_blur_size % 2:
+                    rand_adj_blur_size += 1
+                rand_adj_blur_size = min(rand_adj_blur_size, max_kernel_size)
+                rand_adj_blur_sigma = blur_sigma_function(rand_adj_blur_size)
+            else:
+                rand_adj_blur_size = blur_size
+                rand_adj_blur_sigma = blur_sigma
+
+        for k , clickmap_at_k, in enumerate(clickmaps):
+            if metric != "auc" and k < (len(clickmaps)-1):
+                continue
             rand_corrs = []
             n = len(clickmap_at_k)
-            for _ in range(n_iterations):
+            if floor:
+                rand_clickmap_at_k = rand_clickmaps[k]
+                rand_n = len(rand_clickmap_at_k)
+            for n_iter in range(n_iterations):
                 rand_perm = np.random.permutation(n)
                 fh = rand_perm[:(n // 2)]
-                sh = rand_perm[(n // 2):]
-                
+                # Add bootstrapping to max fh/sh size to original img
+                fh = list(fh) + random.choices(fh, k=n//2)
                 # Create the test and reference maps
                 test_map = clickmap_at_k[fh].mean(0)
                 if floor:
-                    rand_perm = np.random.permutation(len(all_clickmaps[rand_i][k]))
-                    sh = rand_perm[(n // 2):]
-                    reference_map = all_clickmaps[rand_i][k][sh].mean(0)  # Take maps from the same level in a random other image
-                    #TODO Add adjusted blur size for imagenet images, add resize and center crop
-                    # Ensure reference_map has the same shape as test_map
-                    if reference_map.shape != test_map.shape:
-                        # Resize reference_map to match test_map's shape
-                        reference_map_resized = np.zeros(test_map.shape, dtype=reference_map.dtype)
-                        # Copy the smaller of the dimensions for each axis
-                        min_height = min(reference_map.shape[0], test_map.shape[0])
-                        min_width = min(reference_map.shape[1], test_map.shape[1])
-                        reference_map_resized[:min_height, :min_width] = reference_map[:min_height, :min_width]
-                        reference_map = reference_map_resized
-                    
+                    rand_perm = np.random.permutation(rand_n)
+                    sh = rand_perm[(rand_n // 2):]
+                    sh =  list(sh) + random.choices(sh, k=rand_n//2)
+                    reference_map = rand_clickmap_at_k[sh].mean(0)  # Take maps from the same level in a random other image
                     reference_map = utils.blur_maps_for_cf(
                         reference_map[None, None],
-                        blur_size,
-                        blur_sigma,
+                        rand_adj_blur_size,
+                        rand_adj_blur_sigma,
                         gpu_batch_size=1).squeeze()
                     test_map = utils.blur_maps_for_cf(
                         test_map[None, None],
-                        blur_size,
-                        blur_sigma,
+                        adj_blur_size,
+                        adj_blur_sigma,
                         gpu_batch_size=1).squeeze()
                 else:
+                    sh = rand_perm[(n // 2):]
+                    sh = list(sh) + random.choices(sh, k=n//2)
                     reference_map = clickmap_at_k[sh].mean(0)
-
                     # Make maps for each
                     blur_clickmaps = utils.blur_maps_for_cf(
                         np.stack((test_map, reference_map), axis=0)[None],
-                        blur_size,
-                        blur_sigma,
+                        adj_blur_size,
+                        adj_blur_sigma,
                         gpu_batch_size=2).squeeze()
                     test_map = blur_clickmaps[0]
                     reference_map = blur_clickmaps[1]
@@ -408,11 +537,11 @@ def compute_correlation_batch(batch_indices, all_clickmaps, all_names, metric="a
                     image_shape = config['image_shape']
                     center_crop = config['center_crop']
                     if center_crop:
-                        test_map = torch.tensor(test_map)
-                        reference_map = torch.tensor(reference_map)
-                        test_map = tvF.resize(test_map, min(image_shape))
+                        test_map = torch.tensor(test_map)[None]
+                        reference_map = torch.tensor(reference_map)[None]
+                        test_map = tvF.resize(test_map, min(image_shape), interpolation=InterpolationMode.NEAREST_EXACT)
                         test_map = tvF.center_crop(test_map, center_crop)
-                        reference_map = tvF.resize(reference_map, min(image_shape))
+                        reference_map = tvF.resize(reference_map, min(image_shape), interpolation=InterpolationMode.NEAREST_EXACT)
                         reference_map = tvF.center_crop(reference_map, center_crop)
                         test_map = test_map.numpy().squeeze()
                         reference_map = reference_map.numpy().squeeze()
@@ -423,18 +552,23 @@ def compute_correlation_batch(batch_indices, all_clickmaps, all_names, metric="a
                     score = rankorder(test_map.flatten(), reference_map.flatten())
                 elif metric == "spearman":
                     score, _ = spearmanr(test_map.flatten(), reference_map.flatten())
+                elif metric == "rank_pearson":
+                    score = rank_pearson(test_map, reference_map)
+                elif metric == "rank_cosine":
+                    score = rank_cosine(test_map, reference_map)
+                elif metric == "emd":
+                    score = emd_2d(test_map, reference_map)
                 else:
                     raise ValueError(f"Invalid metric: {metric}")
                 rand_corrs.append(score)
-                
                 # Explicitly free memory
                 if 'blur_clickmaps' in locals():
                     del blur_clickmaps
                 
-            rand_corrs = np.asarray(rand_corrs).mean()  # Take the mean of the random correlations
+            rand_corrs = np.nanmean(np.asarray(rand_corrs))  # Take the mean of the random correlations
             level_corrs.append(rand_corrs)
             # Free memory
-            gc.collect()
+            # gc.collect()
         batch_results.append(np.asarray(level_corrs).mean())  # Integrate over the levels
         all_scores[img_name] = batch_results[-1]
     return batch_results, all_scores
@@ -495,6 +629,9 @@ if __name__ == "__main__":
 
     if "constancy" not in config:
         config["constancy"] = False
+    
+    if "max_subjects" not in config:
+        config["max_subjects"] = -1
 
     if args.metric is not None:
         config["metric"] = args.metric
@@ -517,7 +654,6 @@ if __name__ == "__main__":
     image_paths = clickme_data['image_path'].unique()
     total_unique_images = len(image_paths)
     print(f"Found {total_unique_images} unique images")
-    
     # Set up GPU configuration
     if args.gpu_batch_size:
         config["gpu_batch_size"] = args.gpu_batch_size
@@ -553,14 +689,14 @@ if __name__ == "__main__":
     image_output_dir = config["example_image_output_dir"]
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(image_output_dir, exist_ok=True)
-    os.makedirs(os.path.join(output_dir, config["experiment_name"]), exist_ok=True)
+    # os.makedirs(os.path.join(output_dir, config["experiment_name"]), exist_ok=True)
     
     # Create dedicated directory for click counts
-    click_counts_dir = os.path.join(output_dir, f"{config['experiment_name']}_click_counts")
-    os.makedirs(click_counts_dir, exist_ok=True)
+    # click_counts_dir = os.path.join(output_dir, f"{config['experiment_name']}_click_counts")
+    # os.makedirs(click_counts_dir, exist_ok=True)
     
     # Original code for non-HDF5 format
-    hdf5_path = os.path.join(output_dir, f"{config['experiment_name']}.h5")
+    hdf5_path = os.path.join(output_dir, f"{config['experiment_name']}_ceiling_metadata.h5")
     print(f"Saving results to file: {hdf5_path}")
     with h5py.File(hdf5_path, 'w') as f:
         f.create_group("clickmaps")
@@ -619,7 +755,6 @@ if __name__ == "__main__":
         min_clicks=config["min_clicks"],
         max_clicks=config["max_clicks"],
         n_jobs=config["n_jobs"])
-    
     # Apply filters if necessary
     if config["class_filter_file"]:
         print("Filtering classes...")
@@ -707,6 +842,7 @@ if __name__ == "__main__":
     
     # Process correlation batches in parallel
     if not config['constancy']:
+        print(f"number of imgs:{len(final_keep_index)}, number of maps:{len(all_clickmaps)}")
         ceiling_returns = Parallel(n_jobs=n_jobs, prefer="threads")(
             delayed(compute_correlation_batch)(
                 batch_indices=batch,
@@ -719,6 +855,7 @@ if __name__ == "__main__":
                 blur_sigma=config.get("blur_sigma", config["blur_size"]),
                 floor=False,
                 config=config,
+                metadata=metadata,
             ) for batch in tqdm(batches, desc="Computing ceiling batches", total=len(batches))
         )
         ceiling_results, all_ceilings = zip(*ceiling_returns)
@@ -736,6 +873,7 @@ if __name__ == "__main__":
                 blur_sigma=config.get("blur_sigma", config["blur_size"]),
                 floor=True,
                 config=config,
+                metadata=metadata,
             ) for batch in tqdm(batches, desc="Computing floor batches", total=len(batches))
         )
         floor_results, all_floors = zip(*floor_returns)
@@ -791,16 +929,9 @@ if __name__ == "__main__":
 
         all_data = {}
         for i, name in enumerate(all_names):
-            clickmap = all_clickmaps[i]
+            clickmap = all_clickmaps[name]
             img_idx = int(name.split('.')[0].split('_')[-1])
             zoom_level = img_idx  % 3
-            # if zoom_level != 2:
-            #     target_img_idx = img_idx+(2-zoom_level)
-            # else:
-            #     target_img_idx = img_idx
-            # target_img_name = f"{'_'.join(name.split('.')[0].split('_')[:-1])}_{str(target_img_idx).zfill(5)}.png"
-            # if target_img_name not in all_names:
-            #     continue
             depth_path = os.path.join(depth_root, f"depth_{name.replace('.png', '.npy')}")
             depth_map = np.load(depth_path)
             all_data[name] = {"clickmap": clickmap, "scale":scales_dict[name], "zoom":zoom_level, 'img_idx':img_idx,
@@ -994,8 +1125,7 @@ if __name__ == "__main__":
                 all_rot_ceilings_angle[angle] += scores
         
         for angle, scores in all_rot_ceilings_angle.items():
-            mean_rot_ceilings_angle[angle] = np.mean(scores)
-        print(mean_rot_ceilings_angle)
+            mean_rot_ceilings_angle[angle] = np.nanmean(scores)
         all_rot_floor_img = {}
         all_rot_floor_angle = {}
         mean_rot_floor_angle = {}
