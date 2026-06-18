@@ -105,6 +105,13 @@ display_image_keys:
 
 The repository provides several scripts for processing and analyzing ClickMe data. Below are the primary scripts along with examples using the updated configuration interface.
 
+To get started quickly, the following example is included: `RUN.sh`
+
+The lines that need to be modified are as follows:
+- Add your own virtual environment
+- Add your own Python path
+
+
 #### Compute Human Ceiling Split Half
 
 This script performs split-half correlation analysis on the clickmaps.
